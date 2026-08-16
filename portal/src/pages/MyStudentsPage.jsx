@@ -17,8 +17,8 @@ export default function MyStudentsPage() {
         <Header title="My Students" breadcrumbs={['Dashboard', 'My List', 'My Students']} />
 
         {/* PAGE CONTENT CONTAINER */}
-        <main className="flex-1 overflow-hidden p-4 max-w-[1600px] w-full mx-auto">
-          <div className="h-full bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col overflow-hidden">
+        <main className="flex-1 overflow-y-auto p-4 max-w-[1600px] w-full mx-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col">
             
             {/* Page Action Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 mb-3 border-b border-slate-100 shrink-0">
@@ -38,7 +38,7 @@ export default function MyStudentsPage() {
             </div>
 
             {/* Render Your Table Component Here */}
-            <div className="flex-1 overflow-hidden">
+            <div>
               <MyStudentsTable />
             </div>
 

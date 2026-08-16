@@ -2,6 +2,7 @@ import { Calendar, Filter, X } from 'lucide-react';
 import { inputClass, selectClass } from './studentData';
 
 export default function StudentFilters({ filters, onFilterChange, onClear, options, resultCount, selectedCount, onApply }) {
+  const hasActiveFilters = Object.values(filters).some(v => v !== '');
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
       {/* Row 1 Filters */}
@@ -158,14 +159,16 @@ export default function StudentFilters({ filters, onFilterChange, onClear, optio
             <Filter size={14} />
             <span>Filter</span>
           </button>
-          <button
-            onClick={onClear}
-            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 flex items-center space-x-2 transition cursor-pointer"
-          >
-            <X size={14} />
-            <span>Clear Filters</span>
-          </button>
-          {(Object.values(filters).some(v => v !== '') || selectedCount > 0) && (
+          {hasActiveFilters && (
+            <button
+              onClick={onClear}
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 flex items-center space-x-2 transition cursor-pointer"
+            >
+              <X size={14} />
+              <span>Clear Filters</span>
+            </button>
+          )}
+          {(hasActiveFilters || selectedCount > 0) && (
             <span className="text-[11px] text-slate-400 font-medium">
               {selectedCount > 0 ? `${selectedCount} selected · ` : ''}{resultCount} result(s)
             </span>

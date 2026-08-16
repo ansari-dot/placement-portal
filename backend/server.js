@@ -4,6 +4,7 @@ import connectDB from './config/db_config.js'
 import cors from 'cors';
 
 import studentRoutes from './routes/student.route.js';
+import workflowRoutes from './routes/workflow.route.js';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/students', studentRoutes);
+app.use('/workflows', workflowRoutes);
 
 app.get('/', (req, res) => {
     return res.status(200).json({ message: 'Server is running' });

@@ -399,6 +399,7 @@ studentSchema.set("toJSON", {
   virtuals: true,
   versionKey: false,
   transform: function (doc, ret) {
+    ret.id = doc._id.toString();
     delete ret._id;
     return ret;
   },
@@ -408,6 +409,7 @@ studentSchema.set("toObject", {
   virtuals: true,
   versionKey: false,
   transform: function (doc, ret) {
+    ret.id = doc._id.toString();
     delete ret._id;
     return ret;
   },

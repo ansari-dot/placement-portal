@@ -26,9 +26,7 @@ export const createStudent = async (studentData) => {
     if (!studentData.studentId) {
         studentData.studentId = await generateStudentId();
     }
-
     const student = await StudentModel.create(studentData);
-
     return student;
 };
 
@@ -46,7 +44,6 @@ export const updateStudent = async (id, studentData) => {
         runValidators: true,
     });
 };
-
 export const deleteStudent = async (id) => {
     return await StudentModel.findByIdAndDelete(id);
 };

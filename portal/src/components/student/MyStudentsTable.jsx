@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Download, Columns } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { defaultStudents, emptyFilters, parseAge, parseDate, btnSecondary } from './studentData';
@@ -32,6 +33,7 @@ const mapBackendStudent = (s) => ({
 });
 
 export default function MyStudentsTable() {
+  const navigate = useNavigate();
   const [rowsPerPage, setRowsPerPage] = useState('10 per page');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState(null);
@@ -50,10 +52,15 @@ export default function MyStudentsTable() {
     setLoadError(null);
     try {
       const response = await fetchStudents();
-      const backendStudents = (response?.data || []).map(mapBackendStudent);
-      setStudents(backendStudents.length > 0 ? backendStudents : defaultStudents);
+      // The API helper returns response.data already, which is { message, success, data: [ ... ] }
+      const studentList = response?.data ?? response ?? [];
+      // Always use the real backend data (even if 0 students) so newly added
+      // students are shown properly instead of being hidden by sample data.
+      const backendStudents = (Array.isArray(studentList) ? studentList : []).map(mapBackendStudent);
+      setStudents(backendStudents);
     } catch (err) {
       console.error('Could not load students from backend:', err);
+      // Only fall back to sample data when the server is unreachable.
       setLoadError('Could not connect to the server. Showing sample data.');
       setStudents(defaultStudents);
     } finally {
@@ -182,10 +189,11 @@ export default function MyStudentsTable() {
 
   const handleRowAction = async (action, student) => {
     setOpenActionsId(null);
+    const dbId = student.dbId || student.id;
     if (action === 'view') {
-      toast.info(`Viewing details for ${student.name}`, { autoClose: 4000 });
+      navigate(`/students/${dbId}/view`);
     } else if (action === 'edit') {
-      toast.info(`Edit mode coming soon for ${student.name}`);
+      navigate(`/students/${dbId}/edit`);
     } else if (action === 'delete') {
       if (student.dbId) {
         try {

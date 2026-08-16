@@ -206,6 +206,10 @@ export default function AddNewStudentPage() {
         if (payload[key] === '') payload[key] = undefined;
       });
 
+      // File objects cannot be sent as JSON - convert to filename string or null
+      if (payload.documents instanceof File) payload.documents = payload.documents.name;
+      if (payload.resumeFile instanceof File) payload.resumeFile = payload.resumeFile.name;
+
       // Date fields need to be in a valid format
       if (payload.dateOfBirth) payload.dateOfBirth = new Date(payload.dateOfBirth);
       if (payload.startDate) payload.startDate = new Date(payload.startDate);
