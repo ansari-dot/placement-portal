@@ -1,28 +1,38 @@
 // src/components/workflow/WorkflowStep2Requests.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List, 
   X, Building2, User, Calendar, Clock, CheckCircle2, 
   Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText
 } from 'lucide-react';
+import { fetchJobs } from '../../api/jobApi';
 
-export default function WorkflowStep2Requests({ requests = [], onBack, onNext }) {
-  const [selectedRequest, setSelectedRequest] = useState({
-    id: 'REQ-000122',
-    status: 'New',
-    title: 'Software Developer Intern',
-    requestedOn: '19 May 2025 at 10:24 AM',
-    student: 'John Smith',
-    studentId: 'STU-0002453',
-    company: 'TechSolutions Pty Ltd',
-    rto: 'AI Global Institute',
-    preferredStart: '02 Jun 2025',
-    duration: '3 Months',
-    workType: 'Remote',
-    location: 'Melbourne, VIC',
-    coordinator: '—'
-  });
+export default function WorkflowStep2Requests({ 
+  requests = [], 
+  onBack, 
+  onNext, 
+  onCreateRequest, 
+  onUpdateRequest, 
+  onDeleteRequest, 
+  students = [] 
+}) {
+  const [newRequestStudentId, setNewRequestStudentId] = useState('');
+  const [newRequestCompany, setNewRequestCompany] = useState('');
+  const [newRequestTitle, setNewRequestTitle] = useState('');
+  const [newRequestWorkType, setNewRequestWorkType] = useState('Remote');
+  const [newRequestRto, setNewRequestRto] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState('');
+  const [availableJobs, setAvailableJobs] = useState([]);
+
+  // Load open jobs for the picker
+  useEffect(() => {
+    fetchJobs({ status: 'Open' })
+      .then(res => { if (res.success) setAvailableJobs(res.data || []); })
+      .catch(() => {});
+  }, []);
+
+  const [selectedRequest, setSelectedRequest] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
@@ -37,24 +47,13 @@ export default function WorkflowStep2Requests({ requests = [], onBack, onNext })
   const [showRowMenu, setShowRowMenu] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [showDrawer, setShowDrawer] = useState(true);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [toast, setToast] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [rtoFilter, setRtoFilter] = useState('All');
   const [coordinatorFilter, setCoordinatorFilter] = useState('All');
 
-  const defaultRequests = [
-    { reqId: 'REQ-000122', title: 'Software Developer Intern', student: 'John Smith', studentId: 'STU-0002453', company: 'TechSolutions Pty Ltd', rto: 'AI Global Institute', status: 'New', date: '19 May 2025' },
-    { reqId: 'REQ-000121', title: 'Data Analyst Intern', student: 'Priya Sharma', studentId: 'STU-0002452', company: 'DataInsights', rto: 'Melbourne City College', status: 'Coordinator Review', date: '19 May 2025' },
-    { reqId: 'REQ-000120', title: 'UI/UX Design Intern', student: 'Liam Johnson', studentId: 'STU-0002451', company: 'Pixel Perfect', rto: 'AI Global Institute', status: 'RTO Review', date: '18 May 2025' },
-    { reqId: 'REQ-000119', title: 'Marketing Intern', student: 'Aisha Khan', studentId: 'STU-0002450', company: 'BrandBoost', rto: 'Deakin College', status: 'Appointment', date: '18 May 2025' },
-    { reqId: 'REQ-000118', title: 'Business Analyst Intern', student: 'David Brown', studentId: 'STU-0002449', company: 'FinEdge Solutions', rto: 'Victoria University', status: 'Offered', date: '17 May 2025' },
-    { reqId: 'REQ-000117', title: 'Cyber Security Intern', student: 'Emily Davis', studentId: 'STU-0002448', company: 'SecureNet', rto: 'AI Global Institute', status: 'Offered', date: '17 May 2025' },
-    { reqId: 'REQ-000116', title: 'Cloud Engineering Intern', student: 'Mohammed Ali', studentId: 'STU-0002447', company: 'CloudNova', rto: 'Box Hill Institute', status: 'Declined', date: '16 May 2025' },
-    { reqId: 'REQ-000115', title: 'Database Intern', student: 'Sophia Lee', studentId: 'STU-0002446', company: 'DataCore', rto: 'Deakin College', status: 'Closed', date: '16 May 2025' },
-  ];
-
-  const requestList = requests.length > 0 ? requests : defaultRequests;
+  const requestList = requests;
 
   // Filter requests
   const filteredRequests = requestList.filter(item => {
@@ -114,12 +113,14 @@ export default function WorkflowStep2Requests({ requests = [], onBack, onNext })
     showToast(`${action} applied to ${selectedRows.length} requests`);
   };
 
-  const handleRowAction = (action, item) => {
+  const handleRowAction = async (action, item) => {
     setShowRowMenu(null);
+    const dbId = item.id || item.reqId;
     if (action === 'view') {
       setSelectedRequest({
         ...selectedRequest,
         id: item.reqId,
+        dbId: item.id || item.reqId,
         title: item.title,
         student: item.student,
         studentId: item.studentId || 'STU-0002453',
@@ -130,9 +131,32 @@ export default function WorkflowStep2Requests({ requests = [], onBack, onNext })
       });
       setShowDrawer(true);
     } else if (action === 'edit') {
-      showToast(`Editing ${item.reqId}`);
+      const nextStatuses = ['New', 'Coordinator Review', 'RTO Review', 'Appointment', 'Approved', 'Rejected'];
+      const currentIndex = nextStatuses.indexOf(item.status);
+      const nextStatus = nextStatuses[(currentIndex + 1) % nextStatuses.length];
+      if (onUpdateRequest) {
+        try {
+          await onUpdateRequest(dbId, { status: nextStatus });
+          showToast(`Updated status to ${nextStatus}`);
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to update status');
+        }
+      } else {
+        showToast(`Mock updated status to ${nextStatus}`);
+      }
     } else if (action === 'delete') {
-      showToast(`Delete action for ${item.reqId}`);
+      if (onDeleteRequest) {
+        try {
+          await onDeleteRequest(dbId);
+          showToast('Request deleted successfully');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to delete request');
+        }
+      } else {
+        showToast(`Delete action for ${item.reqId} (mock)`);
+      }
     }
   };
 
@@ -411,19 +435,125 @@ export default function WorkflowStep2Requests({ requests = [], onBack, onNext })
               <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-4">
                 <h4 className="text-sm font-bold text-slate-900 mb-3">Create New Request</h4>
                 <div className="space-y-2">
-                  <input placeholder="Student Name" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Company" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Position Title" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <select className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white">
-                    <option>Work Type</option>
-                    <option>Remote</option>
-                    <option>On-site</option>
-                    <option>Hybrid</option>
+                  {/* Student picker */}
+                  <select 
+                    value={newRequestStudentId} 
+                    onChange={(e) => {
+                      setNewRequestStudentId(e.target.value);
+                      const stu = students.find(s => s.id === e.target.value);
+                      if (stu?.rto) setNewRequestRto(stu.rto);
+                    }} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Select Student</option>
+                    {students.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+                    ))}
+                  </select>
+
+                  {/* Job picker — auto-fills Title + Company */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Pick from Jobs</label>
+                    <select
+                      value={selectedJobId}
+                      onChange={(e) => {
+                        const jobId = e.target.value;
+                        setSelectedJobId(jobId);
+                        if (jobId) {
+                          const job = availableJobs.find(j => (j._id || j.id) === jobId);
+                          if (job) {
+                            setNewRequestTitle(job.title || '');
+                            setNewRequestCompany(job.employer || '');
+                            if (job.rto) setNewRequestRto(job.rto);
+                          }
+                        } else {
+                          setNewRequestTitle('');
+                          setNewRequestCompany('');
+                        }
+                      }}
+                      className="w-full px-3 py-2 text-xs border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500 bg-blue-50/40 text-slate-700"
+                    >
+                      <option value="">— Select a Job (auto-fill) —</option>
+                      {availableJobs.map(j => (
+                        <option key={j._id || j.id} value={j._id || j.id}>
+                          {j.title} @ {j.employer}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Selects a job and auto-fills Title & Company below</p>
+                  </div>
+
+                  {/* Editable title */}
+                  <input 
+                    placeholder="Position Title" 
+                    value={newRequestTitle} 
+                    onChange={(e) => setNewRequestTitle(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" 
+                  />
+
+                  {/* Editable company */}
+                  <input 
+                    placeholder="Company / Employer" 
+                    value={newRequestCompany} 
+                    onChange={(e) => setNewRequestCompany(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" 
+                  />
+
+                  {/* RTO (auto-filled from student, editable) */}
+                  <input 
+                    placeholder="RTO (auto-filled from student)" 
+                    value={newRequestRto} 
+                    onChange={(e) => setNewRequestRto(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-slate-50" 
+                  />
+
+                  <select 
+                    value={newRequestWorkType} 
+                    onChange={(e) => setNewRequestWorkType(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="Remote">Remote</option>
+                    <option value="On-site">On-site</option>
+                    <option value="Hybrid">Hybrid</option>
                   </select>
                 </div>
                 <div className="flex space-x-2 mt-3">
                   <button 
-                    onClick={() => { setShowNewRequest(false); showToast('Request created'); }}
+                    onClick={async () => {
+                      if (!newRequestStudentId || !newRequestCompany || !newRequestTitle) {
+                        showToast('Please fill in all fields');
+                        return;
+                      }
+                      const selectedStu = students.find((s) => s.id === newRequestStudentId);
+                      if (!selectedStu) return;
+                      const requestData = {
+                        title: newRequestTitle,
+                        student: selectedStu.name,
+                        studentId: selectedStu.id,
+                        company: newRequestCompany,
+                        rto: newRequestRto || selectedStu.rto || 'N/A',
+                        workType: newRequestWorkType,
+                        status: 'New',
+                      };
+                      if (onCreateRequest) {
+                        try {
+                          await onCreateRequest(requestData);
+                          showToast('Request created successfully');
+                          setShowNewRequest(false);
+                          setNewRequestStudentId('');
+                          setNewRequestCompany('');
+                          setNewRequestTitle('');
+                          setNewRequestRto('');
+                          setSelectedJobId('');
+                        } catch (err) {
+                          console.error(err);
+                          showToast('Failed to create request');
+                        }
+                      } else {
+                        showToast('Mock request created');
+                        setShowNewRequest(false);
+                      }
+                    }}
                     className="flex-1 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-lg transition-all duration-500 cursor-pointer"
                   >
                     Create
@@ -512,14 +642,13 @@ export default function WorkflowStep2Requests({ requests = [], onBack, onNext })
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {paginatedRequests.map((item, i) => {
-                const isSelected = selectedRequest.id === item.reqId;
+                const isSelected = selectedRequest ? selectedRequest.id === item.reqId : false;
                 const isRowSelected = selectedRows.includes(item.reqId);
                 return (
                   <tr 
                     key={i} 
                     onClick={() => {
                       setSelectedRequest({
-                        ...selectedRequest,
                         id: item.reqId,
                         title: item.title,
                         student: item.student,
@@ -699,7 +828,7 @@ export default function WorkflowStep2Requests({ requests = [], onBack, onNext })
       </div>
 
       {/* Right Drawer / Detail Panel - Professional Mini Card */}
-      {showDrawer && (
+      {showDrawer && selectedRequest && (
       <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
         {/* Card Header with Gradient */}
         <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-purple-900 p-5">

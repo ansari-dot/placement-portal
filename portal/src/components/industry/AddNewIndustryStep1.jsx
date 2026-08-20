@@ -5,7 +5,11 @@ import {
 } from 'lucide-react';
 import IndustryProgressPanel from './IndustryProgressPanel';
 
-export default function AddNewIndustryStep1({ onNext, onCancel }) {
+export default function AddNewIndustryStep1({ onNext, onCancel, formData, updateFormData }) {
+  const handleChange = (field, value) => {
+    updateFormData({ [field]: value });
+  };
+
   return (
     <div className="bg-slate-50 text-slate-800 font-sans">
       {/* Layout Grid: Form Container (left) & Sidebar Guides (right) */}
@@ -30,6 +34,8 @@ export default function AddNewIndustryStep1({ onNext, onCancel }) {
               <input 
                 type="text" 
                 placeholder="Enter industry or company name" 
+                value={formData.industryName || ''}
+                onChange={(e) => handleChange('industryName', e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 shadow-sm"
               />
             </div>
@@ -40,11 +46,15 @@ export default function AddNewIndustryStep1({ onNext, onCancel }) {
                 Industry Type <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <select className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 pr-10 text-sm text-slate-400 outline-none focus:border-indigo-500 shadow-sm cursor-pointer">
-                  <option>Select industry type</option>
-                  <option className="text-slate-700">Information Technology</option>
-                  <option className="text-slate-700">Healthcare</option>
-                  <option className="text-slate-700">Construction</option>
+                <select 
+                  value={formData.industryType || ''}
+                  onChange={(e) => handleChange('industryType', e.target.value)}
+                  className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 pr-10 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm cursor-pointer"
+                >
+                  <option value="">Select industry type</option>
+                  <option value="Information Technology">Information Technology</option>
+                  <option value="Healthcare">Healthcare</option>
+                  <option value="Construction">Construction</option>
                 </select>
                 <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
@@ -58,6 +68,8 @@ export default function AddNewIndustryStep1({ onNext, onCancel }) {
               <input 
                 type="text" 
                 placeholder="Enter unique industry code" 
+                value={formData.industryCode || ''}
+                onChange={(e) => handleChange('industryCode', e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 shadow-sm"
               />
             </div>
@@ -72,6 +84,8 @@ export default function AddNewIndustryStep1({ onNext, onCancel }) {
                 <input 
                   type="text" 
                   placeholder="https://www.example.com" 
+                  value={formData.website || ''}
+                  onChange={(e) => handleChange('website', e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-3.5 py-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 shadow-sm"
                 />
               </div>
@@ -131,10 +145,12 @@ export default function AddNewIndustryStep1({ onNext, onCancel }) {
               <textarea 
                 rows="4" 
                 placeholder="Write a short description..." 
+                value={formData.shortDescription || ''}
+                onChange={(e) => handleChange('shortDescription', e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-lg p-3 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 shadow-sm resize-none"
               ></textarea>
               <span className="absolute right-3 bottom-3 text-[11px] text-slate-400">
-                0/250 characters
+                {(formData.shortDescription || '').length}/250 characters
               </span>
             </div>
           </div>

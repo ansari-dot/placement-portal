@@ -6,30 +6,22 @@ import {
   Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare
 } from 'lucide-react';
 
-export default function WorkflowStep1Students({ students = [], onNext }) {
-  const [selectedStudent, setSelectedStudent] = useState({
-    name: 'John Smith',
-    email: 'john.smith@email.com',
-    phone: '+61 412 345 678',
-    id: 'STU-0002453',
-    status: 'Active',
-    dob: '12 May 2001',
-    nationality: 'Australian',
-    location: 'Melbourne, VIC',
-    course: 'Bachelor of IT',
-    institute: 'AI Global Institute',
-    semester: '2nd Year / Semester 4',
-    gpa: '78.5%',
-    availability: 'Mon - Fri, 09:00 AM - 05:00 PM',
-    industry: 'IT & Software',
-    radius: '20 km',
-    addedOn: '19 May 2025',
-    updatedOn: '19 May 2025'
-  });
+export default function WorkflowStep1Students({ 
+  students = [], 
+  initialSelectedStudentIds = [], 
+  onToggleStudent, 
+  onNext 
+}) {
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
-  const [selectedRows, setSelectedRows] = useState([]);
+  const [selectedRows, setSelectedRows] = useState(initialSelectedStudentIds);
+
+  React.useEffect(() => {
+    setSelectedRows(initialSelectedStudentIds);
+  }, [initialSelectedStudentIds]);
+
   const [showFilters, setShowFilters] = useState(false);
   const [showSavedFilters, setShowSavedFilters] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
@@ -37,23 +29,12 @@ export default function WorkflowStep1Students({ students = [], onNext }) {
   const [showRowMenu, setShowRowMenu] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [showDrawer, setShowDrawer] = useState(true);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [toast, setToast] = useState(null);
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  const defaultStudents = [
-    { name: 'John Smith', email: 'john.smith@email.com', id: 'STU-0002453', rto: 'AI Global Institute', status: 'Active', placementStatus: 'Ready', addedOn: '19 May 2025' },
-    { name: 'Priya Sharma', email: 'priya.sharma@email.com', id: 'STU-0002452', rto: 'Melbourne City College', status: 'Active', placementStatus: 'Pending Info', addedOn: '18 May 2025' },
-    { name: 'Liam Johnson', email: 'liam.j@email.com', id: 'STU-0002451', rto: 'AI Global Institute', status: 'Active', placementStatus: 'In Process', addedOn: '18 May 2025' },
-    { name: 'Aisha Khan', email: 'aisha.khan@email.com', id: 'STU-0002450', rto: 'Deakin College', status: 'Inactive', placementStatus: 'Not Started', addedOn: '17 May 2025' },
-    { name: 'David Brown', email: 'david.brown@email.com', id: 'STU-0002449', rto: 'Victoria University', status: 'Active', placementStatus: 'Ready', addedOn: '16 May 2025' },
-    { name: 'Emily Davis', email: 'emily.davis@email.com', id: 'STU-0002448', rto: 'AI Global Institute', status: 'Active', placementStatus: 'Pending Info', addedOn: '16 May 2025' },
-    { name: 'Mohammed Ali', email: 'm.ali@email.com', id: 'STU-0002447', rto: 'Box Hill Institute', status: 'Active', placementStatus: 'In Process', addedOn: '15 May 2025' },
-    { name: 'Sophia Lee', email: 'sophia.lee@email.com', id: 'STU-0002446', rto: 'Deakin College', status: 'Active', placementStatus: 'Ready', addedOn: '15 May 2025' },
-  ];
-
-  const studentList = students.length > 0 ? students : defaultStudents;
+  const studentList = students;
 
   // Filter students based on search query
   const filteredStudents = studentList.filter(stu => 
@@ -91,17 +72,34 @@ export default function WorkflowStep1Students({ students = [], onNext }) {
   };
 
   const handleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedRows(paginatedStudents.map(s => s.id));
+    const checked = e.target.checked;
+    const pageIds = paginatedStudents.map(s => s.id);
+    if (checked) {
+      const newSelected = [...selectedRows, ...pageIds.filter(id => !selectedRows.includes(id))];
+      setSelectedRows(newSelected);
+      pageIds.forEach(id => {
+        if (!selectedRows.includes(id) && onToggleStudent) {
+          onToggleStudent(id, true);
+        }
+      });
     } else {
-      setSelectedRows([]);
+      setSelectedRows(selectedRows.filter(id => !pageIds.includes(id)));
+      pageIds.forEach(id => {
+        if (selectedRows.includes(id) && onToggleStudent) {
+          onToggleStudent(id, false);
+        }
+      });
     }
   };
 
   const handleSelectRow = (id) => {
+    const isSelected = selectedRows.includes(id);
     setSelectedRows(prev => 
-      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
+      isSelected ? prev.filter(r => r !== id) : [...prev, id]
     );
+    if (onToggleStudent) {
+      onToggleStudent(id, !isSelected);
+    }
   };
 
   const handleBulkAction = (action) => {
@@ -442,7 +440,7 @@ export default function WorkflowStep1Students({ students = [], onNext }) {
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {paginatedStudents.map((stu, i) => {
-                const isSelected = selectedStudent.id === stu.id;
+                const isSelected = selectedStudent?.id === stu.id;
                 const isRowSelected = selectedRows.includes(stu.id);
                 return (
                   <tr 
@@ -611,7 +609,7 @@ export default function WorkflowStep1Students({ students = [], onNext }) {
       </div>
 
       {/* Right Drawer / Detail Panel - Professional Mini Card */}
-      {showDrawer && (
+      {showDrawer && selectedStudent && (
       <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
         {/* Card Header with Gradient */}
         <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-5">

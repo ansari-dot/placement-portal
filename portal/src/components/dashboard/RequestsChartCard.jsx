@@ -1,10 +1,25 @@
 import React from 'react';
 
-export default function RequestsChartCard() {
+export default function RequestsChartCard({ chartData = [], loading }) {
+  const data = chartData && chartData.length > 0 ? chartData : [
+    { label: 'Month 1', requests: 0, placements: 0 },
+    { label: 'Month 2', requests: 0, placements: 0 },
+    { label: 'Month 3', requests: 0, placements: 0 },
+    { label: 'Month 4', requests: 0, placements: 0 },
+    { label: 'Month 5', requests: 0, placements: 0 },
+    { label: 'Month 6', requests: 0, placements: 0 },
+  ];
+
+  // Determine max value for dynamic scaling
+  const maxVal = Math.max(
+    10,
+    ...data.map(d => Math.max(d.requests || 0, d.placements || 0))
+  );
+
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between h-full">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-base font-bold text-slate-900">Internship Requests Overview</h3>
+        <h3 className="text-base font-bold text-slate-900">Internship Requests & Placements Overview</h3>
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-6 text-xs font-medium text-slate-600">
             <div className="flex items-center space-x-2">
@@ -16,59 +31,59 @@ export default function RequestsChartCard() {
               <span>Placements</span>
             </div>
           </div>
-          <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none">
-            <option>Last 6 Months</option>
-          </select>
+          <span className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700">
+            Last 6 Months
+          </span>
         </div>
       </div>
 
-      {/* Chart Graphic Area */}
-      <div className="h-64 relative flex items-end justify-between px-4 pb-2 pt-6">
-        {/* Background Grid Lines & Y-Axis Labels */}
-        <div className="absolute inset-x-4 top-2 h-44 flex flex-col justify-between pointer-events-none opacity-40">
-          <div className="border-b border-slate-100 w-full text-[10px] text-slate-400 text-right pr-2">250</div>
-          <div className="border-b border-slate-100 w-full text-[10px] text-slate-400 text-right pr-2">200</div>
-          <div className="border-b border-slate-100 w-full text-[10px] text-slate-400 text-right pr-2">290</div>
-          <div className="border-b border-slate-100 w-full text-[10px] text-slate-400 text-right pr-2">150</div>
-          <div className="border-b border-slate-100 w-full text-[10px] text-slate-400 text-right pr-2">100</div>
-          <div className="border-b border-slate-100 w-full text-[10px] text-slate-400 text-right pr-2">50</div>
-          <div className="border-b border-slate-100 w-full text-[10px] text-slate-400 text-right pr-2">0</div>
+      {/* Dynamic Bar/Trend Chart Area */}
+      <div className="h-64 relative flex items-end justify-between px-4 pb-6 pt-6">
+        {/* Background Grid Lines & Y-Axis Scale */}
+        <div className="absolute inset-x-4 top-2 h-48 flex flex-col justify-between pointer-events-none opacity-30">
+          <div className="border-b border-slate-200 w-full text-[10px] text-slate-400 text-right pr-2">{maxVal}</div>
+          <div className="border-b border-slate-200 w-full text-[10px] text-slate-400 text-right pr-2">{Math.round(maxVal * 0.75)}</div>
+          <div className="border-b border-slate-200 w-full text-[10px] text-slate-400 text-right pr-2">{Math.round(maxVal * 0.5)}</div>
+          <div className="border-b border-slate-200 w-full text-[10px] text-slate-400 text-right pr-2">{Math.round(maxVal * 0.25)}</div>
+          <div className="border-b border-slate-200 w-full text-[10px] text-slate-400 text-right pr-2">0</div>
         </div>
 
-        {/* SVG Wave lines simulation */}
-        <svg className="absolute inset-x-8 bottom-8 h-40 w-[91%] overflow-visible pointer-events-none" preserveAspectRatio="none" viewBox="0 0 600 150">
-          {/* Placements area fill */}
-          <path d="M 0 120 Q 120 100, 240 85 T 480 90 T 580 65 L 580 150 L 0 150 Z" fill="rgba(45, 212, 191, 0.12)" />
-          {/* Placements line */}
-          <path d="M 0 120 Q 120 100, 240 85 T 480 90 T 580 65" fill="none" stroke="#2dd4bf" strokeWidth="2.5" />
-          {/* Requests line */}
-          <path d="M 0 95 Q 120 70, 240 50 T 480 60 T 580 55" fill="none" stroke="#2563eb" strokeWidth="2.5" />
-          
-          {/* Data points for Requests */}
-          <circle cx="0" cy="95" r="4" fill="#2563eb" />
-          <circle cx="120" cy="70" r="4" fill="#2563eb" />
-          <circle cx="240" cy="50" r="4" fill="#2563eb" />
-          <circle cx="360" cy="40" r="4" fill="#2563eb" />
-          <circle cx="480" cy="60" r="4" fill="#2563eb" />
-          <circle cx="580" cy="55" r="4" fill="#2563eb" />
+        {/* Dynamic Month Columns */}
+        <div className="w-full h-44 flex items-end justify-around relative z-10 px-2">
+          {data.map((item, idx) => {
+            const reqHeightPct = Math.min(100, Math.max(8, (item.requests / maxVal) * 100));
+            const placeHeightPct = Math.min(100, Math.max(8, (item.placements / maxVal) * 100));
 
-          {/* Data points for Placements */}
-          <circle cx="0" cy="120" r="4" fill="#2dd4bf" />
-          <circle cx="120" cy="100" r="4" fill="#2dd4bf" />
-          <circle cx="240" cy="85" r="4" fill="#2dd4bf" />
-          <circle cx="360" cy="75" r="4" fill="#2dd4bf" />
-          <circle cx="480" cy="90" r="4" fill="#2dd4bf" />
-          <circle cx="580" cy="65" r="4" fill="#2dd4bf" />
-        </svg>
+            return (
+              <div key={idx} className="flex flex-col items-center gap-2 group relative">
+                {/* Tooltip on hover */}
+                <div className="opacity-0 group-hover:opacity-100 transition absolute -top-10 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg pointer-events-none whitespace-nowrap z-20">
+                  Req: {item.requests} | Placed: {item.placements}
+                </div>
 
-        {/* X Axis Labels */}
-        <div className="absolute inset-x-6 bottom-0 flex justify-between text-xs text-slate-400 font-medium px-4">
-          <span>Feb 2025</span>
-          <span>Mar 2025</span>
-          <span>Apr 2025</span>
-          <span>May 2025</span>
-          <span>Jun 2025</span>
-          <span>Jul 2025</span>
+                {/* Bars Container */}
+                <div className="flex items-end space-x-1.5 h-36">
+                  {/* Requests Bar */}
+                  <div 
+                    style={{ height: `${reqHeightPct}%` }} 
+                    className="w-3.5 bg-blue-600 rounded-t-md transition-all duration-500 shadow-2xs hover:bg-blue-700"
+                    title={`Requests: ${item.requests}`}
+                  ></div>
+                  {/* Placements Bar */}
+                  <div 
+                    style={{ height: `${placeHeightPct}%` }} 
+                    className="w-3.5 bg-teal-400 rounded-t-md transition-all duration-500 shadow-2xs hover:bg-teal-500"
+                    title={`Placements: ${item.placements}`}
+                  ></div>
+                </div>
+
+                {/* Month Label */}
+                <span className="text-[11px] text-slate-500 font-semibold tracking-tight">
+                  {item.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

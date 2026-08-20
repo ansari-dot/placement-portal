@@ -1,11 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import IndustryLayout from '../components/layout/IndustryLayout';
 import IndustriesDashboard from '../components/industry/IndustriesDashboard';
 import AddNewIndustryWizard from '../components/industry/AddNewIndustryWizard';
+import { fetchIndustries, createIndustry, fetchIndustryStats, deleteIndustry } from '../api/industryApi';
 
 export default function IndustryPage() {
   // View states: 'dashboard' | 'add-wizard'
   const [currentView, setCurrentView] = useState('dashboard');
+  const [industries, setIndustries] = useState([]);
+  const [stats, setStats] = useState({
+    totalIndustries: 0,
+    activeIndustries: 0,
+    inactiveIndustries: 0,
+    totalStudents: 0,
+    totalJobs: 0
+  });
+
+  const loadData = useCallback(async (filters = {}) => {
+    try {
+      const [indList, indStats] = await Promise.all([
+        fetchIndustries(filters),
+        fetchIndustryStats()
+      ]);
+      if (indList.success && indList.data) {
+        setIndustries(indList.data);
+      }
+      if (indStats.success && indStats.data) {
+        setStats(indStats.data);
+      }
+    } catch (err) {
+      console.error('Failed to load Industry data:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleCreateIndustry = useCallback(async (formData) => {
+    try {
+      await createIndustry(formData);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to create Industry:', err);
+      throw err;
+    }
+  }, [loadData]);
+
+  const handleDeleteIndustry = useCallback(async (id) => {
+    try {
+      await deleteIndustry(id);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to delete Industry:', err);
+    }
+  }, [loadData]);
 
   return (
     <IndustryLayout
@@ -17,7 +66,13 @@ export default function IndustryPage() {
       }
     >
       {currentView === 'dashboard' ? (
-        <IndustriesDashboard onAddNewIndustry={() => setCurrentView('add-wizard')} />
+        <IndustriesDashboard 
+          onAddNewIndustry={() => setCurrentView('add-wizard')} 
+          industries={industries} 
+          stats={stats} 
+          onFilterChange={loadData}
+          onDeleteIndustry={handleDeleteIndustry}
+        />
       ) : (
         <div className="relative">
           <div className="max-w-7xl mx-auto px-2 pt-2">
@@ -31,6 +86,7 @@ export default function IndustryPage() {
           <AddNewIndustryWizard 
             onCancel={() => setCurrentView('dashboard')} 
             onComplete={() => setCurrentView('dashboard')} 
+            onCreateIndustry={handleCreateIndustry}
           />
         </div>
       )}

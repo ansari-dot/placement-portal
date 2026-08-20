@@ -44,22 +44,40 @@ export default function AddRtoStep4({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Partnership Since <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="15 February 2023" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.partnershipSince || ''} 
+                onChange={(e) => handleChange('partnershipSince', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">RTO Type <span className="text-rose-500">*</span></label>
-              <select className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700">
-                <option>Registered Training Organisation</option>
+              <select 
+                value={formData.partnershipRtoType || ''} 
+                onChange={(e) => handleChange('partnershipRtoType', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700"
+              >
+                <option value="Registered Training Organisation">Registered Training Organisation</option>
               </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Registration Number <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="RTO-45087" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.registrationNumber || ''} 
+                onChange={(e) => handleChange('registrationNumber', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Issuing Authority <span className="text-rose-500">*</span></label>
-              <select className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700">
-                <option>Australian Skills Quality Authority (ASQA)</option>
+              <select 
+                value={formData.issuingAuthority || ''} 
+                onChange={(e) => handleChange('issuingAuthority', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700"
+              >
+                <option value="Australian Skills Quality Authority (ASQA)">Australian Skills Quality Authority (ASQA)</option>
               </select>
             </div>
           </div>

@@ -6,6 +6,7 @@ import {
     deleteStudent,
 } from "../service/students.service.js";
 import { studentSchema } from "../validator/studentModelsValidator.js";
+import NotificationModel from "../model/notification.model.js";
 
 export const createStudentController = async (req, res) => {
     try {
@@ -17,6 +18,20 @@ export const createStudentController = async (req, res) => {
         const validatedData = studentSchema.parse(req.body);
 
         const student = await createStudent(validatedData);
+
+        // Trigger Notification
+        try {
+            const studentName = student.name || `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'A new student';
+            await NotificationModel.create({
+                title: 'New Student Added',
+                desc: `${studentName} was successfully added to student roster`,
+                type: 'student',
+                link: '/my-students',
+            });
+        } catch (nErr) {
+            console.error("Failed to create notification:", nErr);
+        }
+
         res.status(201).json({
             message: "Student created successfully",
             success: true,

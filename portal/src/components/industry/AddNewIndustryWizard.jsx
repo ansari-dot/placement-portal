@@ -6,9 +6,23 @@ import AddNewIndustryStep4 from './AddNewIndustryStep4';
 import AddNewIndustryStep5 from './AddNewIndustryStep5';
 import IndustryStepWizard from './IndustryStepWizard';
 
-export default function AddNewIndustryWizard({ onCancel, onComplete }) {
+export default function AddNewIndustryWizard({ onCancel, onComplete, onCreateIndustry }) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState({
+    industryName: '',
+    industryCode: '',
+    industryType: 'Information Technology',
+    website: 'https://www.example.com',
+    abn: '98 765 432 109',
+    shortDescription: 'Innovative technology solutions company.',
+    suburb: 'Sydney',
+    state: 'New South Wales (NSW)'
+  });
   const totalSteps = 5;
+
+  const updateFormData = (updates) => {
+    setFormData(prev => ({ ...prev, ...updates }));
+  };
 
   const nextStep = () => {
     if (currentStep < totalSteps) {
@@ -22,8 +36,15 @@ export default function AddNewIndustryWizard({ onCancel, onComplete }) {
     }
   };
 
-  const submit = () => {
-    // TODO: Handle industry creation submission
+  const submit = async () => {
+    if (onCreateIndustry) {
+      try {
+        await onCreateIndustry(formData);
+      } catch (err) {
+        console.error('Failed to create industry:', err);
+        return;
+      }
+    }
     if (onComplete) {
       onComplete();
     }
@@ -34,6 +55,8 @@ export default function AddNewIndustryWizard({ onCancel, onComplete }) {
     onNext: nextStep,
     onPrev: prevStep,
     onCancel,
+    formData,
+    updateFormData,
   };
 
   return (

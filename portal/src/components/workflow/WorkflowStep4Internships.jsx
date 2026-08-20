@@ -7,24 +7,20 @@ import {
   ShieldCheck, Trash2, Eye, CheckSquare, FileText, Layers
 } from 'lucide-react';
 
-export default function WorkflowStep4Internships({ internships = [], onBack }) {
-  const [selectedInternship, setSelectedInternship] = useState({
-    id: 'INT-000987',
-    status: 'Active',
-    title: 'Software Developer Intern',
-    company: 'TechSolutions Pty Ltd',
-    student: 'John Smith',
-    studentId: 'STU-0002453',
-    period: '20 May 2025 – 20 Aug 2025',
-    duration: '3 Months',
-    workType: 'Hybrid',
-    location: 'Melbourne, VIC',
-    coordinator: 'Sarah Mitchell',
-    tasksCompleted: '9 / 20',
-    trainingCompleted: '3 / 6',
-    reviewsCompleted: '1 / 3',
-    overallProgress: 45
-  });
+export default function WorkflowStep4Internships({ 
+  internships = [], 
+  onBack,
+  onCreateInternship,
+  onUpdateInternship,
+  onDeleteInternship,
+  students = []
+}) {
+  const [newIntStudentId, setNewIntStudentId] = useState('');
+  const [newIntCompany, setNewIntCompany] = useState('');
+  const [newIntTitle, setNewIntTitle] = useState('');
+  const [newIntWorkType, setNewIntWorkType] = useState('Remote');
+
+  const [selectedInternship, setSelectedInternship] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
@@ -39,25 +35,14 @@ export default function WorkflowStep4Internships({ internships = [], onBack }) {
   const [showRowMenu, setShowRowMenu] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [showDrawer, setShowDrawer] = useState(true);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [toast, setToast] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [rtoFilter, setRtoFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
   const [activeStatusTab, setActiveStatusTab] = useState('All Internships');
 
-  const defaultInternships = [
-    { intId: 'INT-000987', student: 'John Smith', studentId: 'STU-0002453', company: 'TechSolutions Pty Ltd', title: 'Software Developer Intern', status: 'Active', start: '20 May 2025', progress: 45 },
-    { intId: 'INT-000986', student: 'Priya Sharma', studentId: 'STU-0002452', company: 'DataInsights', title: 'Data Analyst Intern', status: 'Joined', start: '19 May 2025', progress: 20 },
-    { intId: 'INT-000985', student: 'Liam Johnson', studentId: 'STU-0002451', company: 'Pixel Perfect', title: 'UI/UX Design Intern', status: 'Waiting to Join', start: '01 Jun 2025', progress: 0 },
-    { intId: 'INT-000984', student: 'Aisha Khan', studentId: 'STU-0002450', company: 'BrandBoost', title: 'Marketing Intern', status: 'Active', start: '18 May 2025', progress: 30 },
-    { intId: 'INT-000983', student: 'David Brown', studentId: 'STU-0002449', company: 'FinEdge Solutions', title: 'Business Analyst Intern', status: 'Active', start: '17 May 2025', progress: 60 },
-    { intId: 'INT-000982', student: 'Emily Davis', studentId: 'STU-0002448', company: 'SecureNet', title: 'Cyber Security Intern', status: 'Joined', start: '16 May 2025', progress: 15 },
-    { intId: 'INT-000981', student: 'Mohammed Ali', studentId: 'STU-0002447', company: 'CloudNova', title: 'Cloud Engineering Intern', status: 'Active', start: '15 May 2025', progress: 50 },
-    { intId: 'INT-000980', student: 'Sophia Lee', studentId: 'STU-0002446', company: 'DataCore', title: 'Database Intern', status: 'Completed', start: '10 Feb 2025', progress: 100 },
-  ];
-
-  const internshipList = internships.length > 0 ? internships : defaultInternships;
+  const internshipList = internships;
 
   // Filter internships
   const filteredInternships = internshipList.filter(item => {
@@ -119,12 +104,14 @@ export default function WorkflowStep4Internships({ internships = [], onBack }) {
     showToast(`${action} applied to ${selectedRows.length} internships`);
   };
 
-  const handleRowAction = (action, item) => {
+  const handleRowAction = async (action, item) => {
     setShowRowMenu(null);
+    const dbId = item.id || item.intId;
     if (action === 'view') {
       setSelectedInternship({
         ...selectedInternship,
         id: item.intId,
+        dbId: item.id || item.intId,
         student: item.student,
         studentId: item.studentId,
         company: item.company,
@@ -134,9 +121,32 @@ export default function WorkflowStep4Internships({ internships = [], onBack }) {
       });
       setShowDrawer(true);
     } else if (action === 'edit') {
-      showToast(`Editing ${item.intId}`);
+      const nextStatuses = ['Waiting to Join', 'Joined', 'Active', 'Completed', 'Declined'];
+      const currentIndex = nextStatuses.indexOf(item.status);
+      const nextStatus = nextStatuses[(currentIndex + 1) % nextStatuses.length];
+      if (onUpdateInternship) {
+        try {
+          await onUpdateInternship(dbId, { status: nextStatus });
+          showToast(`Updated status to ${nextStatus}`);
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to update status');
+        }
+      } else {
+        showToast(`Mock updated status to ${nextStatus}`);
+      }
     } else if (action === 'delete') {
-      showToast(`Delete action for ${item.intId}`);
+      if (onDeleteInternship) {
+        try {
+          await onDeleteInternship(dbId);
+          showToast('Internship deleted successfully');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to delete internship');
+        }
+      } else {
+        showToast(`Delete action for ${item.intId} (mock)`);
+      }
     }
   };
 
@@ -403,19 +413,73 @@ export default function WorkflowStep4Internships({ internships = [], onBack }) {
               <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-4">
                 <h4 className="text-sm font-bold text-slate-900 mb-3">Add New Internship</h4>
                 <div className="space-y-2">
-                  <input placeholder="Student Name" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Company" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Role Title" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <select className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white">
-                    <option>Work Type</option>
-                    <option>Remote</option>
-                    <option>On-site</option>
-                    <option>Hybrid</option>
+                  <select 
+                    value={newIntStudentId} 
+                    onChange={(e) => setNewIntStudentId(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Select Student</option>
+                    {students.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+                    ))}
+                  </select>
+                  <input 
+                    placeholder="Company" 
+                    value={newIntCompany} 
+                    onChange={(e) => setNewIntCompany(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" 
+                  />
+                  <input 
+                    placeholder="Role Title" 
+                    value={newIntTitle} 
+                    onChange={(e) => setNewIntTitle(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" 
+                  />
+                  <select 
+                    value={newIntWorkType} 
+                    onChange={(e) => setNewIntWorkType(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="Remote">Remote</option>
+                    <option value="On-site">On-site</option>
+                    <option value="Hybrid">Hybrid</option>
                   </select>
                 </div>
                 <div className="flex space-x-2 mt-3">
                   <button 
-                    onClick={() => { setShowAddInternship(false); showToast('Internship added'); }}
+                    onClick={async () => {
+                      if (!newIntStudentId || !newIntCompany || !newIntTitle) {
+                        showToast('Please fill in all fields');
+                        return;
+                      }
+                      const selectedStu = students.find((s) => s.id === newIntStudentId);
+                      if (!selectedStu) return;
+                      const internshipData = {
+                        student: selectedStu.name,
+                        studentId: selectedStu.id,
+                        company: newIntCompany,
+                        title: newIntTitle,
+                        workType: newIntWorkType,
+                        rto: selectedStu.rto || 'N/A',
+                        status: 'Waiting to Join'
+                      };
+                      if (onCreateInternship) {
+                        try {
+                          await onCreateInternship(internshipData);
+                          showToast('Internship added successfully');
+                          setShowAddInternship(false);
+                          setNewIntStudentId('');
+                          setNewIntCompany('');
+                          setNewIntTitle('');
+                        } catch (err) {
+                          console.error(err);
+                          showToast('Failed to add internship');
+                        }
+                      } else {
+                        showToast('Mock internship added');
+                        setShowAddInternship(false);
+                      }
+                    }}
                     className="flex-1 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-lg transition-all duration-500 cursor-pointer"
                   >
                     Create
@@ -520,14 +584,13 @@ export default function WorkflowStep4Internships({ internships = [], onBack }) {
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {paginatedInternships.map((item, i) => {
-                const isSelected = selectedInternship.id === item.intId;
+                const isSelected = selectedInternship ? selectedInternship.id === item.intId : false;
                 const isRowSelected = selectedRows.includes(item.intId);
                 return (
                   <tr 
                     key={i} 
                     onClick={() => {
                       setSelectedInternship({
-                        ...selectedInternship,
                         id: item.intId,
                         student: item.student,
                         studentId: item.studentId,
@@ -702,7 +765,7 @@ export default function WorkflowStep4Internships({ internships = [], onBack }) {
       </div>
 
       {/* Right Drawer / Detail Panel - Professional Mini Card */}
-      {showDrawer && (
+      {showDrawer && selectedInternship && (
       <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
         {/* Card Header with Gradient */}
         <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 p-5">

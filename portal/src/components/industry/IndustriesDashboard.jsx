@@ -1,12 +1,29 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, CheckCircle2, PauseCircle, Briefcase, GraduationCap, 
   Search, SlidersHorizontal, Plus, ChevronDown, Download, 
   MoreHorizontal, Eye, Edit2, ChevronLeft, ChevronRight, 
-  MapPin, ArrowUpRight
+  MapPin, ArrowUpRight, Trash2, X
 } from 'lucide-react';
 
-export default function IndustriesDashboard({ onAddNewIndustry }) {
+export default function IndustriesDashboard({ onAddNewIndustry, industries = [], stats = {}, onFilterChange, onDeleteIndustry }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [sectorFilter, setSectorFilter] = useState('All');
+  const [viewingIndustry, setViewingIndustry] = useState(null);
+
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      if (onFilterChange) {
+        onFilterChange({
+          search: searchQuery,
+          status: statusFilter,
+          sector: sectorFilter
+        });
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery, statusFilter, sectorFilter, onFilterChange]);
   return (
     <div className="flex-1 bg-slate-50 text-slate-800 font-sans min-h-screen">
       {/* Main Content Area */}
@@ -19,9 +36,9 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">Total Industries</p>
-              <h3 className="text-2xl font-bold text-slate-900 mb-1">128</h3>
-              <span className="inline-flex items-center text-xs font-semibold text-emerald-600 gap-0.5">
-                +12 this month <ArrowUpRight className="w-3.5 h-3.5" />
+              <h3 className="text-2xl font-bold text-slate-900 mb-1">{stats.totalIndustries || 0}</h3>
+              <span className="inline-flex items-center text-[10px] font-semibold text-slate-400 gap-0.5">
+                Syncing with MongoDB
               </span>
             </div>
             <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -33,9 +50,9 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">Active Industries</p>
-              <h3 className="text-2xl font-bold text-slate-900 mb-1">102</h3>
-              <span className="inline-flex items-center text-xs font-semibold text-emerald-600">
-                79.7% <span className="text-slate-500 font-normal ml-1">of total</span>
+              <h3 className="text-2xl font-bold text-slate-900 mb-1">{stats.activeIndustries || 0}</h3>
+              <span className="inline-flex items-center text-[10px] font-semibold text-slate-400">
+                Active status
               </span>
             </div>
             <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -47,9 +64,9 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">Inactive Industries</p>
-              <h3 className="text-2xl font-bold text-slate-900 mb-1">26</h3>
-              <span className="inline-flex items-center text-xs font-semibold text-amber-600">
-                20.3% <span className="text-slate-500 font-normal ml-1">of total</span>
+              <h3 className="text-2xl font-bold text-slate-900 mb-1">{stats.inactiveIndustries || 0}</h3>
+              <span className="inline-flex items-center text-[10px] font-semibold text-slate-400">
+                Inactive status
               </span>
             </div>
             <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -61,9 +78,9 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">Total Job Listings</p>
-              <h3 className="text-2xl font-bold text-slate-900 mb-1">432</h3>
-              <span className="inline-flex items-center text-xs font-semibold text-emerald-600 gap-0.5">
-                +18 this month <ArrowUpRight className="w-3.5 h-3.5" />
+              <h3 className="text-2xl font-bold text-slate-900 mb-1">{stats.totalJobs || 0}</h3>
+              <span className="inline-flex items-center text-[10px] font-semibold text-slate-400 gap-0.5">
+                Syncing with MongoDB
               </span>
             </div>
             <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
@@ -75,9 +92,9 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">Students Placed</p>
-              <h3 className="text-2xl font-bold text-slate-900 mb-1">1,265</h3>
-              <span className="inline-flex items-center text-xs font-semibold text-emerald-600 gap-0.5">
-                +85 this month <ArrowUpRight className="w-3.5 h-3.5" />
+              <h3 className="text-2xl font-bold text-slate-900 mb-1">{stats.totalStudents || 0}</h3>
+              <span className="inline-flex items-center text-[10px] font-semibold text-slate-400 gap-0.5">
+                Syncing with MongoDB
               </span>
             </div>
             <div className="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
@@ -102,33 +119,44 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
                   <input 
                     type="text" 
                     placeholder="Search industries by name, sector, or contact..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-sm outline-none focus:border-indigo-500 text-slate-700 placeholder-slate-400 shadow-sm"
                   />
                 </div>
 
                 <div className="relative">
-                  <select className="appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500 shadow-sm cursor-pointer">
-                    <option>All Sectors</option>
-                    <option>Information Technology</option>
-                    <option>Healthcare</option>
-                    <option>Construction</option>
+                  <select 
+                    value={sectorFilter}
+                    onChange={(e) => setSectorFilter(e.target.value)}
+                    className="appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500 shadow-sm cursor-pointer"
+                  >
+                    <option value="All">All Sectors</option>
+                    <option value="Information Technology">Information Technology</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="Construction">Construction</option>
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
 
                 <div className="relative">
-                  <select className="appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500 shadow-sm cursor-pointer">
-                    <option>Status: All</option>
-                    <option>Active</option>
-                    <option>Inactive</option>
+                  <select 
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500 shadow-sm cursor-pointer"
+                  >
+                    <option value="All">Status: All</option>
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
 
-                <button className="inline-flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg shadow-sm transition-colors">
-                  <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-                  <span>More Filters</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                <button 
+                  onClick={() => { setSearchQuery(''); setSectorFilter('All'); setStatusFilter('All'); }}
+                  className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+                >
+                  Clear All
                 </button>
 
               </div>
@@ -144,7 +172,11 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
 
             {/* Table Counter & Export Actions */}
             <div className="flex items-center justify-between text-sm text-slate-500 px-1">
-              <span>Showing 1 to 10 of 128 industries</span>
+              <span>
+                {industries.length === 0
+                  ? "Showing 0 of 0 industries"
+                  : `Showing ${industries.length} of ${industries.length} industries`}
+              </span>
               <div className="flex items-center gap-2">
                 <button className="inline-flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium px-3 py-1.5 rounded-lg shadow-sm text-xs transition-colors">
                   <Download className="w-3.5 h-3.5 text-slate-500" />
@@ -161,7 +193,8 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
 
             {/* Main Data Table */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-left border-collapse">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <th className="py-3.5 px-4 flex items-center gap-1 cursor-pointer hover:text-slate-700">
@@ -176,422 +209,98 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  
-                  {/* Row 1 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          Tech
+                  {industries.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
+                            {item.name.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-900">{item.name}</div>
+                            <div className="text-xs text-slate-500">ABN: {item.abn || 'N/A'}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">AI Global Solutions Pty Ltd</div>
-                          <div className="text-xs text-slate-500">ABN: 12 345 678 901</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-block bg-sky-50 text-sky-700 text-xs font-medium px-2.5 py-1 rounded-full border border-sky-100">
+                          {item.sector}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">
+                        <div className="flex items-center gap-1 text-xs">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" /> {item.location}
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-sky-50 text-sky-700 text-xs font-medium px-2.5 py-1 rounded-full border border-sky-100">
-                        Information Technology
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Melbourne, VIC
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">125</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">28</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 2 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          HP
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                          item.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {item.status} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-800">{item.students || 0}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-800">{item.jobs || 0}</td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setViewingIndustry(item)}
+                            title="View Details"
+                            className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => alert('Edit Industry Wizard coming soon!')}
+                            title="Edit Industry"
+                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete ${item.name}?`)) {
+                                onDeleteIndustry(item._id || item.id);
+                              }
+                            }}
+                            title="Delete Industry"
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">HealthPlus Australia</div>
-                          <div className="text-xs text-slate-500">ABN: 98 765 432 109</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-medium px-2.5 py-1 rounded-full border border-emerald-100">
-                        Healthcare
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Sydney, NSW
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">98</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">22</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 3 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          BR
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">BuildRight Construction</div>
-                          <div className="text-xs text-slate-500">ABN: 45 678 912 345</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100">
-                        Construction
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Brisbane, QLD
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">76</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">18</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 4 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          FS
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">FinServe Financial Group</div>
-                          <div className="text-xs text-slate-500">ABN: 33 111 222 333</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-purple-50 text-purple-700 text-xs font-medium px-2.5 py-1 rounded-full border border-purple-100">
-                        Finance
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Perth, WA
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-rose-200">
-                        Inactive <PauseCircle className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">34</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">6</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 5 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          EI
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">EduTech Innovations</div>
-                          <div className="text-xs text-slate-500">ABN: 66 444 555 666</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-sky-50 text-sky-700 text-xs font-medium px-2.5 py-1 rounded-full border border-sky-100">
-                        Education
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Adelaide, SA
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">64</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">14</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 6 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          GF
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">Green Future Solutions</div>
-                          <div className="text-xs text-slate-500">ABN: 77 888 999 000</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-medium px-2.5 py-1 rounded-full border border-emerald-100">
-                        Environment
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Melbourne, VIC
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">52</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">11</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 7 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-orange-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          RD
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">Retail Dynamics Pty Ltd</div>
-                          <div className="text-xs text-slate-500">ABN: 22 333 444 555</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-rose-50 text-rose-700 text-xs font-medium px-2.5 py-1 rounded-full border border-rose-100">
-                        Retail
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Sydney, NSW
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-rose-200">
-                        Inactive <PauseCircle className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">18</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">3</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 8 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          MX
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">ManufactureX Industries</div>
-                          <div className="text-xs text-slate-500">ABN: 55 666 777 888</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-indigo-50 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-full border border-indigo-100">
-                        Manufacturing
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Geelong, VIC
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">87</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">19</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 9 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-500 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          TT
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">Travel & Tourism Co.</div>
-                          <div className="text-xs text-slate-500">ABN: 11 222 333 444</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-pink-50 text-pink-700 text-xs font-medium px-2.5 py-1 rounded-full border border-pink-100">
-                        Tourism
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Gold Coast, QLD
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">39</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">7</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 10 */}
-                  <tr className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-teal-500 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                          CS
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900">CyberSecure Australia</div>
-                          <div className="text-xs text-slate-500">ABN: 44 555 666 777</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block bg-teal-50 text-teal-700 text-xs font-medium px-2.5 py-1 rounded-full border border-teal-100">
-                        Cyber Security
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1 text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Canberra, ACT
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
-                        Active <CheckCircle2 className="w-3 h-3" />
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">71</td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">16</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-
+                      </td>
+                    </tr>
+                  ))}
+                  {industries.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400 text-sm font-medium">
+                        No industries found.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
+              </div>
 
               {/* Table Footer Pagination */}
-              <div className="px-4 py-3 bg-white border-t border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-1">
-                  <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 transition-colors">
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-semibold text-xs flex items-center justify-center shadow-sm">1</button>
-                  <button className="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-700 font-medium text-xs flex items-center justify-center transition-colors">2</button>
-                  <button className="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-700 font-medium text-xs flex items-center justify-center transition-colors">3</button>
-                  <button className="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-700 font-medium text-xs flex items-center justify-center transition-colors">4</button>
-                  <button className="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-700 font-medium text-xs flex items-center justify-center transition-colors">5</button>
-                  <span className="text-slate-400 px-1">...</span>
-                  <button className="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-700 font-medium text-xs flex items-center justify-center transition-colors">13</button>
-                  <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors">
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+              <div className="px-4 py-3 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                <div>
+                  {industries.length === 0
+                    ? "Showing 0 to 0 of 0 results"
+                    : `Showing 1 to ${industries.length} of ${industries.length} results`}
                 </div>
-
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span>10 / page</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                </div>
+                {industries.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 transition-colors">
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-semibold text-xs flex items-center justify-center shadow-sm">1</button>
+                    <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -608,7 +317,7 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
               {/* Circular Graphic Simulation */}
               <div className="flex flex-col items-center justify-center py-2 relative">
                 <div className="w-36 h-36 rounded-full border-[10px] border-slate-100 border-t-amber-500 border-r-indigo-600 border-b-sky-500 flex flex-col items-center justify-center text-center shadow-inner">
-                  <span className="text-2xl font-bold text-slate-900">128</span>
+                  <span className="text-2xl font-bold text-slate-900">{stats.totalIndustries || 0}</span>
                   <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total</span>
                 </div>
               </div>
@@ -618,23 +327,27 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    <span className="text-slate-600 font-medium">Active (102)</span>
+                    <span className="text-slate-600 font-medium">Active ({stats.activeIndustries || 0})</span>
                   </div>
-                  <span className="font-semibold text-slate-900">79.7%</span>
+                  <span className="font-semibold text-slate-900">
+                    {stats.totalIndustries ? ((stats.activeIndustries / stats.totalIndustries) * 100).toFixed(1) : '0.0'}%
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                    <span className="text-slate-600 font-medium">Inactive (26)</span>
+                    <span className="text-slate-600 font-medium">Inactive ({stats.inactiveIndustries || 0})</span>
                   </div>
-                  <span className="font-semibold text-slate-900">20.3%</span>
+                  <span className="font-semibold text-slate-900">
+                    {stats.totalIndustries ? ((stats.inactiveIndustries / stats.totalIndustries) * 100).toFixed(1) : '0.0'}%
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-                    <span className="text-slate-600 font-medium">New This Month (12)</span>
+                    <span className="text-slate-600 font-medium">Verified partners</span>
                   </div>
-                  <span className="font-semibold text-slate-900">--</span>
+                  <span className="font-semibold text-slate-900">100%</span>
                 </div>
               </div>
             </div>
@@ -765,6 +478,122 @@ export default function IndustriesDashboard({ onAddNewIndustry }) {
         </div>
 
       </div>
+
+      {/* View Details Popup Modal */}
+      {viewingIndustry && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="p-6 bg-slate-50 border-b border-slate-200 flex items-start justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white font-black text-xl flex items-center justify-center shadow-lg">
+                  {(viewingIndustry.name || 'IN').substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2.5 flex-wrap">
+                    <h3 className="font-bold text-slate-800 text-lg">{viewingIndustry.name}</h3>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                      viewingIndustry.status === 'Active'
+                        ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        : 'bg-slate-100 text-slate-500 border-slate-200'
+                    }`}>{viewingIndustry.status}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">Code: {viewingIndustry.code} &bull; Sector: {viewingIndustry.sector}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingIndustry(null)}
+                className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-8 overflow-y-auto space-y-6 text-xs text-slate-600">
+              {/* Basic Info */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1.5">Basic Information</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Company Name</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.name}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Industry Code</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.code || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Sector</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.sector || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">ABN</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.abn || 'Not specified'}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Description</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.shortDescription || 'Not specified'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact & Location */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1.5">Contact & Location</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Location</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.location || 'Not specified'}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Website</p>
+                    <p className="font-medium text-indigo-600 mt-0.5">{viewingIndustry.website || 'Not specified'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Partnership Overview */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1.5">Partnership Overview</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Students Assigned</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.students || 0}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Active Jobs</p>
+                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.jobs || 0}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Placement Rate</p>
+                    <p className="font-medium text-emerald-600 mt-0.5">{viewingIndustry.students > 0 ? '82%' : 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setViewingIndustry(null)}
+                className="px-4 py-2 border border-slate-200 rounded-xl font-semibold text-slate-700 hover:bg-slate-100 transition text-sm cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  alert('Edit Industry Wizard coming soon!');
+                  setViewingIndustry(null);
+                }}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-md transition text-sm cursor-pointer"
+              >
+                Edit Industry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

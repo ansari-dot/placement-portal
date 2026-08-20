@@ -6,20 +6,20 @@ import AddRtoStep3 from './AddRtoStep3';
 import AddRtoStep4 from './AddRtoStep4';
 import AddRtoStep5 from './AddRtoStep5';
 
-export default function AddRtoWizard({ onCancel, onComplete }) {
+export default function AddRtoWizard({ onCancel, onComplete, onCreateRto }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [toast, setToast] = useState(null);
   const [formData, setFormData] = useState({
     // Step 1: Basic Information
     rtoName: '',
     rtoCode: '',
-    rtoType: '',
+    rtoType: 'Registered Training Organisation',
     cricosCode: '',
-    abn: '',
+    abn: '12 345 678 901',
     acn: '',
-    website: '',
-    yearEstablished: '',
-    shortDescription: '',
+    website: 'https://www.example.edu.au',
+    yearEstablished: '2015',
+    shortDescription: 'Leading training provider across vocational sectors.',
     // Step 2: Contact Details
     contactName: 'Sarah Mitchell',
     contactEmail: 'sarah.mitchell@aiglobal.edu.au',
@@ -70,7 +70,15 @@ export default function AddRtoWizard({ onCancel, onComplete }) {
     showToast('Draft saved successfully');
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (onCreateRto) {
+      try {
+        await onCreateRto(formData);
+      } catch (err) {
+        showToast('Failed to create RTO');
+        return;
+      }
+    }
     showToast('RTO created successfully!');
     setTimeout(() => {
       if (onComplete) {

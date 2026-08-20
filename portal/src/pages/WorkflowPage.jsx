@@ -112,7 +112,8 @@ export default function WorkflowPage() {
     return workflowStudents.map((stu) => ({
       name: stu.name || `${stu.firstName} ${stu.lastName}`.trim(),
       email: stu.emailAddress || stu.email || '',
-      id: stu.studentId || stu.id || '',
+      id: stu.id || stu._id || '',
+      studentId: stu.studentId || '',
       rto: stu.assignedRto || stu.rto || '',
       status: stu.status || 'Active',
       placementStatus: stu.placementStatus || 'Ready',
@@ -125,7 +126,8 @@ export default function WorkflowPage() {
     if (!workflow?.requests || workflow.requests.length === 0) return [];
 
     return workflow.requests.map((req) => ({
-      reqId: req.reqId || req.id || '',
+      id: req.id || req._id || '',
+      reqId: req.reqId || '',
       title: req.title || '',
       student: req.student || '',
       studentId: req.studentId || '',
@@ -141,7 +143,8 @@ export default function WorkflowPage() {
     if (!workflow?.appointments || workflow.appointments.length === 0) return [];
 
     return workflow.appointments.map((appt) => ({
-      id: appt.apptId || appt.id || '',
+      id: appt.id || appt._id || '',
+      apptId: appt.apptId || '',
       student: appt.student || '',
       studentId: appt.studentId || '',
       rto: appt.rto || '',
@@ -166,7 +169,8 @@ export default function WorkflowPage() {
     if (!workflow?.internships || workflow.internships.length === 0) return [];
 
     return workflow.internships.map((int) => ({
-      intId: int.intId || int.id || '',
+      id: int.id || int._id || '',
+      intId: int.intId || '',
       title: int.title || '',
       student: int.student || '',
       studentId: int.studentId || '',
@@ -304,6 +308,30 @@ export default function WorkflowPage() {
     }
   }, [workflowId]);
 
+  const handleToggleStudent = useCallback(async (studentId, isSelected) => {
+    if (!workflowId) return;
+    try {
+      if (isSelected) {
+        const result = await addStudentsToWorkflow(workflowId, [studentId]);
+        if (result.data) {
+          setWorkflow(result.data);
+        }
+      } else {
+        const result = await removeStudentFromWorkflow(workflowId, studentId);
+        if (result.data) {
+          setWorkflow(result.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle student in workflow:', err);
+    }
+  }, [workflowId]);
+
+  const getSelectedStudentIds = useCallback(() => {
+    if (!workflow?.students) return [];
+    return workflow.students.map(s => s.id || s._id || s.toString());
+  }, [workflow]);
+
   const renderStepContent = () => {
     if (loading) {
       return (
@@ -332,6 +360,8 @@ export default function WorkflowPage() {
         return (
           <WorkflowStep1Students
             students={mapStudentsForStep1()}
+            initialSelectedStudentIds={getSelectedStudentIds()}
+            onToggleStudent={handleToggleStudent}
             onNext={() => goToStep(2)}
           />
         );
@@ -344,6 +374,7 @@ export default function WorkflowPage() {
             onCreateRequest={handleCreateRequest}
             onUpdateRequest={handleUpdateRequest}
             onDeleteRequest={handleDeleteRequest}
+            students={mapStudentsForStep1()}
           />
         );
       case 3:
@@ -355,6 +386,8 @@ export default function WorkflowPage() {
             onCreateAppointment={handleCreateAppointment}
             onUpdateAppointment={handleUpdateAppointment}
             onDeleteAppointment={handleDeleteAppointment}
+            students={mapStudentsForStep1()}
+            requests={mapRequestsForStep2()}
           />
         );
       case 4:
@@ -365,10 +398,18 @@ export default function WorkflowPage() {
             onCreateInternship={handleCreateInternship}
             onUpdateInternship={handleUpdateInternship}
             onDeleteInternship={handleDeleteInternship}
+            students={mapStudentsForStep1()}
           />
         );
       default:
-        return <WorkflowStep1Students students={mapStudentsForStep1()} onNext={() => goToStep(2)} />;
+        return (
+          <WorkflowStep1Students
+            students={mapStudentsForStep1()}
+            initialSelectedStudentIds={getSelectedStudentIds()}
+            onToggleStudent={handleToggleStudent}
+            onNext={() => goToStep(2)}
+          />
+        );
     }
   };
 

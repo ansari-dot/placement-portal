@@ -7,8 +7,7 @@ export default function AddRtoStep3({
   onCancel,
   onSaveDraft,
   formData,
-  updateFormir,
-  Data,
+  updateFormData,
   showToast,
   toast,
   step,
@@ -47,30 +46,64 @@ export default function AddRtoStep3({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Address Line 1 <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="12 Collins Street" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.addressLine1 || ''} 
+                onChange={(e) => handleChange('addressLine1', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Address Line 2 (Optional)</label>
-              <input type="text" defaultValue="Level 12" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.addressLine2 || ''} 
+                onChange={(e) => handleChange('addressLine2', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Suburb <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="Melbourne" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.suburb || ''} 
+                onChange={(e) => handleChange('suburb', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">State / Territory <span className="text-rose-500">*</span></label>
-              <select className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700">
-                <option>Victoria (VIC)</option>
+              <select 
+                value={formData.state || ''} 
+                onChange={(e) => handleChange('state', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700"
+              >
+                <option value="">Select State</option>
+                <option value="Victoria (VIC)">Victoria (VIC)</option>
+                <option value="New South Wales (NSW)">New South Wales (NSW)</option>
+                <option value="Queensland (QLD)">Queensland (QLD)</option>
+                <option value="Western Australia (WA)">Western Australia (WA)</option>
+                <option value="South Australia (SA)">South Australia (SA)</option>
+                <option value="Tasmania (TAS)">Tasmania (TAS)</option>
               </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Postcode <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="3000" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.postcode || ''} 
+                onChange={(e) => handleChange('postcode', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Country <span className="text-rose-500">*</span></label>
-              <select className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700">
-                <option>Australia</option>
+              <select 
+                value={formData.country || ''} 
+                onChange={(e) => handleChange('country', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700"
+              >
+                <option value="Australia">Australia</option>
               </select>
             </div>
           </div>

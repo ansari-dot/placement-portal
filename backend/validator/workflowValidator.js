@@ -146,6 +146,7 @@ export const appointmentSchema = z.object({
   email: z
     .string()
     .email("Please provide a valid email address")
+    .or(z.literal(""))
     .optional()
     .default(""),
 

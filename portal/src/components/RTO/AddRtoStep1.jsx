@@ -37,47 +37,101 @@ export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, u
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">RTO Name <span className="text-rose-500">*</span></label>
-              <input type="text" placeholder="Enter full RTO name" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              <input 
+                type="text" 
+                placeholder="Enter full RTO name" 
+                value={formData.rtoName || ''}
+                onChange={(e) => handleChange('rtoName', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">RTO Code <span className="text-rose-500">*</span></label>
-              <input type="text" placeholder="Enter RTO code (e.g. RTO-12345)" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              <input 
+                type="text" 
+                placeholder="Enter RTO code (e.g. RTO-12345)" 
+                value={formData.rtoCode || ''}
+                onChange={(e) => handleChange('rtoCode', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
+              />
               <p className="text-[10px] text-slate-400">Must be unique and valid</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">RTO Type <span className="text-rose-500">*</span></label>
-              <select className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none">
-                <option>Select RTO type</option>
-                <option>Registered Training Organisation</option>
+              <select 
+                value={formData.rtoType || ''}
+                onChange={(e) => handleChange('rtoType', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none"
+              >
+                <option value="">Select RTO type</option>
+                <option value="Registered Training Organisation">Registered Training Organisation</option>
               </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">CRICOS Provider Code (if applicable)</label>
-              <input type="text" placeholder="Enter CRICOS provider code" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" />
+              <input 
+                type="text" 
+                placeholder="Enter CRICOS provider code" 
+                value={formData.cricosCode || ''}
+                onChange={(e) => handleChange('cricosCode', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">ABN <span className="text-rose-500">*</span></label>
-              <input type="text" placeholder="Enter ABN (e.g. 12 345 678 901)" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" />
+              <input 
+                type="text" 
+                placeholder="Enter ABN (e.g. 12 345 678 901)" 
+                value={formData.abn || ''}
+                onChange={(e) => handleChange('abn', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" 
+              />
               <p className="text-[10px] text-slate-400">Must be a valid Australian Business Number</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">ACN (if applicable)</label>
-              <input type="text" placeholder="Enter ACN" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" />
+              <input 
+                type="text" 
+                placeholder="Enter ACN" 
+                value={formData.acn || ''}
+                onChange={(e) => handleChange('acn', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Website</label>
-              <input type="text" placeholder="https://www.example.edu.au" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" />
+              <input 
+                type="text" 
+                placeholder="https://www.example.edu.au" 
+                value={formData.website || ''}
+                onChange={(e) => handleChange('website', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Year Established</label>
-              <input type="text" placeholder="Select year established" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" />
+              <input 
+                type="text" 
+                placeholder="Select year established" 
+                value={formData.yearEstablished || ''}
+                onChange={(e) => handleChange('yearEstablished', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none" 
+              />
             </div>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700">Short Description <span className="text-rose-500">*</span></label>
-            <textarea rows={3} placeholder="Enter a brief description about the RTO, its mission, and key programs offered..." className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none"></textarea>
-            <div className="flex justify-end text-[10px] text-slate-400">0/500</div>
+            <textarea 
+              rows={3} 
+              placeholder="Enter a brief description about the RTO, its mission, and key programs offered..." 
+              value={formData.shortDescription || ''}
+              onChange={(e) => handleChange('shortDescription', e.target.value)}
+              className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none"
+            />
+            <div className="flex justify-end text-[10px] text-slate-400">
+              {(formData.shortDescription || '').length}/500
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

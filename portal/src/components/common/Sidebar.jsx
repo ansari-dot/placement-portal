@@ -1,5 +1,8 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { logoutThunk } from '../../redux/authSlice';
+import logo1 from '../../assets/logo1.png';
 import {
   LayoutDashboard,
   Users,
@@ -147,6 +150,17 @@ export default function Sidebar() {
   // SIDEBAR
   // ============================================
 
+  const dispatch = useDispatch();
+
+  const handleLogout = async () => {
+    try {
+      await dispatch(logoutThunk()).unwrap();
+    } catch (err) {
+      console.error('Sidebar logout error:', err);
+    }
+    navigate('/login');
+  };
+
   return (
   <aside
   className="
@@ -173,24 +187,8 @@ export default function Sidebar() {
           KEEPING YOUR ORIGINAL LOGO
       ====================================================== */}
 
-      <div className="p-3.5 flex items-center space-x-2.5">
-
-        <div className="w-8 h-8 bg-gradient-to-tr from-cyan-400 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-md shrink-0">
-          M
-        </div>
-
-        <div className="min-w-0">
-
-          <h1 className="text-white font-bold tracking-wider text-xs leading-tight">
-            MANTIS
-          </h1>
-
-          <span className="text-[7px] text-cyan-400 tracking-widest uppercase font-semibold">
-            PLACEMENTS
-          </span>
-
-        </div>
-
+      <div className="p-4 flex justify-center items-center">
+        <img src={logo1} alt="Mantis Placements" className="w-44 h-14 object-contain" />
       </div>
 
 
@@ -524,35 +522,17 @@ export default function Sidebar() {
           </p>
 
           <Link
-            to="/"
-            className="
-              group
-              flex
-              items-center
+            to="/users"
+            className={`
+              ${navLinkClass('/users')}
               justify-between
-              w-full
-              px-2.5
-              py-1.5
-              rounded-md
-              text-[10px]
-              text-white/75
-              hover:bg-white/10
-              hover:text-white
-              transition-all
-              duration-200
-            "
+            `}
           >
 
             <div className="flex items-center gap-2.5 min-w-0">
 
-              <Settings
-                className="
-                  w-3
-                  h-3
-                  text-white/60
-                  group-hover:text-white
-                  shrink-0
-                "
+              <Users
+                className={iconClass('/users')}
               />
 
               <span className="truncate">
@@ -591,10 +571,7 @@ export default function Sidebar() {
       >
 
         <button
-          onClick={() => {
-            localStorage.removeItem('portal_user');
-            navigate('/');
-          }}
+          onClick={handleLogout}
           className="
             group
             flex

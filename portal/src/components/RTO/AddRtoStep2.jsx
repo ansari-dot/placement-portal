@@ -45,35 +45,76 @@ export default function AddRtoStep2({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Full Name <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="Sarah Mitchell" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.contactName || ''} 
+                onChange={(e) => handleChange('contactName', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Email Address <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="sarah.mitchell@aiglobal.edu.au" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.contactEmail || ''} 
+                onChange={(e) => handleChange('contactEmail', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Job Title <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="Partnership Manager" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.contactTitle || ''} 
+                onChange={(e) => handleChange('contactTitle', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Department</label>
-              <input type="text" defaultValue="Industry Partnerships" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.contactDepartment || ''} 
+                onChange={(e) => handleChange('contactDepartment', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Phone Number <span className="text-rose-500">*</span></label>
-              <input type="text" defaultValue="+61 3 9123 4567" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.contactPhone || ''} 
+                onChange={(e) => handleChange('contactPhone', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Direct Line</label>
-              <input type="text" defaultValue="+61 3 9123 4568" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.contactDirectLine || ''} 
+                onChange={(e) => handleChange('contactDirectLine', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Mobile Number</label>
-              <input type="text" defaultValue="+61 412 345 678" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                value={formData.contactMobile || ''} 
+                onChange={(e) => handleChange('contactMobile', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Fax (Optional)</label>
-              <input type="text" placeholder="Enter fax number" className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" />
+              <input 
+                type="text" 
+                placeholder="Enter fax number" 
+                value={formData.contactFax || ''} 
+                onChange={(e) => handleChange('contactFax', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+              />
             </div>
           </div>
 
