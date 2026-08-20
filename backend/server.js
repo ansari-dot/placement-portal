@@ -17,26 +17,41 @@ dotenv.config();
 
 const app = express();
 
-// Parse allowed origins from environment variable
-const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
-  : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:5174'];
+// Dynamic CORS Configuration
+const allowedList = [
+  'https://portal.mantisplacements.com.au',
+  'https://mantisplacements.com.au',
+  'https://www.mantisplacements.com.au',
+  'http://portal.mantisplacements.com.au',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5174',
+];
+
+if (process.env.CLIENT_URL) {
+  process.env.CLIENT_URL.split(',').forEach((url) => {
+    const trimmed = url.trim();
+    if (trimmed && !allowedList.includes(trimmed)) {
+      allowedList.push(trimmed);
+    }
+  });
+}
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, Postman, or server-to-server)
+    origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-        return callback(null, true);
+      if (allowedList.includes(origin) || process.env.NODE_ENV !== 'production') {
+        return callback(null, origin);
       }
-      return callback(null, true); // Safe fallback to ensure zero CORS failures
+      return callback(null, origin);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cookie'],
   })
 );
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
