@@ -125,6 +125,7 @@ export default function WorkflowStep2Requests({
   };
 
   // Filter requests
+  const requestList = requests || [];
   const filteredRequests = requestList.filter(item => {
     const matchesSearch =
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
