@@ -1,21 +1,21 @@
 // src/components/workflow/WorkflowStep2Requests.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, Filter, Download, Plus, MoreVertical, 
-  ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List, 
-  X, Building2, User, Calendar, Clock, CheckCircle2, 
+import {
+  Search, Filter, Download, Plus, MoreVertical,
+  ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List,
+  X, Building2, User, Calendar, Clock, CheckCircle2,
   Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText
 } from 'lucide-react';
 import { fetchJobs } from '../../api/jobApi';
 
-export default function WorkflowStep2Requests({ 
-  requests = [], 
-  onBack, 
-  onNext, 
-  onCreateRequest, 
-  onUpdateRequest, 
-  onDeleteRequest, 
-  students = [] 
+export default function WorkflowStep2Requests({
+  requests = [],
+  onBack,
+  onNext,
+  onCreateRequest,
+  onUpdateRequest,
+  onDeleteRequest,
+  students = []
 }) {
   const [newRequestStudentId, setNewRequestStudentId] = useState('');
   const [newRequestCompany, setNewRequestCompany] = useState('');
@@ -29,7 +29,7 @@ export default function WorkflowStep2Requests({
   useEffect(() => {
     fetchJobs({ status: 'Open' })
       .then(res => { if (res.success) setAvailableJobs(res.data || []); })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -126,7 +126,7 @@ export default function WorkflowStep2Requests({
 
   // Filter requests
   const filteredRequests = requestList.filter(item => {
-    const matchesSearch = 
+    const matchesSearch =
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.student.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -168,7 +168,7 @@ export default function WorkflowStep2Requests({
   };
 
   const handleSelectRow = (id) => {
-    setSelectedRows(prev => 
+    setSelectedRows(prev =>
       prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
     );
   };
@@ -254,7 +254,7 @@ export default function WorkflowStep2Requests({
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'New': return 'bg-purple-50 text-purple-600';
       case 'Coordinator Review': return 'bg-blue-50 text-blue-600';
       case 'RTO Review': return 'bg-amber-50 text-amber-600';
@@ -278,7 +278,7 @@ export default function WorkflowStep2Requests({
 
       {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
-        
+
         {/* Metrics Row */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
@@ -342,12 +342,12 @@ export default function WorkflowStep2Requests({
           {/* Search */}
           <div className="relative flex-1 min-w-[180px] max-w-[280px]">
             <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search requests..." 
+            <input
+              type="text"
+              placeholder="Search requests..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+              className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600">
@@ -360,7 +360,7 @@ export default function WorkflowStep2Requests({
 
           {/* Filter Buttons */}
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowStatusFilter(!showStatusFilter); setShowRtoFilter(false); setShowCoordinatorFilter(false); setShowMoreFilters(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -371,7 +371,7 @@ export default function WorkflowStep2Requests({
             {showStatusFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
                 {['All', 'New', 'Coordinator Review', 'RTO Review', 'Appointment', 'Offered', 'Declined', 'Closed'].map((s) => (
-                  <button 
+                  <button
                     key={s}
                     onClick={() => { setStatusFilter(s); setShowStatusFilter(false); setCurrentPage(1); showToast(`Status: ${s}`); }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] rounded-lg ${statusFilter === s ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
@@ -384,7 +384,7 @@ export default function WorkflowStep2Requests({
           </div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowRtoFilter(!showRtoFilter); setShowStatusFilter(false); setShowCoordinatorFilter(false); setShowMoreFilters(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -394,7 +394,7 @@ export default function WorkflowStep2Requests({
             {showRtoFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
                 {['All', 'AI Global Institute', 'Melbourne City College', 'Deakin College', 'Victoria University', 'Box Hill Institute'].map((r) => (
-                  <button 
+                  <button
                     key={r}
                     onClick={() => { setRtoFilter(r); setShowRtoFilter(false); setCurrentPage(1); showToast(`RTO: ${r}`); }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] rounded-lg ${rtoFilter === r ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
@@ -407,7 +407,7 @@ export default function WorkflowStep2Requests({
           </div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowCoordinatorFilter(!showCoordinatorFilter); setShowStatusFilter(false); setShowRtoFilter(false); setShowMoreFilters(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -417,7 +417,7 @@ export default function WorkflowStep2Requests({
             {showCoordinatorFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
                 {['All', 'Sarah Johnson', 'Mike Chen', 'Emma Wilson'].map((c) => (
-                  <button 
+                  <button
                     key={c}
                     onClick={() => { setCoordinatorFilter(c); setShowCoordinatorFilter(false); showToast(`Coord.: ${c}`); }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] rounded-lg ${coordinatorFilter === c ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
@@ -430,7 +430,7 @@ export default function WorkflowStep2Requests({
           </div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowMoreFilters(!showMoreFilters); setShowStatusFilter(false); setShowRtoFilter(false); setShowCoordinatorFilter(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -454,7 +454,7 @@ export default function WorkflowStep2Requests({
                     <span>Hybrid</span>
                   </label>
                 </div>
-                <button 
+                <button
                   onClick={() => { setShowMoreFilters(false); showToast('Filters applied'); }}
                   className="w-full py-1.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-[11px] font-semibold rounded-lg transition-all duration-500 cursor-pointer"
                 >
@@ -473,7 +473,7 @@ export default function WorkflowStep2Requests({
           <div className="w-px h-6 bg-slate-200 shrink-0"></div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -493,7 +493,7 @@ export default function WorkflowStep2Requests({
           </div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => setShowNewRequest(!showNewRequest)}
               className="px-3 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-[11px] font-semibold text-white rounded-xl flex items-center space-x-1.5 shadow-xs transition-all duration-500 cursor-pointer whitespace-nowrap"
             >
@@ -505,13 +505,13 @@ export default function WorkflowStep2Requests({
                 <h4 className="text-sm font-bold text-slate-900 mb-3">Create New Request</h4>
                 <div className="space-y-2">
                   {/* Student picker */}
-                  <select 
-                    value={newRequestStudentId} 
+                  <select
+                    value={newRequestStudentId}
                     onChange={(e) => {
                       setNewRequestStudentId(e.target.value);
                       const stu = students.find(s => s.id === e.target.value);
                       if (stu?.rto) setNewRequestRto(stu.rto);
-                    }} 
+                    }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
                   >
                     <option value="">Select Student</option>
@@ -553,32 +553,32 @@ export default function WorkflowStep2Requests({
                   </div>
 
                   {/* Editable title */}
-                  <input 
-                    placeholder="Position Title" 
-                    value={newRequestTitle} 
-                    onChange={(e) => setNewRequestTitle(e.target.value)} 
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" 
+                  <input
+                    placeholder="Position Title"
+                    value={newRequestTitle}
+                    onChange={(e) => setNewRequestTitle(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />
 
                   {/* Editable company */}
-                  <input 
-                    placeholder="Company / Employer" 
-                    value={newRequestCompany} 
-                    onChange={(e) => setNewRequestCompany(e.target.value)} 
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" 
+                  <input
+                    placeholder="Company / Employer"
+                    value={newRequestCompany}
+                    onChange={(e) => setNewRequestCompany(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />
 
                   {/* RTO (auto-filled from student, editable) */}
-                  <input 
-                    placeholder="RTO (auto-filled from student)" 
-                    value={newRequestRto} 
-                    onChange={(e) => setNewRequestRto(e.target.value)} 
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-slate-50" 
+                  <input
+                    placeholder="RTO (auto-filled from student)"
+                    value={newRequestRto}
+                    onChange={(e) => setNewRequestRto(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-slate-50"
                   />
 
-                  <select 
-                    value={newRequestWorkType} 
-                    onChange={(e) => setNewRequestWorkType(e.target.value)} 
+                  <select
+                    value={newRequestWorkType}
+                    onChange={(e) => setNewRequestWorkType(e.target.value)}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
                   >
                     <option value="Remote">Remote</option>
@@ -587,7 +587,7 @@ export default function WorkflowStep2Requests({
                   </select>
                 </div>
                 <div className="flex space-x-2 mt-3">
-                  <button 
+                  <button
                     onClick={async () => {
                       if (!newRequestStudentId || !newRequestCompany || !newRequestTitle) {
                         showToast('Please fill in all fields');
@@ -627,7 +627,7 @@ export default function WorkflowStep2Requests({
                   >
                     Create
                   </button>
-                  <button 
+                  <button
                     onClick={() => setShowNewRequest(false)}
                     className="px-3 py-2 border border-slate-200 text-xs font-semibold text-slate-600 rounded-lg hover:bg-slate-50"
                   >
@@ -644,7 +644,7 @@ export default function WorkflowStep2Requests({
           <p className="text-xs text-slate-500 font-medium">{filteredRequests.length} requests found</p>
           <div className="flex items-center space-x-3">
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setShowBulkActions(!showBulkActions)}
                 className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-xs hover:bg-slate-50"
               >
@@ -671,13 +671,13 @@ export default function WorkflowStep2Requests({
               )}
             </div>
             <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-xs space-x-1">
-              <button 
+              <button
                 onClick={() => { setViewMode('grid'); showToast('Grid view enabled'); }}
                 className={`p-1.5 rounded-lg ${viewMode === 'grid' ? 'bg-slate-100 text-slate-900' : 'hover:bg-slate-100 text-slate-400'}`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
-              <button 
+              <button
                 onClick={() => { setViewMode('list'); showToast('List view enabled'); }}
                 className={`p-1.5 rounded-lg ${viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'hover:bg-slate-100 text-slate-400'}`}
               >
@@ -693,8 +693,8 @@ export default function WorkflowStep2Requests({
             <thead>
               <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
                 <th className="p-4 w-10">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     className="rounded border-slate-300 accent-blue-600"
                     checked={selectedRows.length === paginatedRequests.length && paginatedRequests.length > 0}
                     onChange={handleSelectAll}
@@ -714,8 +714,8 @@ export default function WorkflowStep2Requests({
                 const isSelected = selectedRequest ? selectedRequest.id === item.reqId : false;
                 const isRowSelected = selectedRows.includes(item.reqId);
                 return (
-                  <tr 
-                    key={i} 
+                  <tr
+                    key={i}
                     onClick={() => {
                       setSelectedRequest({
                         id: item.reqId,
@@ -732,8 +732,8 @@ export default function WorkflowStep2Requests({
                     className={`cursor-pointer transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
                   >
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         className="rounded border-slate-300 accent-blue-600"
                         checked={isRowSelected}
                         onChange={() => handleSelectRow(item.reqId)}
@@ -764,7 +764,7 @@ export default function WorkflowStep2Requests({
                     </td>
                     <td className="p-4 text-slate-500">{item.date}</td>
                     <td className="p-4 text-right relative" onClick={(e) => e.stopPropagation()}>
-                      <button 
+                      <button
                         onClick={() => setShowRowMenu(showRowMenu === item.reqId ? null : item.reqId)}
                         className="p-1 hover:bg-slate-100 rounded-lg inline-flex"
                       >
@@ -804,7 +804,7 @@ export default function WorkflowStep2Requests({
           <div className="p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
             <p>Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredRequests.length)} of {filteredRequests.length} results</p>
             <div className="flex items-center space-x-2">
-              <button 
+              <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -823,12 +823,11 @@ export default function WorkflowStep2Requests({
                   pageNum = currentPage - 2 + i;
                 }
                 return (
-                  <button 
+                  <button
                     key={i}
                     onClick={() => handlePageChange(pageNum)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-medium ${
-                      currentPage === pageNum ? 'bg-blue-600 text-white font-bold' : 'border border-slate-200 hover:bg-slate-50 text-slate-700'
-                    }`}
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-medium ${currentPage === pageNum ? 'bg-blue-600 text-white font-bold' : 'border border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
                   >
                     {pageNum}
                   </button>
@@ -842,7 +841,7 @@ export default function WorkflowStep2Requests({
                   </button>
                 </>
               )}
-              <button 
+              <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
                 className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -850,7 +849,7 @@ export default function WorkflowStep2Requests({
                 <ChevronRight className="w-4 h-4" />
               </button>
               <div className="ml-4 relative">
-                <button 
+                <button
                   onClick={() => setShowBulkActions(false)}
                   className="flex items-center border border-slate-200 rounded-xl px-2 py-1 bg-white hover:bg-slate-50"
                 >
@@ -859,7 +858,7 @@ export default function WorkflowStep2Requests({
                 </button>
                 <div className="absolute right-0 mt-1 w-28 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5 hidden">
                   {[10, 25, 50, 100].map(size => (
-                    <button 
+                    <button
                       key={size}
                       onClick={() => handlePageSizeChange(size)}
                       className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-lg"
@@ -898,176 +897,175 @@ export default function WorkflowStep2Requests({
 
       {/* Right Drawer / Detail Panel - Professional Mini Card */}
       {showDrawer && selectedRequest && (
-      <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
-        {/* Card Header with Gradient */}
-        <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-purple-900 p-5">
-          {/* Decorative elements */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-          <div className="absolute bottom-0 left-0 w-16 h-16 bg-blue-400/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
-          
-          <div className="relative flex items-start justify-between">
-            <div>
-              <div className="flex items-center space-x-2">
-                <h4 className="font-bold text-white text-sm tracking-wide">{selectedRequest.id}</h4>
-                <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${getStatusColor(selectedRequest.status)}`}>
-                  {selectedRequest.status}
-                </span>
-              </div>
-              <p className="text-xs font-semibold text-slate-200 mt-1.5">{selectedRequest.title}</p>
-              <p className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
-                <Clock className="w-3 h-3" />
-                <span>Requested on {selectedRequest.requestedOn}</span>
-              </p>
-            </div>
-            <button onClick={() => setShowDrawer(false)} className="text-slate-400 hover:text-white transition mt-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+        <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
+          {/* Card Header with Gradient */}
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-purple-900 p-5">
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+            <div className="absolute bottom-0 left-0 w-16 h-16 bg-blue-400/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
 
-          {/* Key info badges */}
-          <div className="relative mt-4 flex items-center space-x-2">
-            <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
-              <Briefcase className="w-2.5 h-2.5 text-purple-300" />
-              <span>{selectedRequest.workType}</span>
-            </span>
-            <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
-              <Layers className="w-2.5 h-2.5 text-blue-300" />
-              <span>{selectedRequest.duration}</span>
-            </span>
-            <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
-              <MapPin className="w-2.5 h-2.5 text-emerald-300" />
-              <span>{selectedRequest.location}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-slate-100 px-4 text-[11px] font-semibold text-slate-500 space-x-3 bg-white overflow-x-auto">
-          {['Overview', 'Contact History', 'Timeline', 'Details'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`py-3 relative transition whitespace-nowrap ${
-                activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
-              }`}
-            >
-              {tab}
-              {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full"></div>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Drawer Content */}
-        <div className="p-5 space-y-4 text-xs">
-          {activeTab === 'Contact History' ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Contacted Organisations</span>
-                </h5>
-                <button
-                  type="button"
-                  onClick={() => setShowAddOrgModal(true)}
-                  className="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 text-[10px] font-bold rounded-lg flex items-center space-x-1 transition"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Add Industry</span>
-                </button>
-              </div>
-
-              {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length === 0 ? (
-                <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
-                  No industries contacted yet for this student. Click "+ Add Industry" above to record one.
+            <div className="relative flex items-start justify-between">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h4 className="font-bold text-white text-sm tracking-wide">{selectedRequest.id}</h4>
+                  <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${getStatusColor(selectedRequest.status)}`}>
+                    {selectedRequest.status}
+                  </span>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).map((rec, index) => (
-                    <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-bold text-slate-900 text-xs">{rec.organizationName}</p>
-                          <p className="text-[10px] text-slate-500">{rec.contactPerson} ({rec.phone})</p>
+                <p className="text-xs font-semibold text-slate-200 mt-1.5">{selectedRequest.title}</p>
+                <p className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Requested on {selectedRequest.requestedOn}</span>
+                </p>
+              </div>
+              <button onClick={() => setShowDrawer(false)} className="text-slate-400 hover:text-white transition mt-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Key info badges */}
+            <div className="relative mt-4 flex items-center space-x-2">
+              <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
+                <Briefcase className="w-2.5 h-2.5 text-purple-300" />
+                <span>{selectedRequest.workType}</span>
+              </span>
+              <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
+                <Layers className="w-2.5 h-2.5 text-blue-300" />
+                <span>{selectedRequest.duration}</span>
+              </span>
+              <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
+                <MapPin className="w-2.5 h-2.5 text-emerald-300" />
+                <span>{selectedRequest.location}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-slate-100 px-4 text-[11px] font-semibold text-slate-500 space-x-3 bg-white overflow-x-auto">
+            {['Overview', 'Contact History', 'Timeline', 'Details'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`py-3 relative transition whitespace-nowrap ${activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
+                  }`}
+              >
+                {tab}
+                {activeTab === tab && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full"></div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Drawer Content */}
+          <div className="p-5 space-y-4 text-xs">
+            {activeTab === 'Contact History' ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Contacted Organisations</span>
+                  </h5>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddOrgModal(true)}
+                    className="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 text-[10px] font-bold rounded-lg flex items-center space-x-1 transition"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Industry</span>
+                  </button>
+                </div>
+
+                {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length === 0 ? (
+                  <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
+                    No industries contacted yet for this student. Click "+ Add Industry" above to record one.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).map((rec, index) => (
+                      <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-bold text-slate-900 text-xs">{rec.organizationName}</p>
+                            <p className="text-[10px] text-slate-500">{rec.contactPerson} ({rec.phone})</p>
+                          </div>
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[9px] font-bold rounded-full">
+                            {rec.industryType}
+                          </span>
                         </div>
-                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[9px] font-bold rounded-full">
-                          {rec.industryType}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>
-                      <p className="text-[10px] text-slate-500">📍 {rec.address}</p>
-                      <div className="pt-1.5 border-t border-slate-200/60 mt-1 space-y-1">
-                        <p className="text-[10px] text-slate-700 font-medium">
-                          <span className="font-bold text-slate-900">Notes/Discussion: </span>
-                          {rec.notes}
-                        </p>
-                        {rec.response && (
-                          <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
-                            Response: {rec.response}
+                        <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>
+                        <p className="text-[10px] text-slate-500">📍 {rec.address}</p>
+                        <div className="pt-1.5 border-t border-slate-200/60 mt-1 space-y-1">
+                          <p className="text-[10px] text-slate-700 font-medium">
+                            <span className="font-bold text-slate-900">Notes/Discussion: </span>
+                            {rec.notes}
                           </p>
-                        )}
+                          {rec.response && (
+                            <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
+                              Response: {rec.response}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Key Stats Row */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Duration</p>
-                  <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.duration || '3 Weeks'}</p>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Type</p>
-                  <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.workType || 'On-site'}</p>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Contacted</p>
-                  <p className="text-sm font-bold text-blue-600 mt-0.5">
-                    {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length}
-                  </p>
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
+            ) : (
+              <>
+                {/* Key Stats Row */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                    <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Duration</p>
+                    <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.duration || '3 Weeks'}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                    <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Type</p>
+                    <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.workType || 'On-site'}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                    <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Contacted</p>
+                    <p className="text-sm font-bold text-blue-600 mt-0.5">
+                      {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length}
+                    </p>
+                  </div>
+                </div>
 
-              {/* Quick Actions */}
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => { setActiveTab('Contact History'); setShowAddOrgModal(true); }}
-                  className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Industry Contact Record</span>
-                </button>
-                <button 
-                  onClick={handleCreateAppointment}
-                  className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Create Appointment (Step 3)</span>
-                  <ArrowUpRight className="w-3 h-3 text-blue-200" />
-                </button>
+                {/* Quick Actions */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('Contact History'); setShowAddOrgModal(true); }}
+                    className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Industry Contact Record</span>
+                  </button>
+                  <button
+                    onClick={handleCreateAppointment}
+                    className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Create Appointment (Step 3)</span>
+                    <ArrowUpRight className="w-3 h-3 text-blue-200" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Footer Meta */}
+            <div className="pt-3 border-t border-slate-100 space-y-1.5 text-[10px] text-slate-400">
+              <div className="flex justify-between">
+                <span>Request ID</span>
+                <span className="text-slate-600 font-medium">{selectedRequest.id}</span>
               </div>
-            </>
-          )}
-
-          {/* Footer Meta */}
-          <div className="pt-3 border-t border-slate-100 space-y-1.5 text-[10px] text-slate-400">
-            <div className="flex justify-between">
-              <span>Request ID</span>
-              <span className="text-slate-600 font-medium">{selectedRequest.id}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Requested On</span>
-              <span className="text-slate-600 font-medium">{selectedRequest.requestedOn}</span>
+              <div className="flex justify-between">
+                <span>Requested On</span>
+                <span className="text-slate-600 font-medium">{selectedRequest.requestedOn}</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* Add Industry Contact Record Modal (Req #8 & #9) */}

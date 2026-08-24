@@ -1,20 +1,20 @@
 // src/components/workflow/WorkflowStep3Appointments.jsx
 import React, { useState, useMemo } from 'react';
-import { 
-  ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon, 
-  FileText, CheckCircle2, UserX, Clock, Plus, Filter, 
+import {
+  ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
+  FileText, CheckCircle2, UserX, Clock, Plus, Filter,
   X, Mail, Phone, MapPin, Building2, Check,
   Briefcase, ShieldCheck, ArrowUpRight, Download, CalendarClock, Video, Users,
   Trash2, Search, Edit3
 } from 'lucide-react';
 
-export default function WorkflowStep3Appointments({ 
-  appointments = [], 
-  onBack, 
-  onNext, 
-  onCreateAppointment, 
-  onUpdateAppointment, 
-  onDeleteAppointment, 
+export default function WorkflowStep3Appointments({
+  appointments = [],
+  onBack,
+  onNext,
+  onCreateAppointment,
+  onUpdateAppointment,
+  onDeleteAppointment,
   students = [],
   requests = []
 }) {
@@ -81,7 +81,7 @@ export default function WorkflowStep3Appointments({
     const now = new Date();
     const currentDayOfWeek = now.getDay(); // 0 is Sun, 1 is Mon...
     const distanceToMon = (currentDayOfWeek + 6) % 7; // Days since Monday
-    
+
     const monday = new Date(now);
     monday.setDate(now.getDate() - distanceToMon + (currentWeekOffset * 7));
     monday.setHours(0, 0, 0, 0);
@@ -188,7 +188,7 @@ export default function WorkflowStep3Appointments({
 
       // Check time slot match (e.g. "9 AM" vs "09:00", "09:30 AM", "9 AM")
       if (!appt.time) return timeSlotStr === '9 AM'; // fallback
-      
+
       const apptTime = appt.time.toUpperCase();
       const slotHourNum = parseInt(timeSlotStr, 10);
       const isPMSlot = timeSlotStr.includes('PM') && slotHourNum !== 12;
@@ -458,7 +458,7 @@ export default function WorkflowStep3Appointments({
 
       {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
-        
+
         {/* Dynamic Metrics Row */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
@@ -531,16 +531,16 @@ export default function WorkflowStep3Appointments({
         {/* View Toggle & Toolbar Container */}
         <div className="space-y-4">
           <div className="flex items-center gap-2.5 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
-            
+
             {/* View Tabs */}
             <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl shrink-0">
-              <button 
+              <button
                 onClick={() => { setActiveTab('Calendar View'); showToast('Calendar View active'); }}
                 className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${activeTab === 'Calendar View' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
               >
                 Calendar
               </button>
-              <button 
+              <button
                 onClick={() => { setActiveTab('List View'); showToast('List View active'); }}
                 className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${activeTab === 'List View' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
               >
@@ -551,9 +551,9 @@ export default function WorkflowStep3Appointments({
             {/* Search Input */}
             <div className="relative flex-1 min-w-[180px] max-w-xs">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text" 
-                placeholder="Search appointments..." 
+              <input
+                type="text"
+                placeholder="Search appointments..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:bg-white"
@@ -568,20 +568,20 @@ export default function WorkflowStep3Appointments({
             {/* Week Navigation Controls */}
             <div className="flex items-center gap-2 shrink-0 ml-auto">
               <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl p-1">
-                <button 
+                <button
                   onClick={() => { setCurrentWeekOffset(prev => prev - 1); showToast('Previous week'); }}
                   className="p-1 hover:bg-white rounded-lg text-slate-600 shadow-xs transition"
                   title="Previous Week"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <button 
+                <button
                   onClick={() => { setCurrentWeekOffset(0); showToast('Current week'); }}
                   className="px-2.5 py-1 bg-white rounded-lg text-[11px] font-bold text-slate-800 shadow-xs"
                 >
                   Today
                 </button>
-                <button 
+                <button
                   onClick={() => { setCurrentWeekOffset(prev => prev + 1); showToast('Next week'); }}
                   className="p-1 hover:bg-white rounded-lg text-slate-600 shadow-xs transition"
                   title="Next Week"
@@ -600,7 +600,7 @@ export default function WorkflowStep3Appointments({
 
               {/* Filters Dropdown */}
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setShowFilters(!showFilters)}
                   className="px-2.5 py-2 bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-100 whitespace-nowrap"
                 >
@@ -616,18 +616,18 @@ export default function WorkflowStep3Appointments({
                     <div className="space-y-1.5">
                       {['Scheduled', 'Completed', 'No Show', 'Rescheduled', 'Cancelled'].map(st => (
                         <label key={st} className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={statusFilters[st] !== false}
                             onChange={(e) => setStatusFilters(prev => ({ ...prev, [st]: e.target.checked }))}
-                            className="rounded accent-blue-600" 
+                            className="rounded accent-blue-600"
                           />
                           <span>{st}</span>
                         </label>
                       ))}
                     </div>
                     <div className="pt-2 border-t border-slate-100 flex justify-between">
-                      <button 
+                      <button
                         onClick={() => {
                           setStatusFilters({ Scheduled: true, Completed: true, 'No Show': true, Rescheduled: true, Cancelled: true });
                           showToast('Reset status filters');
@@ -636,7 +636,7 @@ export default function WorkflowStep3Appointments({
                       >
                         Select All
                       </button>
-                      <button 
+                      <button
                         onClick={() => setShowFilters(false)}
                         className="py-1 px-3 bg-[#0147A6] text-white text-[10px] font-bold rounded-lg hover:bg-blue-700"
                       >
@@ -651,7 +651,7 @@ export default function WorkflowStep3Appointments({
 
               {/* Export Menu */}
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setShowExportMenu(!showExportMenu)}
                   className="px-2.5 py-2 bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-100 whitespace-nowrap"
                 >
@@ -672,7 +672,7 @@ export default function WorkflowStep3Appointments({
 
               {/* New Appointment Trigger */}
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setShowNewAppointment(!showNewAppointment)}
                   className="px-3 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-[11px] font-semibold text-white rounded-xl flex items-center space-x-1.5 shadow-xs transition-all duration-500 cursor-pointer whitespace-nowrap"
                 >
@@ -693,9 +693,9 @@ export default function WorkflowStep3Appointments({
                     <div className="space-y-2 text-xs">
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Select Student *</label>
-                        <select 
-                          value={newApptStudentId} 
-                          onChange={(e) => handleSelectStudentForNewAppt(e.target.value)} 
+                        <select
+                          value={newApptStudentId}
+                          onChange={(e) => handleSelectStudentForNewAppt(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
                         >
                           <option value="">-- Choose Student --</option>
@@ -708,9 +708,9 @@ export default function WorkflowStep3Appointments({
                       {requests.length > 0 && (
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Linked Request (Optional)</label>
-                          <select 
-                            value={newApptReqId} 
-                            onChange={(e) => handleSelectReqForNewAppt(e.target.value)} 
+                          <select
+                            value={newApptReqId}
+                            onChange={(e) => handleSelectReqForNewAppt(e.target.value)}
                             className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
                           >
                             <option value="">-- None --</option>
@@ -745,20 +745,20 @@ export default function WorkflowStep3Appointments({
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company / Organisation *</label>
-                          <input 
-                            placeholder="Organisation Name" 
-                            value={newApptCompany} 
-                            onChange={(e) => setNewApptCompany(e.target.value)} 
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+                          <input
+                            placeholder="Organisation Name"
+                            value={newApptCompany}
+                            onChange={(e) => setNewApptCompany(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                           />
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Position / Placement Role</label>
-                          <input 
-                            placeholder="e.g. Aged Care Assistant" 
-                            value={newApptPosition} 
-                            onChange={(e) => setNewApptPosition(e.target.value)} 
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+                          <input
+                            placeholder="e.g. Aged Care Assistant"
+                            value={newApptPosition}
+                            onChange={(e) => setNewApptPosition(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                           />
                         </div>
                       </div>
@@ -766,20 +766,20 @@ export default function WorkflowStep3Appointments({
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Appointment Date *</label>
-                          <input 
-                            type="date" 
-                            value={newApptDate} 
-                            onChange={(e) => setNewApptDate(e.target.value)} 
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+                          <input
+                            type="date"
+                            value={newApptDate}
+                            onChange={(e) => setNewApptDate(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                           />
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Appointment Time *</label>
-                          <input 
-                            type="time" 
-                            value={newApptTime} 
-                            onChange={(e) => setNewApptTime(e.target.value)} 
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+                          <input
+                            type="time"
+                            value={newApptTime}
+                            onChange={(e) => setNewApptTime(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                           />
                         </div>
                       </div>
@@ -787,18 +787,18 @@ export default function WorkflowStep3Appointments({
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Interviewer / Contact</label>
-                          <input 
-                            placeholder="Contact Person Name" 
-                            value={newApptInterviewer} 
-                            onChange={(e) => setNewApptInterviewer(e.target.value)} 
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+                          <input
+                            placeholder="Contact Person Name"
+                            value={newApptInterviewer}
+                            onChange={(e) => setNewApptInterviewer(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                           />
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Meeting Type</label>
-                          <select 
-                            value={newApptMeetingType} 
-                            onChange={(e) => setNewApptMeetingType(e.target.value)} 
+                          <select
+                            value={newApptMeetingType}
+                            onChange={(e) => setNewApptMeetingType(e.target.value)}
                             className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
                           >
                             <option value="In-Person">In-Person</option>
@@ -810,34 +810,34 @@ export default function WorkflowStep3Appointments({
 
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Location / Address</label>
-                        <input 
-                          placeholder="e.g. 123 Care Street or Zoom Link" 
-                          value={newApptLocation} 
-                          onChange={(e) => setNewApptLocation(e.target.value)} 
-                          className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+                        <input
+                          placeholder="e.g. 123 Care Street or Zoom Link"
+                          value={newApptLocation}
+                          onChange={(e) => setNewApptLocation(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                         />
                       </div>
 
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Notes (Requirements & Instructions)</label>
-                        <textarea 
+                        <textarea
                           rows={3}
-                          placeholder="Record specific requirements, instructions, or information provided by the industry regarding the appointment..." 
-                          value={newApptNotes} 
-                          onChange={(e) => setNewApptNotes(e.target.value)} 
-                          className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs" 
+                          placeholder="Record specific requirements, instructions, or information provided by the industry regarding the appointment..."
+                          value={newApptNotes}
+                          onChange={(e) => setNewApptNotes(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs"
                         />
                       </div>
                     </div>
 
                     <div className="flex space-x-2 pt-2">
-                      <button 
+                      <button
                         onClick={handleCreateNewAppointment}
                         className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-xl transition-all duration-500 cursor-pointer shadow-xs"
                       >
                         Create Appointment
                       </button>
-                      <button 
+                      <button
                         onClick={() => setShowNewAppointment(false)}
                         className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
                       >
@@ -871,7 +871,7 @@ export default function WorkflowStep3Appointments({
                       const badgeStyle = getStatusBadgeStyle(appt.status);
                       const isSelected = selectedAppointment && (selectedAppointment.id === appt.id || selectedAppointment._id === appt.id);
                       return (
-                        <tr 
+                        <tr
                           key={appt.id || appt._id || i}
                           onClick={() => {
                             setSelectedAppointment(appt);
@@ -906,7 +906,7 @@ export default function WorkflowStep3Appointments({
                             </span>
                           </td>
                           <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
-                            <button 
+                            <button
                               onClick={() => handleDelete(appt.id || appt._id)}
                               className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg inline-flex"
                               title="Delete Appointment"
@@ -950,7 +950,7 @@ export default function WorkflowStep3Appointments({
                   {timeSlots.map((timeSlotStr, idx) => (
                     <div key={idx} className="grid grid-cols-8 py-3 text-xs items-stretch min-h-[85px]">
                       <span className="font-semibold text-slate-400 pt-2 pl-2 text-[11px]">{timeSlotStr}</span>
-                      
+
                       {weekDays.map((dayObj, dayIdx) => {
                         const cellAppts = getAppointmentsForCell(dayObj, timeSlotStr);
                         return (
@@ -960,7 +960,7 @@ export default function WorkflowStep3Appointments({
                               const badgeStyle = getStatusBadgeStyle(apptItem.status);
 
                               return (
-                                <div 
+                                <div
                                   key={apptItem.id || apptItem._id || apptIdx}
                                   onClick={() => {
                                     setSelectedAppointment(apptItem);
@@ -1069,8 +1069,8 @@ export default function WorkflowStep3Appointments({
                   <span>{selectedAppointment.date} • {selectedAppointment.time}</span>
                 </p>
               </div>
-              <button 
-                onClick={() => setShowDrawer(false)} 
+              <button
+                onClick={() => setShowDrawer(false)}
                 className="text-slate-400 hover:text-white transition p-1"
               >
                 <X className="w-4 h-4" />
@@ -1112,9 +1112,8 @@ export default function WorkflowStep3Appointments({
               <button
                 key={tab}
                 onClick={() => setDrawerTab(tab)}
-                className={`py-3 relative transition ${
-                  drawerTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
-                }`}
+                className={`py-3 relative transition ${drawerTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
+                  }`}
               >
                 {tab}
                 {drawerTab === tab && (
@@ -1173,8 +1172,8 @@ export default function WorkflowStep3Appointments({
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[9px] font-bold text-amber-800">New Date</label>
-                        <input 
-                          type="date" 
+                        <input
+                          type="date"
                           value={rescheduleDate}
                           onChange={(e) => setRescheduleDate(e.target.value)}
                           className="w-full px-2 py-1 text-xs border border-amber-300 rounded bg-white"
@@ -1182,8 +1181,8 @@ export default function WorkflowStep3Appointments({
                       </div>
                       <div>
                         <label className="text-[9px] font-bold text-amber-800">New Time</label>
-                        <input 
-                          type="time" 
+                        <input
+                          type="time"
                           value={rescheduleTime}
                           onChange={(e) => setRescheduleTime(e.target.value)}
                           className="w-full px-2 py-1 text-xs border border-amber-300 rounded bg-white"
@@ -1191,13 +1190,13 @@ export default function WorkflowStep3Appointments({
                       </div>
                     </div>
                     <div className="flex space-x-2 pt-1">
-                      <button 
+                      <button
                         onClick={handleConfirmReschedule}
                         className="flex-1 py-1.5 bg-amber-600 text-white font-bold text-xs rounded hover:bg-amber-700"
                       >
                         Confirm
                       </button>
-                      <button 
+                      <button
                         onClick={() => setIsRescheduling(false)}
                         className="px-3 py-1.5 bg-white border border-amber-300 text-slate-700 text-xs rounded"
                       >
@@ -1214,7 +1213,7 @@ export default function WorkflowStep3Appointments({
                     <span>Quick Status Actions</span>
                   </h5>
                   <div className="grid grid-cols-2 gap-2">
-                    <button 
+                    <button
                       onClick={() => {
                         setIsRescheduling(!isRescheduling);
                         setRescheduleDate(selectedAppointment.date || '');
@@ -1225,7 +1224,7 @@ export default function WorkflowStep3Appointments({
                       <CalendarClock className="w-3.5 h-3.5 text-slate-500" />
                       <span>Reschedule</span>
                     </button>
-                    <button 
+                    <button
                       onClick={handleCancel}
                       className="py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
                     >
@@ -1234,7 +1233,7 @@ export default function WorkflowStep3Appointments({
                     </button>
                   </div>
 
-                  <button 
+                  <button
                     onClick={handleMarkCompleted}
                     className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
                   >
@@ -1279,7 +1278,7 @@ export default function WorkflowStep3Appointments({
                 </div>
 
                 <div className="pt-2">
-                  <button 
+                  <button
                     onClick={() => handleDelete(selectedAppointment.id || selectedAppointment._id)}
                     className="w-full py-2 bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl flex items-center justify-center space-x-2 hover:bg-rose-100 transition"
                   >
@@ -1295,7 +1294,7 @@ export default function WorkflowStep3Appointments({
                 <div className="flex justify-between items-center">
                   <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Appointment Notes</h5>
                   {!isEditingNotes ? (
-                    <button 
+                    <button
                       onClick={() => {
                         setIsEditingNotes(true);
                         setEditedNotes(selectedAppointment.notes || '');
@@ -1310,20 +1309,20 @@ export default function WorkflowStep3Appointments({
 
                 {isEditingNotes ? (
                   <div className="space-y-2">
-                    <textarea 
+                    <textarea
                       rows={4}
                       value={editedNotes}
                       onChange={(e) => setEditedNotes(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
                     />
                     <div className="flex space-x-2">
-                      <button 
+                      <button
                         onClick={handleSaveNotes}
                         className="py-1.5 px-3 bg-[#0147A6] text-white text-xs font-bold rounded-lg hover:bg-blue-700"
                       >
                         Save Notes
                       </button>
-                      <button 
+                      <button
                         onClick={() => setIsEditingNotes(false)}
                         className="py-1.5 px-3 bg-white border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg"
                       >

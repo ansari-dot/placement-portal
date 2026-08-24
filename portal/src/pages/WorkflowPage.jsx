@@ -39,6 +39,11 @@ export default function WorkflowPage() {
   const [error, setError] = useState(null);
   const [workflowStudents, setWorkflowStudents] = useState([]);
 
+  // Active Context State across steps (Step 1 -> Step 2 -> Step 3)
+  const [activeWorkflowStudent, setActiveWorkflowStudent] = useState(null);
+  const [activeWorkflowRequest, setActiveWorkflowRequest] = useState(null);
+  const [activeWorkflowCompany, setActiveWorkflowCompany] = useState(null);
+
   // Load or create workflow on mount
   useEffect(() => {
     const loadOrCreateWorkflow = async () => {
@@ -104,6 +109,24 @@ export default function WorkflowPage() {
       }
     }
   }, [workflowId, setSearchParams]);
+
+  // Workflow Step Navigation Handlers carrying data forward
+  const handleStep1Next = useCallback((student, priority) => {
+    if (student) {
+      setActiveWorkflowStudent(student);
+    }
+    goToStep(2);
+  }, [goToStep]);
+
+  const handleStep2Next = useCallback((request, company) => {
+    if (request) setActiveWorkflowRequest(request);
+    if (company) setActiveWorkflowCompany(company);
+    goToStep(3);
+  }, [goToStep]);
+
+  const handleStep3Next = useCallback(() => {
+    goToStep(4);
+  }, [goToStep]);
 
   // Map students from DB to the format expected by WorkflowStep1Students
   const mapStudentsForStep1 = useCallback(() => {
@@ -362,7 +385,7 @@ export default function WorkflowPage() {
             students={mapStudentsForStep1()}
             initialSelectedStudentIds={getSelectedStudentIds()}
             onToggleStudent={handleToggleStudent}
-            onNext={() => goToStep(2)}
+            onNext={handleStep1Next}
           />
         );
       case 2:
@@ -370,11 +393,12 @@ export default function WorkflowPage() {
           <WorkflowStep2Requests
             requests={mapRequestsForStep2()}
             onBack={() => goToStep(1)}
-            onNext={() => goToStep(3)}
+            onNext={handleStep2Next}
             onCreateRequest={handleCreateRequest}
             onUpdateRequest={handleUpdateRequest}
             onDeleteRequest={handleDeleteRequest}
             students={mapStudentsForStep1()}
+            activeStudent={activeWorkflowStudent}
           />
         );
       case 3:
@@ -382,12 +406,15 @@ export default function WorkflowPage() {
           <WorkflowStep3Appointments
             appointments={mapAppointmentsForStep3()}
             onBack={() => goToStep(2)}
-            onNext={() => goToStep(4)}
+            onNext={handleStep3Next}
             onCreateAppointment={handleCreateAppointment}
             onUpdateAppointment={handleUpdateAppointment}
             onDeleteAppointment={handleDeleteAppointment}
             students={mapStudentsForStep1()}
             requests={mapRequestsForStep2()}
+            activeStudent={activeWorkflowStudent}
+            activeRequest={activeWorkflowRequest}
+            activeCompany={activeWorkflowCompany}
           />
         );
       case 4:
@@ -407,7 +434,7 @@ export default function WorkflowPage() {
             students={mapStudentsForStep1()}
             initialSelectedStudentIds={getSelectedStudentIds()}
             onToggleStudent={handleToggleStudent}
-            onNext={() => goToStep(2)}
+            onNext={handleStep1Next}
           />
         );
     }

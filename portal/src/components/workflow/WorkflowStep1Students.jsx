@@ -142,7 +142,7 @@ export default function WorkflowStep1Students({
     if (!genTargetStudent) return;
     showToast(`Generated Internship Request with ${genPriority} priority for ${genTargetStudent.name}`);
     setShowGenRequestModal(false);
-    if (onNext) setTimeout(onNext, 600);
+    if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
   };
 
   const handleCreateRequest = () => {
