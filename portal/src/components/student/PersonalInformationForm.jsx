@@ -106,7 +106,7 @@ export default function PersonalInformationForm({ formData, updateField, errors 
           {/* Row 2: DOB, Gender, Nationality, Language */}
           <div className="grid grid-cols-4 gap-5 items-start">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Date of Birth <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Date of Birth (optional)</label>
               <div className="relative">
                 <input
                   type="date"
@@ -122,7 +122,7 @@ export default function PersonalInformationForm({ formData, updateField, errors 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Gender <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-2">Gender (optional)</label>
               <div className="flex items-center space-x-4 pt-1">
                 {['Male', 'Female', 'Other'].map((option) => (
                   <label key={option} className="flex items-center space-x-2 cursor-pointer text-xs font-medium text-slate-700">

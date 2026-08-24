@@ -123,9 +123,30 @@ export default function WorkflowStep1Students({
     }
   };
 
+  const [showGenRequestModal, setShowGenRequestModal] = useState(false);
+  const [genPriority, setGenPriority] = useState('Normal');
+  const [genTargetStudent, setGenTargetStudent] = useState(null);
+
+  const handleOpenGenRequest = (stu) => {
+    const target = stu || selectedStudent || (paginatedStudents.length > 0 ? paginatedStudents[0] : null);
+    if (!target) {
+      showToast('Please select a student first');
+      return;
+    }
+    setGenTargetStudent(target);
+    setGenPriority('Normal');
+    setShowGenRequestModal(true);
+  };
+
+  const handleGenerateRequestSubmit = () => {
+    if (!genTargetStudent) return;
+    showToast(`Generated Internship Request with ${genPriority} priority for ${genTargetStudent.name}`);
+    setShowGenRequestModal(false);
+    if (onNext) setTimeout(onNext, 600);
+  };
+
   const handleCreateRequest = () => {
-    showToast('Creating internship request...');
-    if (onNext) setTimeout(onNext, 800);
+    handleOpenGenRequest(selectedStudent);
   };
 
   const hasActiveFilters = searchQuery !== '';
@@ -492,7 +513,11 @@ export default function WorkflowStep1Students({
                         <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
                       </button>
                       {showRowMenu === stu.id && (
-                        <div className="absolute right-4 top-10 w-40 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
+                        <div className="absolute right-4 top-10 w-48 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
+                          <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu); }} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
+                            <Plus className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Generate Request</span>
+                          </button>
                           <button onClick={() => handleRowAction('view', stu)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                             <Eye className="w-3.5 h-3.5 text-slate-400" />
                             <span>View Profile</span>
@@ -838,6 +863,86 @@ export default function WorkflowStep1Students({
           </div>
         </div>
       </div>
+      )}
+
+      {/* Generate Internship Request Modal */}
+      {showGenRequestModal && genTargetStudent && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Generate Internship Request</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Moving student to Step 2 – Internship Request</p>
+              </div>
+              <button onClick={() => setShowGenRequestModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase">Selected Student</p>
+                  <p className="font-bold text-slate-900 text-sm mt-0.5">{genTargetStudent.name}</p>
+                  <p className="text-[11px] text-slate-500 font-mono">{genTargetStudent.studentId || genTargetStudent.id}</p>
+                </div>
+                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[11px] rounded-lg border border-blue-100">
+                  {genTargetStudent.rto || 'RTO'}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-2">Request Priority <span className="text-rose-500">*</span></label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setGenPriority('Normal')}
+                    className={`py-3 px-4 rounded-xl border flex items-center justify-between transition ${
+                      genPriority === 'Normal'
+                        ? 'bg-blue-50 border-blue-600 text-blue-700 font-bold shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>Normal Priority</span>
+                    <input type="radio" name="priority" checked={genPriority === 'Normal'} onChange={() => {}} className="accent-blue-600" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGenPriority('Urgent')}
+                    className={`py-3 px-4 rounded-xl border flex items-center justify-between transition ${
+                      genPriority === 'Urgent'
+                        ? 'bg-rose-50 border-rose-600 text-rose-700 font-bold shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="flex items-center space-x-1">
+                      <span>🔥</span>
+                      <span>Urgent Priority</span>
+                    </span>
+                    <input type="radio" name="priority" checked={genPriority === 'Urgent'} onChange={() => {}} className="accent-rose-600" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowGenRequestModal(false)}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerateRequestSubmit}
+                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+              >
+                Generate & Continue
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

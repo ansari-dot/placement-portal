@@ -73,8 +73,11 @@ export default function StudentTableRow({
   hiddenColumns,
 }) {
   return (
-    <tr className="hover:bg-slate-50/50 transition">
-      <td className="p-4">
+    <tr 
+      onClick={() => onRowAction && onRowAction('view', student)}
+      className="hover:bg-slate-50/80 transition cursor-pointer"
+    >
+      <td className="p-4" onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
           checked={isSelected}
@@ -89,7 +92,7 @@ export default function StudentTableRow({
           </td>
         )
       )}
-      <td className="p-4 text-center relative">
+      <td className="p-4 text-center relative" onClick={(e) => e.stopPropagation()}>
         <button
           className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 mx-auto transition cursor-pointer"
           onClick={onToggleActions}

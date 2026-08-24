@@ -96,97 +96,68 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
 
         {/* Form Body */}
         <div className="p-6 space-y-6">
-          {/* Row 1: Assigned RTO, Course(s), Internship Priority, Student Source */}
-          <div className="grid grid-cols-4 gap-5">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Assigned RTO <span className="text-rose-500">*</span></label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                  <Search size={14} />
-                </span>
-                <select
-                  value={formData.assignedRto}
-                  onChange={(e) => updateField('assignedRto', e.target.value)}
-                  className={`${selectClass(errors.assignedRto)} pl-9`}
-                >
-                  <option value="">Search and select RTO</option>
-                  {rtoList.map((rto) => (
-                    <option key={rto} value={rto}>{rto}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-              {errors.assignedRto && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.assignedRto}</p>}
-            </div>
+          {/* Section: Preferred Industry Multi-Select */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Preferred Industry <span className="text-blue-600 font-normal">(Select one or more)</span>
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                'Aged Care',
+                'Disability Centre',
+                'Childcare/ECEC',
+                'Information Technology',
+                'Healthcare & Nursing',
+                'Hospitality',
+                'Business & Administration',
+                'Other'
+              ].map((ind) => {
+                const currentList = Array.isArray(formData.preferredIndustry)
+                  ? formData.preferredIndustry
+                  : typeof formData.preferredIndustry === 'string' && formData.preferredIndustry
+                  ? formData.preferredIndustry.split(',').map(s => s.trim())
+                  : [];
+                const isChecked = currentList.includes(ind);
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course(s) <span className="text-rose-500">*</span></label>
-              <div className="relative">
-                <select
-                  value={formData.courses}
-                  onChange={(e) => updateField('courses', e.target.value)}
-                  className={selectClass(errors.courses)}
-                >
-                  <option value="">Select course(s)</option>
-                  {courseOptions.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-              <p className="text-[10px] text-blue-600 font-medium mt-1">You can select multiple courses</p>
-              {errors.courses && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.courses}</p>}
-            </div>
+                const handleToggle = () => {
+                  let updated;
+                  if (isChecked) {
+                    updated = currentList.filter(i => i !== ind);
+                  } else {
+                    updated = [...currentList, ind];
+                  }
+                  updateField('preferredIndustry', updated);
+                };
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Internship Priority <span className="text-rose-500">*</span></label>
-              <div className="relative">
-                <select
-                  value={formData.internshipPriority}
-                  onChange={(e) => updateField('internshipPriority', e.target.value)}
-                  className={selectClass(errors.internshipPriority)}
-                >
-                  <option value="">Select priority</option>
-                  {priorities.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-              {errors.internshipPriority && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.internshipPriority}</p>}
+                return (
+                  <button
+                    key={ind}
+                    type="button"
+                    onClick={handleToggle}
+                    className={`p-3 rounded-xl border flex items-center justify-between transition text-xs font-medium ${
+                      isChecked
+                        ? 'bg-blue-50/80 border-blue-600 text-blue-700 font-bold shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>{ind}</span>
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                      className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
+                    />
+                  </button>
+                );
+              })}
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Student Source <span className="text-rose-500">*</span></label>
-              <div className="relative">
-                <select
-                  value={formData.studentSource}
-                  onChange={(e) => updateField('studentSource', e.target.value)}
-                  className={selectClass(errors.studentSource)}
-                >
-                  <option value="">Select source</option>
-                  {sources.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-              {errors.studentSource && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.studentSource}</p>}
-            </div>
+            <p className="text-[10px] text-slate-400 mt-1.5">Example: Aged Care, Disability Centre, or both.</p>
           </div>
 
-          {/* Row 2: Transport, Preferred Placement Location, Placement Radius, Preferred Industry */}
+          {/* Row 2: Transport, Preferred Placement Location, Placement Radius, Internship Priority */}
           <div className="grid grid-cols-4 gap-5 items-start">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Transport <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Transport (optional)</label>
               <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
                 <button
                   type="button"
@@ -246,17 +217,15 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Preferred Industry (optional)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Internship Priority (optional)</label>
               <div className="relative">
                 <select
-                  value={formData.preferredIndustry}
-                  onChange={(e) => updateField('preferredIndustry', e.target.value)}
+                  value={formData.internshipPriority || 'Normal'}
+                  onChange={(e) => updateField('internshipPriority', e.target.value)}
                   className={selectClass()}
                 >
-                  <option value="">Select industry</option>
-                  {industries.map((ind) => (
-                    <option key={ind} value={ind}>{ind}</option>
-                  ))}
+                  <option value="Normal">Normal</option>
+                  <option value="Urgent">Urgent</option>
                 </select>
                 <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
                   <ChevronDown size={14} />
@@ -268,7 +237,7 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
           {/* Row 3: Availability - Days, Availability - Hours, Willing to Relocate */}
           <div className="grid grid-cols-12 gap-5 items-start">
             <div className="col-span-5">
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Availability - Days <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Availability - Days (optional)</label>
               <div className="flex space-x-2">
                 {daysOfWeek.map((day) => {
                   const active = !!selectedDays[day];
@@ -294,7 +263,7 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
             </div>
 
             <div className="col-span-4">
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Availability - Hours <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Availability - Hours (optional)</label>
               <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">

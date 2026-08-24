@@ -29,15 +29,12 @@ const studentSchema = new mongoose.Schema(
     },
     dateOfBirth: {
       type: Date,
-      required: [true, "Date of birth is required"],
+      default: null,
     },
     gender: {
       type: String,
-      enum: {
-        values: ["Male", "Female", "Other"],
-        message: "Gender must be Male, Female, or Other",
-      },
-      required: [true, "Gender is required"],
+      trim: true,
+      default: "",
     },
     nationality: {
       type: String,
@@ -93,27 +90,26 @@ const studentSchema = new mongoose.Schema(
     },
     address: {
       type: String,
-      required: [true, "Address is required"],
       trim: true,
+      default: "",
     },
     suburb: {
       type: String,
-      required: [true, "Suburb is required"],
       trim: true,
+      default: "",
     },
     state: {
       type: String,
-      required: [true, "State is required"],
       trim: true,
+      default: "",
     },
     postCode: {
       type: String,
-      required: [true, "Post code is required"],
       trim: true,
+      default: "",
     },
     country: {
       type: String,
-      required: [true, "Country is required"],
       trim: true,
       default: "Australia",
     },
@@ -131,13 +127,13 @@ const studentSchema = new mongoose.Schema(
     },
     courseLevel: {
       type: String,
-      required: [true, "Course level is required"],
       trim: true,
+      default: "",
     },
     studyMode: {
       type: String,
-      required: [true, "Study mode is required"],
       trim: true,
+      default: "",
     },
     enrollmentId: {
       type: String,
@@ -146,8 +142,8 @@ const studentSchema = new mongoose.Schema(
     },
     institute: {
       type: String,
-      required: [true, "Institute is required"],
       trim: true,
+      default: "",
     },
     campus: {
       type: String,
@@ -156,26 +152,26 @@ const studentSchema = new mongoose.Schema(
     },
     startDate: {
       type: Date,
-      required: [true, "Start date is required"],
+      default: null,
     },
     expectedEndDate: {
       type: Date,
-      required: [true, "Expected end date is required"],
+      default: null,
     },
     currentYearSemester: {
       type: String,
-      required: [true, "Current year/semester is required"],
       trim: true,
+      default: "",
     },
     attendanceStatus: {
       type: String,
-      required: [true, "Attendance status is required"],
       trim: true,
+      default: "",
     },
     academicStatus: {
       type: String,
-      required: [true, "Academic status is required"],
       trim: true,
+      default: "",
     },
     gpa: {
       type: String,
@@ -200,28 +196,28 @@ const studentSchema = new mongoose.Schema(
     //** */ ===== RTO & Source =====
     assignedRto: {
       type: String,
-      required: [true, "Assigned RTO is required"],
       trim: true,
+      default: "",
     },
     courses: {
       type: String,
-      required: [true, "Course is required"],
       trim: true,
+      default: "",
     },
     internshipPriority: {
       type: String,
-      required: [true, "Internship priority is required"],
       trim: true,
+      default: "Normal",
     },
     studentSource: {
       type: String,
-      required: [true, "Student source is required"],
       trim: true,
+      default: "",
     },
     transport: {
       type: String,
-      required: [true, "Transport is required"],
       trim: true,
+      default: "",
     },
     preferredLocation: {
       type: String,
@@ -234,9 +230,8 @@ const studentSchema = new mongoose.Schema(
       default: "",
     },
     preferredIndustry: {
-      type: String,
-      trim: true,
-      default: "",
+      type: mongoose.Schema.Types.Mixed,
+      default: [],
     },
     availabilityDays: {
       type: Map,
@@ -262,11 +257,26 @@ const studentSchema = new mongoose.Schema(
       default: "",
     },
 
+    // ===== Contacted Industries / Placement History =====
+    contactedIndustries: [
+      {
+        organizationName: { type: String, trim: true, default: "" },
+        email: { type: String, trim: true, default: "" },
+        address: { type: String, trim: true, default: "" },
+        phone: { type: String, trim: true, default: "" },
+        contactPerson: { type: String, trim: true, default: "" },
+        industryType: { type: String, trim: true, default: "" },
+        notes: { type: String, trim: true, default: "" },
+        response: { type: String, trim: true, default: "" },
+        contactedDate: { type: Date, default: Date.now }
+      }
+    ],
+
     // ===== Additional Information =====
     visaStatus: {
       type: String,
-      required: [true, "Visa status is required"],
       trim: true,
+      default: "",
     },
     visaSubclass: {
       type: String,
@@ -309,8 +319,8 @@ const studentSchema = new mongoose.Schema(
     },
     hasResume: {
       type: String,
-      required: [true, "Resume selection is required"],
       trim: true,
+      default: "No",
     },
     resumeFile: {
       type: String,

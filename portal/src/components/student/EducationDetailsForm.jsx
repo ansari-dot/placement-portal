@@ -1,6 +1,31 @@
+import { useState, useEffect } from 'react';
 import {
   GraduationCap, Calendar, ChevronDown, Upload, Info
 } from 'lucide-react';
+import { fetchRtos } from '../../api/rtoApi';
+
+const defaultActiveRtos = [
+  'Care Education',
+  'ACTIT College',
+  'AI Global Institute',
+  'Bright Futures',
+  'Kingsford Institute',
+  'Victoria Training',
+  'Skill Australia',
+  'Northern College',
+  'Sydney City College',
+  'Melbourne Institute of Technology',
+  'Other',
+];
+
+const studentSources = [
+  'Walk-in',
+  'Social Media',
+  'RTO Referral',
+  'Website',
+  'Agent',
+  'Other relevant sources',
+];
 
 const courses = [
   'Bachelor of Information Technology',
@@ -71,6 +96,22 @@ const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 40 }, (_, i) => String(currentYear - i));
 
 export default function EducationDetailsForm({ formData, updateField, errors }) {
+  const [activeRtos, setActiveRtos] = useState(defaultActiveRtos);
+
+  useEffect(() => {
+    fetchRtos({ status: 'Active' })
+      .then(res => {
+        if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+          const names = res.data.map(r => r.name).filter(Boolean);
+          if (names.length > 0) {
+            const combined = Array.from(new Set([...names, ...defaultActiveRtos]));
+            setActiveRtos(combined);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="w-full font-sans">
       {/* Main Card */}
@@ -96,7 +137,7 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                 <select
                   value={formData.courseQualification}
                   onChange={(e) => updateField('courseQualification', e.target.value)}
-                  className={selectClass(errors.courseQualification)}
+                  className={selectClass(errors?.courseQualification)}
                 >
                   <option value="">Select course / qualification</option>
                   {courses.map((c) => (
@@ -107,11 +148,11 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   <ChevronDown size={14} />
                 </span>
               </div>
-              {errors.courseQualification && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.courseQualification}</p>}
+              {errors?.courseQualification && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.courseQualification}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Specialisation (if applicable)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Specialisation (optional)</label>
               <input
                 type="text"
                 placeholder="Enter specialisation"
@@ -122,12 +163,12 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course Level <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course Level (optional)</label>
               <div className="relative">
                 <select
                   value={formData.courseLevel}
                   onChange={(e) => updateField('courseLevel', e.target.value)}
-                  className={selectClass(errors.courseLevel)}
+                  className={selectClass()}
                 >
                   <option value="">Select course level</option>
                   {courseLevels.map((l) => (
@@ -138,16 +179,15 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   <ChevronDown size={14} />
                 </span>
               </div>
-              {errors.courseLevel && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.courseLevel}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Study Mode <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Study Mode (optional)</label>
               <div className="relative">
                 <select
                   value={formData.studyMode}
                   onChange={(e) => updateField('studyMode', e.target.value)}
-                  className={selectClass(errors.studyMode)}
+                  className={selectClass()}
                 >
                   <option value="">Select study mode</option>
                   {studyModes.map((m) => (
@@ -158,11 +198,10 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   <ChevronDown size={14} />
                 </span>
               </div>
-              {errors.studyMode && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.studyMode}</p>}
             </div>
           </div>
 
-          {/* Row 2: Enrollment ID, Institute, Campus, Start Date */}
+          {/* Row 2: Enrollment ID, College / RTO, Campus, Student Source */}
           <div className="grid grid-cols-4 gap-5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Enrollment / Student ID</label>
@@ -176,15 +215,25 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Institute / College <span className="text-rose-500">*</span></label>
-              <input
-                type="text"
-                placeholder="Enter institute or college"
-                value={formData.institute}
-                onChange={(e) => updateField('institute', e.target.value)}
-                className={inputClass(errors.institute)}
-              />
-              {errors.institute && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.institute}</p>}
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO (optional)</label>
+              <div className="relative">
+                <select
+                  value={formData.institute || formData.assignedRto}
+                  onChange={(e) => {
+                    updateField('institute', e.target.value);
+                    updateField('assignedRto', e.target.value);
+                  }}
+                  className={selectClass()}
+                >
+                  <option value="">Select College / RTO</option>
+                  {activeRtos.map((rto) => (
+                    <option key={rto} value={rto}>{rto}</option>
+                  ))}
+                </select>
+                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <ChevronDown size={14} />
+                </span>
+              </div>
             </div>
 
             <div>
@@ -199,47 +248,64 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Start Date <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Student Source (optional)</label>
+              <div className="relative">
+                <select
+                  value={formData.studentSource}
+                  onChange={(e) => updateField('studentSource', e.target.value)}
+                  className={selectClass()}
+                >
+                  <option value="">Select source</option>
+                  {studentSources.map((src) => (
+                    <option key={src} value={src}>{src}</option>
+                  ))}
+                </select>
+                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <ChevronDown size={14} />
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Start Date, Expected End Date, Current Year/Semester, Attendance Status, Academic Status */}
+          <div className="grid grid-cols-5 gap-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Start Date (optional)</label>
               <div className="relative">
                 <input
                   type="date"
                   value={formData.startDate}
                   onChange={(e) => updateField('startDate', e.target.value)}
-                  className={`${inputClass(errors.startDate)} pr-9 [color-scheme:light]`}
+                  className={`${inputClass()} pr-9 [color-scheme:light]`}
                 />
                 <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
                   <Calendar size={16} />
                 </span>
               </div>
-              {errors.startDate && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.startDate}</p>}
             </div>
-          </div>
 
-          {/* Row 3: Expected End Date, Current Year/Semester, Attendance Status, Academic Status */}
-          <div className="grid grid-cols-4 gap-5">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Expected End Date <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Expected End Date (optional)</label>
               <div className="relative">
                 <input
                   type="date"
                   value={formData.expectedEndDate}
                   onChange={(e) => updateField('expectedEndDate', e.target.value)}
-                  className={`${inputClass(errors.expectedEndDate)} pr-9 [color-scheme:light]`}
+                  className={`${inputClass()} pr-9 [color-scheme:light]`}
                 />
                 <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
                   <Calendar size={16} />
                 </span>
               </div>
-              {errors.expectedEndDate && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.expectedEndDate}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Current Year / Semester <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Current Year / Semester (optional)</label>
               <div className="relative">
                 <select
                   value={formData.currentYearSemester}
                   onChange={(e) => updateField('currentYearSemester', e.target.value)}
-                  className={selectClass(errors.currentYearSemester)}
+                  className={selectClass()}
                 >
                   <option value="">Select year / semester</option>
                   {yearSemesters.map((y) => (
@@ -250,16 +316,15 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   <ChevronDown size={14} />
                 </span>
               </div>
-              {errors.currentYearSemester && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.currentYearSemester}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Attendance Status <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Attendance Status (optional)</label>
               <div className="relative">
                 <select
                   value={formData.attendanceStatus}
                   onChange={(e) => updateField('attendanceStatus', e.target.value)}
-                  className={selectClass(errors.attendanceStatus)}
+                  className={selectClass()}
                 >
                   <option value="">Select attendance status</option>
                   {attendanceStatuses.map((a) => (
@@ -270,7 +335,6 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   <ChevronDown size={14} />
                 </span>
               </div>
-              {errors.attendanceStatus && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.attendanceStatus}</p>}
             </div>
 
             <div>
@@ -279,7 +343,7 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                 <select
                   value={formData.academicStatus}
                   onChange={(e) => updateField('academicStatus', e.target.value)}
-                  className={selectClass(errors.academicStatus)}
+                  className={selectClass(errors?.academicStatus)}
                 >
                   <option value="">Select academic status</option>
                   {academicStatuses.map((a) => (
@@ -290,7 +354,7 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   <ChevronDown size={14} />
                 </span>
               </div>
-              {errors.academicStatus && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.academicStatus}</p>}
+              {errors?.academicStatus && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.academicStatus}</p>}
             </div>
           </div>
 

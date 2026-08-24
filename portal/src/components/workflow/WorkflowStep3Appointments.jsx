@@ -721,20 +721,41 @@ export default function WorkflowStep3Appointments({
                         </div>
                       )}
 
+                      {/* Step 2 Contacted Industry / Organisation Selection */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                          Select Organisation (from Step 2 Contacted List) *
+                        </label>
+                        <select
+                          value={newApptCompany}
+                          onChange={(e) => {
+                            setNewApptCompany(e.target.value);
+                          }}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
+                        >
+                          <option value="">-- Choose Contacted Organisation --</option>
+                          <option value="Sunnyside Aged Care">Sunnyside Aged Care (Aged Care)</option>
+                          <option value="Evergreen Disability Support">Evergreen Disability Support (Disability Centre)</option>
+                          <option value="Bright Start Childcare">Bright Start Childcare (Childcare/ECEC)</option>
+                          <option value="HealthFirst Clinic">HealthFirst Clinic (Healthcare)</option>
+                          <option value="Other / Direct Entry">Enter Custom Organisation Below</option>
+                        </select>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company *</label>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company / Organisation *</label>
                           <input 
-                            placeholder="e.g. TechCorp" 
+                            placeholder="Organisation Name" 
                             value={newApptCompany} 
                             onChange={(e) => setNewApptCompany(e.target.value)} 
                             className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Position</label>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Position / Placement Role</label>
                           <input 
-                            placeholder="e.g. Web Dev" 
+                            placeholder="e.g. Aged Care Assistant" 
                             value={newApptPosition} 
                             onChange={(e) => setNewApptPosition(e.target.value)} 
                             className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
@@ -744,7 +765,7 @@ export default function WorkflowStep3Appointments({
 
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Date *</label>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Appointment Date *</label>
                           <input 
                             type="date" 
                             value={newApptDate} 
@@ -753,7 +774,7 @@ export default function WorkflowStep3Appointments({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Time *</label>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Appointment Time *</label>
                           <input 
                             type="time" 
                             value={newApptTime} 
@@ -765,9 +786,9 @@ export default function WorkflowStep3Appointments({
 
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Interviewer</label>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Interviewer / Contact</label>
                           <input 
-                            placeholder="Interviewer Name" 
+                            placeholder="Contact Person Name" 
                             value={newApptInterviewer} 
                             onChange={(e) => setNewApptInterviewer(e.target.value)} 
                             className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
@@ -788,9 +809,9 @@ export default function WorkflowStep3Appointments({
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Location / Link</label>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Location / Address</label>
                         <input 
-                          placeholder="e.g. Office Suite 4B or Zoom Link" 
+                          placeholder="e.g. 123 Care Street or Zoom Link" 
                           value={newApptLocation} 
                           onChange={(e) => setNewApptLocation(e.target.value)} 
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
@@ -798,10 +819,10 @@ export default function WorkflowStep3Appointments({
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Notes</label>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Notes (Requirements & Instructions)</label>
                         <textarea 
-                          rows={2}
-                          placeholder="Additional instructions or notes..." 
+                          rows={3}
+                          placeholder="Record specific requirements, instructions, or information provided by the industry regarding the appointment..." 
                           value={newApptNotes} 
                           onChange={(e) => setNewApptNotes(e.target.value)} 
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs" 

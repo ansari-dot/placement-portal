@@ -113,6 +113,16 @@ export const internshipRequestSchema = z.object({
     .optional()
     .default(""),
 
+  priority: z
+    .enum(["Normal", "Urgent"])
+    .optional()
+    .default("Normal"),
+
+  contactedIndustries: z
+    .array(z.any())
+    .optional()
+    .default([]),
+
   notes: z
     .string()
     .trim()

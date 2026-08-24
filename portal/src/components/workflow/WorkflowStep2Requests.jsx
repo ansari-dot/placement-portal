@@ -53,7 +53,76 @@ export default function WorkflowStep2Requests({
   const [rtoFilter, setRtoFilter] = useState('All');
   const [coordinatorFilter, setCoordinatorFilter] = useState('All');
 
-  const requestList = requests;
+  // Industry Contact Records state (Req #8 & #9)
+  const [contactRecordsMap, setContactRecordsMap] = useState({
+    'REQ-001': [
+      {
+        id: 'c1',
+        organizationName: 'Sunnyside Aged Care',
+        email: 'placements@sunnyside.org.au',
+        address: '123 Care Street, Melbourne VIC 3000',
+        phone: '+61 3 9876 5432',
+        contactPerson: 'Rachel Green',
+        industryType: 'Aged Care',
+        notes: 'Discussed placement for Certificate III student. Willing to offer 3-week slot starting next month.',
+        response: 'Positive / Approved for interview',
+        date: '2026-08-20'
+      },
+      {
+        id: 'c2',
+        organizationName: 'Evergreen Disability Support',
+        email: 'hr@evergreendisability.org.au',
+        address: '45 Community Way, Carlton VIC 3053',
+        phone: '+61 3 9123 4567',
+        contactPerson: 'David Miller',
+        industryType: 'Disability Centre',
+        notes: 'Inquired about weekend shifts placement. Waiting for supervisor approval.',
+        response: 'Pending Review',
+        date: '2026-08-22'
+      }
+    ]
+  });
+
+  const [showAddOrgModal, setShowAddOrgModal] = useState(false);
+  const [orgForm, setOrgForm] = useState({
+    organizationName: '',
+    email: '',
+    address: '',
+    phone: '',
+    contactPerson: '',
+    industryType: 'Aged Care',
+    notes: '',
+    response: 'In Discussion'
+  });
+
+  const handleAddOrgRecord = () => {
+    if (!orgForm.organizationName) {
+      showToast('Please enter Organisation Name');
+      return;
+    }
+    const targetKey = selectedRequest?.id || 'REQ-001';
+    const newRecord = {
+      id: `c_${Date.now()}`,
+      ...orgForm,
+      date: new Date().toISOString().split('T')[0]
+    };
+    setContactRecordsMap(prev => ({
+      ...prev,
+      [targetKey]: [...(prev[targetKey] || []), newRecord]
+    }));
+    showToast(`Added contact record for ${orgForm.organizationName}`);
+    setShowAddOrgModal(false);
+    setOrgForm({
+      organizationName: '',
+      email: '',
+      address: '',
+      phone: '',
+      contactPerson: '',
+      industryType: 'Aged Care',
+      notes: '',
+      response: 'In Discussion'
+    });
+  };
 
   // Filter requests
   const filteredRequests = requestList.filter(item => {
@@ -873,12 +942,12 @@ export default function WorkflowStep2Requests({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-5 bg-white">
-          {['Overview', 'Timeline', 'Details', 'Notes'].map((tab) => (
+        <div className="flex border-b border-slate-100 px-4 text-[11px] font-semibold text-slate-500 space-x-3 bg-white overflow-x-auto">
+          {['Overview', 'Contact History', 'Timeline', 'Details'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`py-3 relative transition ${
+              className={`py-3 relative transition whitespace-nowrap ${
                 activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
               }`}
             >
@@ -892,157 +961,99 @@ export default function WorkflowStep2Requests({
 
         {/* Drawer Content */}
         <div className="p-5 space-y-4 text-xs">
-          {/* Key Stats Row */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Duration</p>
-              <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.duration}</p>
-            </div>
-            <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Type</p>
-              <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.workType}</p>
-            </div>
-            <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Start</p>
-              <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.preferredStart}</p>
-            </div>
-          </div>
+          {activeTab === 'Contact History' ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Contacted Organisations</span>
+                </h5>
+                <button
+                  type="button"
+                  onClick={() => setShowAddOrgModal(true)}
+                  className="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 text-[10px] font-bold rounded-lg flex items-center space-x-1 transition"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Industry</span>
+                </button>
+              </div>
 
-          {/* Request Timeline Section */}
-          <div>
-            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
-              <span className="w-1 h-3 bg-purple-600 rounded-full"></span>
-              <span>Request Timeline</span>
-            </h5>
-            <div className="space-y-2.5 pl-2 border-l-2 border-slate-100 ml-1">
-              <div className="relative pl-4">
-                <div className="absolute -left-[23px] top-0.5 w-3 h-3 rounded-full bg-blue-600 border-2 border-white ring-2 ring-blue-100"></div>
-                <p className="font-bold text-slate-900">Request Submitted</p>
-                <p className="text-[11px] text-slate-400">{selectedRequest.requestedOn}</p>
-              </div>
-              <div className="relative pl-4">
-                <div className="absolute -left-[23px] top-0.5 w-3 h-3 rounded-full bg-slate-200 border-2 border-white"></div>
-                <p className="font-semibold text-slate-700">Coordinator Review</p>
-                <p className="text-[11px] text-slate-400">Pending</p>
-              </div>
-              <div className="relative pl-4">
-                <div className="absolute -left-[23px] top-0.5 w-3 h-3 rounded-full bg-slate-200 border-2 border-white"></div>
-                <p className="font-semibold text-slate-700">RTO Review</p>
-                <p className="text-[11px] text-slate-400">Pending</p>
-              </div>
-              <div className="relative pl-4">
-                <div className="absolute -left-[23px] top-0.5 w-3 h-3 rounded-full bg-slate-200 border-2 border-white"></div>
-                <p className="font-semibold text-slate-700">Appointment</p>
-                <p className="text-[11px] text-slate-400">Pending</p>
-              </div>
-              <div className="relative pl-4">
-                <div className="absolute -left-[23px] top-0.5 w-3 h-3 rounded-full bg-slate-200 border-2 border-white"></div>
-                <p className="font-semibold text-slate-700">Offered</p>
-                <p className="text-[11px] text-slate-400">Pending</p>
-              </div>
+              {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length === 0 ? (
+                <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
+                  No industries contacted yet for this student. Click "+ Add Industry" above to record one.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).map((rec, index) => (
+                    <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-bold text-slate-900 text-xs">{rec.organizationName}</p>
+                          <p className="text-[10px] text-slate-500">{rec.contactPerson} ({rec.phone})</p>
+                        </div>
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[9px] font-bold rounded-full">
+                          {rec.industryType}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>
+                      <p className="text-[10px] text-slate-500">📍 {rec.address}</p>
+                      <div className="pt-1.5 border-t border-slate-200/60 mt-1 space-y-1">
+                        <p className="text-[10px] text-slate-700 font-medium">
+                          <span className="font-bold text-slate-900">Notes/Discussion: </span>
+                          {rec.notes}
+                        </p>
+                        {rec.response && (
+                          <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
+                            Response: {rec.response}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-
-          {/* Request Details Section */}
-          <div>
-            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
-              <span className="w-1 h-3 bg-blue-600 rounded-full"></span>
-              <span>Request Details</span>
-            </h5>
-            <div className="space-y-2.5">
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <User className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Student</span>
-                </span>
-                <div className="text-right">
-                  <p className="font-semibold text-slate-900">{selectedRequest.student}</p>
-                  <p className="text-[11px] text-slate-400">{selectedRequest.studentId}</p>
+          ) : (
+            <>
+              {/* Key Stats Row */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Duration</p>
+                  <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.duration || '3 Weeks'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Type</p>
+                  <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedRequest.workType || 'On-site'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Contacted</p>
+                  <p className="text-sm font-bold text-blue-600 mt-0.5">
+                    {((contactRecordsMap[selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length}
+                  </p>
                 </div>
               </div>
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Company</span>
-                </span>
-                <span className="font-semibold text-slate-900">{selectedRequest.company}</span>
-              </div>
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-                  <span>RTO / Institute</span>
-                </span>
-                <span className="font-semibold text-slate-900">{selectedRequest.rto}</span>
-              </div>
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Start Date</span>
-                </span>
-                <span className="font-semibold text-slate-900">{selectedRequest.preferredStart}</span>
-              </div>
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Layers className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Duration</span>
-                </span>
-                <span className="font-semibold text-slate-900">{selectedRequest.duration}</span>
-              </div>
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Work Type</span>
-                </span>
-                <span className="font-semibold text-slate-900">{selectedRequest.workType}</span>
-              </div>
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Location</span>
-                </span>
-                <span className="font-semibold text-slate-900">{selectedRequest.location}</span>
-              </div>
-              <div className="flex justify-between items-start">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <User className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Coordinator</span>
-                </span>
-                <span className="font-semibold text-slate-900">{selectedRequest.coordinator}</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Quick Actions */}
-          <div className="pt-4 border-t border-slate-100 space-y-2">
-            <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-              <span>Quick Actions</span>
-            </h5>
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={() => showToast('Assigning coordinator...')}
-                className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-              >
-                <User className="w-3.5 h-3.5 text-slate-500" />
-                <span>Assign</span>
-              </button>
-              <button 
-                onClick={() => showToast('Viewing full details...')}
-                className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-              >
-                <FileText className="w-3.5 h-3.5 text-slate-500" />
-                <span>Details</span>
-              </button>
-            </div>
-            <button 
-              onClick={handleCreateAppointment}
-              className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Create Appointment</span>
-              <ArrowUpRight className="w-3 h-3 text-blue-200" />
-            </button>
-          </div>
+              {/* Quick Actions */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('Contact History'); setShowAddOrgModal(true); }}
+                  className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Industry Contact Record</span>
+                </button>
+                <button 
+                  onClick={handleCreateAppointment}
+                  className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Create Appointment (Step 3)</span>
+                  <ArrowUpRight className="w-3 h-3 text-blue-200" />
+                </button>
+              </div>
+            </>
+          )}
 
           {/* Footer Meta */}
           <div className="pt-3 border-t border-slate-100 space-y-1.5 text-[10px] text-slate-400">
@@ -1057,6 +1068,128 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
       </div>
+      )}
+
+      {/* Add Industry Contact Record Modal (Req #8 & #9) */}
+      {showAddOrgModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Add Industry / Organisation Contact</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Record organisation contacted for student's placement</p>
+              </div>
+              <button onClick={() => setShowAddOrgModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Industry / Organisation Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sunnyside Aged Care Center"
+                  value={orgForm.organizationName}
+                  onChange={(e) => setOrgForm({ ...orgForm, organizationName: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Industry Type *</label>
+                  <select
+                    value={orgForm.industryType}
+                    onChange={(e) => setOrgForm({ ...orgForm, industryType: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="Aged Care">Aged Care</option>
+                    <option value="Disability Centre">Disability Centre</option>
+                    <option value="Childcare/ECEC">Childcare/ECEC</option>
+                    <option value="Information Technology">Information Technology</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="Other">Other relevant types</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Contact Person Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Jane Smith"
+                    value={orgForm.contactPerson}
+                    onChange={(e) => setOrgForm({ ...orgForm, contactPerson: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="contact@org.com.au"
+                    value={orgForm.email}
+                    onChange={(e) => setOrgForm({ ...orgForm, email: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    placeholder="+61 3 1234 5678"
+                    value={orgForm.phone}
+                    onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Physical Address</label>
+                <input
+                  type="text"
+                  placeholder="Street Address, Suburb, State"
+                  value={orgForm.address}
+                  onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Discussion Notes & Response *</label>
+                <textarea
+                  rows="3"
+                  placeholder="Record what was discussed with the organisation including their response regarding student placement..."
+                  value={orgForm.notes}
+                  onChange={(e) => setOrgForm({ ...orgForm, notes: e.target.value })}
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
+                ></textarea>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddOrgModal(false)}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddOrgRecord}
+                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+              >
+                Save Record
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

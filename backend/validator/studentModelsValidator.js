@@ -27,11 +27,13 @@ export const studentSchema = z.object({
     .optional()
     .default(""),
 
-  dateOfBirth: z.coerce.date({
-    message: "Valid date of birth is required",
-  }),
+  dateOfBirth: z.coerce.date().nullable().optional(),
 
-  gender: z.enum(["Male", "Female", "Other"]),
+  gender: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
 
   nationality: z
     .string()
@@ -87,26 +89,31 @@ export const studentSchema = z.object({
   address: z
     .string()
     .trim()
-    .min(1, "Address is required"),
+    .optional()
+    .default(""),
 
   suburb: z
     .string()
     .trim()
-    .min(1, "Suburb is required"),
+    .optional()
+    .default(""),
 
   state: z
     .string()
     .trim()
-    .min(1, "State is required"),
+    .optional()
+    .default(""),
 
   postCode: z
     .string()
     .trim()
-    .min(1, "Post code is required"),
+    .optional()
+    .default(""),
 
   country: z
     .string()
     .trim()
+    .optional()
     .default("Australia"),
 
   // ===== Education Details =====
@@ -124,12 +131,14 @@ export const studentSchema = z.object({
   courseLevel: z
     .string()
     .trim()
-    .min(1, "Course level is required"),
+    .optional()
+    .default(""),
 
   studyMode: z
     .string()
     .trim()
-    .min(1, "Study mode is required"),
+    .optional()
+    .default(""),
 
   enrollmentId: z
     .string()
@@ -140,7 +149,8 @@ export const studentSchema = z.object({
   institute: z
     .string()
     .trim()
-    .min(1, "Institute is required"),
+    .optional()
+    .default(""),
 
   campus: z
     .string()
@@ -148,24 +158,27 @@ export const studentSchema = z.object({
     .optional()
     .default(""),
 
-  startDate: z.coerce.date(),
+  startDate: z.coerce.date().nullable().optional(),
 
-  expectedEndDate: z.coerce.date(),
+  expectedEndDate: z.coerce.date().nullable().optional(),
 
   currentYearSemester: z
     .string()
     .trim()
-    .min(1, "Current year/semester is required"),
+    .optional()
+    .default(""),
 
   attendanceStatus: z
     .string()
     .trim()
-    .min(1, "Attendance status is required"),
+    .optional()
+    .default(""),
 
   academicStatus: z
     .string()
     .trim()
-    .min(1, "Academic status is required"),
+    .optional()
+    .default(""),
 
   gpa: z
     .string()
@@ -195,27 +208,32 @@ export const studentSchema = z.object({
   assignedRto: z
     .string()
     .trim()
-    .min(1, "Assigned RTO is required"),
+    .optional()
+    .default(""),
 
   courses: z
     .string()
     .trim()
-    .min(1, "Course is required"),
+    .optional()
+    .default(""),
 
   internshipPriority: z
     .string()
     .trim()
-    .min(1, "Internship priority is required"),
+    .optional()
+    .default("Normal"),
 
   studentSource: z
     .string()
     .trim()
-    .min(1, "Student source is required"),
+    .optional()
+    .default(""),
 
   transport: z
     .string()
     .trim()
-    .min(1, "Transport is required"),
+    .optional()
+    .default(""),
 
   preferredLocation: z
     .string()
@@ -230,10 +248,9 @@ export const studentSchema = z.object({
     .default(""),
 
   preferredIndustry: z
-    .string()
-    .trim()
+    .any()
     .optional()
-    .default(""),
+    .default([]),
 
   availabilityDays: z
     .record(z.string(), z.boolean())
@@ -264,7 +281,8 @@ export const studentSchema = z.object({
   visaStatus: z
     .string()
     .trim()
-    .min(1, "Visa status is required"),
+    .optional()
+    .default(""),
 
   visaSubclass: z
     .string()
@@ -318,7 +336,8 @@ export const studentSchema = z.object({
   hasResume: z
     .string()
     .trim()
-    .min(1, "Resume selection is required"),
+    .optional()
+    .default("No"),
 
   resumeFile: z
     .string()

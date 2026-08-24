@@ -80,6 +80,24 @@ const internshipRequestSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    priority: {
+      type: String,
+      enum: ["Normal", "Urgent"],
+      default: "Normal",
+    },
+    contactedIndustries: [
+      {
+        organizationName: { type: String, trim: true, default: "" },
+        email: { type: String, trim: true, default: "" },
+        address: { type: String, trim: true, default: "" },
+        phone: { type: String, trim: true, default: "" },
+        contactPerson: { type: String, trim: true, default: "" },
+        industryType: { type: String, trim: true, default: "" },
+        notes: { type: String, trim: true, default: "" },
+        response: { type: String, trim: true, default: "" },
+        contactedDate: { type: Date, default: Date.now }
+      }
+    ],
     notes: {
       type: String,
       trim: true,

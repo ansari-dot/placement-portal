@@ -124,40 +124,15 @@ export default function AddNewStudentPage() {
     if (step === 1) {
       if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
       if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-      if (!formData.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
-      if (!formData.gender) newErrors.gender = 'Gender is required';
       if (!formData.emailAddress.trim()) newErrors.emailAddress = 'Email is required';
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.emailAddress)) newErrors.emailAddress = 'Enter a valid email';
       if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
-      if (!formData.address.trim()) newErrors.address = 'Address is required';
-      if (!formData.suburb.trim()) newErrors.suburb = 'Suburb is required';
-      if (!formData.state) newErrors.state = 'State is required';
-      if (!formData.postCode.trim()) newErrors.postCode = 'Post code is required';
-      if (!formData.country) newErrors.country = 'Country is required';
     } else if (step === 2) {
       if (!formData.courseQualification) newErrors.courseQualification = 'Course is required';
-      if (!formData.courseLevel) newErrors.courseLevel = 'Course level is required';
-      if (!formData.studyMode) newErrors.studyMode = 'Study mode is required';
-      if (!formData.institute.trim()) newErrors.institute = 'Institute is required';
-      if (!formData.startDate) newErrors.startDate = 'Start date is required';
-      if (!formData.expectedEndDate) newErrors.expectedEndDate = 'Expected end date is required';
-      if (!formData.currentYearSemester) newErrors.currentYearSemester = 'Year/Semester is required';
-      if (!formData.attendanceStatus) newErrors.attendanceStatus = 'Attendance status is required';
-      if (!formData.academicStatus) newErrors.academicStatus = 'Academic status is required';
     } else if (step === 3) {
-      if (!formData.assignedRto) newErrors.assignedRto = 'RTO is required';
-      if (!formData.courses) newErrors.courses = 'Course is required';
-      if (!formData.internshipPriority) newErrors.internshipPriority = 'Priority is required';
-      if (!formData.studentSource) newErrors.studentSource = 'Source is required';
-      if (!formData.transport) newErrors.transport = 'Transport is required';
-      if (Object.keys(formData.availabilityDays).filter(d => formData.availabilityDays[d]).length === 0) {
-        newErrors.availabilityDays = 'Select at least one day';
-      }
-      if (!formData.availabilityFrom) newErrors.availabilityFrom = 'Required';
-      if (!formData.availabilityTo) newErrors.availabilityTo = 'Required';
+      // All fields optional under RTO & Source
     } else if (step === 4) {
-      if (!formData.visaStatus) newErrors.visaStatus = 'Visa status is required';
-      if (!formData.hasResume) newErrors.hasResume = 'Please select an option';
+      // All fields optional under Additional Info
     }
 
     setErrors(newErrors);
