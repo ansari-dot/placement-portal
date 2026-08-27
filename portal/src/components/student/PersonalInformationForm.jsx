@@ -1,27 +1,6 @@
 import {
-  Users, Calendar, ChevronDown, Info
+  Users, ChevronDown, Info
 } from 'lucide-react';
-
-const nationalities = [
-  'Australian', 'Afghan', 'Bangladeshi', 'Brazilian', 'British', 'Canadian',
-  'Chinese', 'Colombian', 'Egyptian', 'Fijian', 'Filipino', 'French',
-  'German', 'Indian', 'Indonesian', 'Iranian', 'Iraqi', 'Irish',
-  'Italian', 'Japanese', 'Kenyan', 'Korean', 'Malaysian', 'Mexican',
-  'Nepalese', 'New Zealander', 'Nigerian', 'Pakistani', 'Peruvian',
-  'Polish', 'Saudi', 'Singaporean', 'South African', 'Spanish', 'Sri Lankan',
-  'Syrian', 'Thai', 'Turkish', 'Ukrainian', 'Vietnamese', 'Zimbabwean',
-  'Other',
-];
-
-const languages = [
-  'English', 'Arabic', 'Bengali', 'Cantonese', 'Chinese', 'Dari',
-  'Fijian', 'Filipino', 'French', 'German', 'Greek', 'Gujarati',
-  'Hindi', 'Indonesian', 'Italian', 'Japanese', 'Korean', 'Mandarin',
-  'Nepali', 'Pashto', 'Persian', 'Polish', 'Portuguese', 'Punjabi',
-  'Russian', 'Sinhala', 'Spanish', 'Swahili', 'Tagalog', 'Tamil',
-  'Telugu', 'Thai', 'Turkish', 'Ukrainian', 'Urdu', 'Vietnamese',
-  'Other',
-];
 
 const australianStates = [
   'ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA',
@@ -57,7 +36,7 @@ export default function PersonalInformationForm({ formData, updateField, errors 
 
         {/* Form Body */}
         <div className="p-6 space-y-6">
-          {/* Row 1: Names */}
+          {/* Row 1: Names & Gender */}
           <div className="grid grid-cols-4 gap-5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">First Name <span className="text-rose-500">*</span></label>
@@ -92,37 +71,7 @@ export default function PersonalInformationForm({ formData, updateField, errors 
               {errors.lastName && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.lastName}</p>}
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Preferred Name</label>
-              <input
-                type="text"
-                placeholder="Enter preferred name"
-                value={formData.preferredName}
-                onChange={(e) => updateField('preferredName', e.target.value)}
-                className={inputClass()}
-              />
-            </div>
-          </div>
-
-          {/* Row 2: DOB, Gender, Nationality, Language */}
-          <div className="grid grid-cols-4 gap-5 items-start">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Date of Birth (optional)</label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={formData.dateOfBirth}
-                  onChange={(e) => updateField('dateOfBirth', e.target.value)}
-                  className={`${inputClass(errors.dateOfBirth)} pr-9 [color-scheme:light]`}
-                />
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Calendar size={16} />
-                </span>
-              </div>
-              {errors.dateOfBirth && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.dateOfBirth}</p>}
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Gender (optional)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-2">Gender</label>
               <div className="flex items-center space-x-4 pt-1">
                 {['Male', 'Female', 'Other'].map((option) => (
                   <label key={option} className="flex items-center space-x-2 cursor-pointer text-xs font-medium text-slate-700">
@@ -139,48 +88,10 @@ export default function PersonalInformationForm({ formData, updateField, errors 
               </div>
               {errors.gender && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.gender}</p>}
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nationality</label>
-              <div className="relative">
-                <select
-                  value={formData.nationality}
-                  onChange={(e) => updateField('nationality', e.target.value)}
-                  className={selectClass()}
-                >
-                  <option value="">Select nationality</option>
-                  {nationalities.map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Language</label>
-              <div className="relative">
-                <select
-                  value={formData.language}
-                  onChange={(e) => updateField('language', e.target.value)}
-                  className={selectClass()}
-                >
-                  <option value="">Select language</option>
-                  {languages.map((lang) => (
-                    <option key={lang} value={lang}>{lang}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-            </div>
           </div>
 
-          {/* Row 3: Contacts */}
-          <div className="grid grid-cols-4 gap-5">
+          {/* Row 2: Contacts */}
+          <div className="grid grid-cols-3 gap-5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Address <span className="text-rose-500">*</span></label>
               <input
@@ -218,30 +129,6 @@ export default function PersonalInformationForm({ formData, updateField, errors 
               {errors.phoneNumber && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.phoneNumber}</p>}
             </div>
 
-            {/* Alternate Phone */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Alternate Phone</label>
-              <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-600 transition">
-                <div className="flex items-center space-x-1 px-2.5 bg-slate-50/50 border-r border-slate-200 text-xs text-slate-700">
-                  <span>🇦🇺</span>
-                  <ChevronDown size={12} className="text-slate-400" />
-                </div>
-                <input
-                  type="text"
-                  value={formData.altPhoneCode}
-                  onChange={(e) => updateField('altPhoneCode', e.target.value)}
-                  className="w-14 px-1 py-2.5 text-xs text-slate-600 bg-transparent focus:outline-none font-medium text-center"
-                />
-                <input
-                  type="text"
-                  placeholder="412 345 678"
-                  value={formData.alternatePhone}
-                  onChange={(e) => updateField('alternatePhone', e.target.value)}
-                  className="w-full px-2 py-2.5 text-xs text-slate-800 placeholder-slate-400 bg-transparent focus:outline-none"
-                />
-              </div>
-            </div>
-
             {/* WhatsApp Number */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">WhatsApp Number</label>
@@ -267,7 +154,7 @@ export default function PersonalInformationForm({ formData, updateField, errors 
             </div>
           </div>
 
-          {/* Row 4: Address */}
+          {/* Row 3: Address */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">Address <span className="text-rose-500">*</span></label>
             <input
@@ -280,7 +167,7 @@ export default function PersonalInformationForm({ formData, updateField, errors 
             {errors.address && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.address}</p>}
           </div>
 
-          {/* Row 5: Suburb, State, Post Code, Country */}
+          {/* Row 4: Suburb, State, Post Code, Country */}
           <div className="grid grid-cols-4 gap-5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Suburb <span className="text-rose-500">*</span></label>

@@ -26,7 +26,6 @@ import {
   internshipSchema,
 } from "../validator/workflowValidator.js";
 
-// Helper to handle Zod validation errors
 const handleValidationError = (error, res) => {
   if (error.name === "ZodError") {
     return res.status(400).json({
@@ -41,7 +40,6 @@ const handleValidationError = (error, res) => {
   return res.status(400).json({ message: error.message, success: false });
 };
 
-// ===== Workflow CRUD Controllers =====
 export const createWorkflowController = async (req, res) => {
   try {
     if (!req.body || Object.keys(req.body).length === 0) {
@@ -145,7 +143,6 @@ export const deleteWorkflowController = async (req, res) => {
   }
 };
 
-// ===== Workflow Step Controllers =====
 export const updateWorkflowStepController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -177,7 +174,6 @@ export const updateWorkflowStepController = async (req, res) => {
   }
 };
 
-// ===== Students in Workflow Controllers =====
 export const addStudentsToWorkflowController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -231,7 +227,6 @@ export const removeStudentFromWorkflowController = async (req, res) => {
   }
 };
 
-// ===== Internship Request Controllers (Step 2) =====
 export const createInternshipRequestController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -260,6 +255,12 @@ export const createInternshipRequestController = async (req, res) => {
   }
 };
 
+// FIXED: internshipRequestSchema.partial() still fills in `.default()`
+// values for every field the client did NOT send (rto: "", status: "New",
+// priority: "Normal", workType: "", notes: "" ...). That was silently
+// wiping real data every time "Add Industry" (or any partial update) ran,
+// and could cause the request to look "gone". We now only forward the
+// keys the client actually sent in req.body.
 export const updateInternshipRequestController = async (req, res) => {
   try {
     const { id, requestId } = req.params;
@@ -269,7 +270,15 @@ export const updateInternshipRequestController = async (req, res) => {
     }
 
     const validatedData = internshipRequestSchema.partial().parse(req.body);
-    const request = await updateInternshipRequest(id, requestId, validatedData);
+
+    const cleanedData = {};
+    Object.keys(req.body).forEach((key) => {
+      if (key in validatedData) {
+        cleanedData[key] = validatedData[key];
+      }
+    });
+
+    const request = await updateInternshipRequest(id, requestId, cleanedData);
 
     if (!request) {
       return res.status(404).json({
@@ -309,7 +318,6 @@ export const deleteInternshipRequestController = async (req, res) => {
   }
 };
 
-// ===== Appointment Controllers (Step 3) =====
 export const createAppointmentController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -347,7 +355,15 @@ export const updateAppointmentController = async (req, res) => {
     }
 
     const validatedData = appointmentSchema.partial().parse(req.body);
-    const appointment = await updateAppointment(id, appointmentId, validatedData);
+
+    const cleanedData = {};
+    Object.keys(req.body).forEach((key) => {
+      if (key in validatedData) {
+        cleanedData[key] = validatedData[key];
+      }
+    });
+
+    const appointment = await updateAppointment(id, appointmentId, cleanedData);
 
     if (!appointment) {
       return res.status(404).json({
@@ -387,7 +403,6 @@ export const deleteAppointmentController = async (req, res) => {
   }
 };
 
-// ===== Internship Controllers (Step 4) =====
 export const createInternshipController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -425,7 +440,15 @@ export const updateInternshipController = async (req, res) => {
     }
 
     const validatedData = internshipSchema.partial().parse(req.body);
-    const internship = await updateInternship(id, internshipId, validatedData);
+
+    const cleanedData = {};
+    Object.keys(req.body).forEach((key) => {
+      if (key in validatedData) {
+        cleanedData[key] = validatedData[key];
+      }
+    });
+
+    const internship = await updateInternship(id, internshipId, cleanedData);
 
     if (!internship) {
       return res.status(404).json({
@@ -465,7 +488,6 @@ export const deleteInternshipController = async (req, res) => {
   }
 };
 
-// ===== Dashboard & Students Controllers =====
 export const getWorkflowDashboardDataController = async (req, res) => {
   try {
     const data = await getWorkflowDashboardData();

@@ -147,14 +147,14 @@ export default function ReviewSubmitForm({ formData, onEdit, confirmed, setConfi
               </div>
             </div>
 
-            {/* RTO & Source Summary */}
+            {/* Additional Information Summary */}
             <div className="p-6 border-b border-slate-100">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
                   <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">
                     <Check size={14} />
                   </div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">RTO & Source</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">Additional Information</h4>
                 </div>
                 <button onClick={() => onEdit && onEdit(3)} className="flex items-center space-x-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
                   <Edit2 size={12} />
@@ -162,37 +162,62 @@ export default function ReviewSubmitForm({ formData, onEdit, confirmed, setConfi
                 </button>
               </div>
 
-              <div className="grid grid-cols-5 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-xs">
+              <div className="grid grid-cols-4 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-xs">
                 <div>
-                  <span className="block text-slate-400 mb-0.5">Assigned RTO</span>
-                  <span className="font-bold text-slate-800">{formatValue(formData.assignedRto)}</span>
+                  <span className="block text-slate-400 mb-0.5">Preferred Industry</span>
+                  <span className="font-bold text-slate-800">
+                    {formatValue(formData.preferredIndustry)}
+                  </span>
                 </div>
                 <div>
-                  <span className="block text-slate-400 mb-0.5">Course(s)</span>
-                  <span className="font-semibold text-slate-800">{formatValue(formData.courses)}</span>
+                  <span className="block text-slate-400 mb-0.5">Placement Site</span>
+                  <span className="font-semibold text-slate-800">
+                    {Array.isArray(formData.placementSite) && formData.placementSite.length > 0
+                      ? formData.placementSite.join(', ')
+                      : formatValue(formData.placementSite)}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-slate-400 mb-0.5">Driver's Licence / Transport</span>
+                  <span className="font-semibold text-slate-800">
+                    {formData.transport === 'Yes'
+                      ? `Yes ${formData.licenceNumber ? `(#${formData.licenceNumber})` : ''}`
+                      : formData.transport === 'No'
+                      ? 'No'
+                      : formatValue(formData.transport)}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-slate-400 mb-0.5">Preferred Location</span>
+                  <span className="font-semibold text-slate-800">{formatValue(formData.preferredLocation)}</span>
                 </div>
                 <div>
                   <span className="block text-slate-400 mb-0.5">Internship Priority</span>
                   <span className="font-semibold text-slate-800">{formatValue(formData.internshipPriority)}</span>
                 </div>
-                <div>
-                  <span className="block text-slate-400 mb-0.5">Student Source</span>
-                  <span className="font-semibold text-slate-800">{formatValue(formData.studentSource)}</span>
-                </div>
-                <div>
-                  <span className="block text-slate-400 mb-0.5">Preferred Location</span>
-                  <span className="font-semibold text-slate-800">{formatValue(formData.preferredLocation)}</span>
-                  {formData.placementRadius && <span className="block text-[10px] text-slate-400 mt-0.5">{formData.placementRadius} km</span>}
-                </div>
               </div>
 
               <div className="mt-3 px-1 text-xs flex flex-wrap gap-x-8 gap-y-2">
                 <div>
-                  <span className="text-slate-400 mr-2">Transport:</span>
-                  <span className="font-semibold text-slate-800 capitalize">
-                    {formData.transport === 'vehicle' ? 'Own Vehicle' : formData.transport === 'public' ? 'Public Transport' : formatValue(formData.transport)}
+                  <span className="text-slate-400 mr-2">Police Check:</span>
+                  <span className="font-semibold text-slate-800">
+                    {formData.policeCheckDoc ? (formData.policeCheckDoc.name || String(formData.policeCheckDoc)) : 'Not uploaded'}
                   </span>
                 </div>
+                <div>
+                  <span className="text-slate-400 mr-2">COVID-19 Check:</span>
+                  <span className="font-semibold text-slate-800">
+                    {formData.covidCheckDoc ? (formData.covidCheckDoc.name || String(formData.covidCheckDoc)) : 'Not uploaded'}
+                  </span>
+                </div>
+                {Array.isArray(formData.additionalDocuments) && formData.additionalDocuments.length > 0 && (
+                  <div>
+                    <span className="text-slate-400 mr-2">Custom Docs:</span>
+                    <span className="font-semibold text-slate-800">
+                      {formData.additionalDocuments.map(d => d.title || 'Untitled').join(', ')}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <span className="text-slate-400 mr-2">Availability:</span>
                   <span className="font-semibold text-slate-800">
@@ -206,14 +231,14 @@ export default function ReviewSubmitForm({ formData, onEdit, confirmed, setConfi
               </div>
             </div>
 
-            {/* Additional Information Summary */}
+            {/* Visa & Compliance Summary */}
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
                   <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">
                     <Check size={14} />
                   </div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">Additional Information</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">Visa & Compliance</h4>
                 </div>
                 <button onClick={() => onEdit && onEdit(4)} className="flex items-center space-x-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
                   <Edit2 size={12} />

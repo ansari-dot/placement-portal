@@ -1,52 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Building2, Search, ChevronDown, Car, Train, Users, MapPin, Clock, Info
+  FileText, ChevronDown, MapPin, Clock, Info
 } from 'lucide-react';
-
-const rtoList = [
-  'AI Global Institute',
-  'Bright Futures',
-  'Kingsford Institute',
-  'Victoria Training',
-  'Skill Australia',
-  'Northern College',
-  'Australian Learning',
-  'Sydney City College',
-  'Future Skills',
-  'Melbourne Institute of Technology',
-  'Other',
-];
-
-const courseOptions = [
-  'Information Technology',
-  'Business',
-  'Accounting',
-  'Nursing',
-  'Engineering',
-  'Marketing',
-  'Project Management',
-  'Human Resources',
-  'Aged Care',
-  'Early Childhood Education',
-  'Hospitality',
-  'Leadership & Management',
-  'Other',
-];
-
-const priorities = [
-  'High', 'Medium', 'Low', 'Urgent',
-];
-
-const sources = [
-  'RTO Referral', 'Walk-in', 'Website', 'Social Media', 'Referral', 'Agent', 'Other',
-];
 
 const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const industries = [
-  'Information Technology', 'Healthcare', 'Accounting & Finance', 'Engineering',
-  'Marketing & Communications', 'Education', 'Hospitality', 'Construction',
-  'Retail', 'Administration', 'Other',
+const visaStatuses = [
+  'Student Visa (500)', 'Visitor Visa', 'Working Holiday Visa', 'Permanent Resident',
+  'Citizen', 'Temporary Graduate (485)', 'Partner Visa', 'Bridging Visa', 'Other',
 ];
 
 const timeSlots = [
@@ -72,6 +33,18 @@ const selectClass = (hasError) =>
 
 export default function RtoSourceForm({ formData, updateField, updateFields, errors }) {
   const [selectedDays, setSelectedDays] = useState(formData.availabilityDays || {});
+  const [isPlacementSiteOpen, setIsPlacementSiteOpen] = useState(false);
+
+  // Auto-fill preferredLocation from student's full address whenever address fields change
+  useEffect(() => {
+    // Priority: full address field → suburb + state → empty
+    const autoLoc =
+      formData.address ||
+      [formData.suburb, formData.state].filter(Boolean).join(', ') ||
+      '';
+    updateField('preferredLocation', autoLoc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.address, formData.suburb, formData.state]);
 
   const toggleDay = (day) => {
     const newDays = { ...selectedDays, [day]: !selectedDays[day] };
@@ -86,113 +59,235 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
         {/* Section Header */}
         <div className="p-6 border-b border-slate-100 flex items-center space-x-4">
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <Building2 size={20} />
+            <FileText size={20} />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-900">RTO & Source</h3>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Select the RTO, source and placement preferences for the student.</p>
+            <h3 className="text-base font-bold text-slate-900">Additional Information</h3>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">Select industry preferences, transport licensing, compliance documents and placement details.</p>
           </div>
         </div>
 
         {/* Form Body */}
         <div className="p-6 space-y-6">
-          {/* Section: Preferred Industry Multi-Select */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Preferred Industry <span className="text-blue-600 font-normal">(Select one or more)</span>
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                'Aged Care',
-                'Disability Centre',
-                'Childcare/ECEC',
-                'Information Technology',
-                'Healthcare & Nursing',
-                'Hospitality',
-                'Business & Administration',
-                'Other'
-              ].map((ind) => {
-                const currentList = Array.isArray(formData.preferredIndustry)
-                  ? formData.preferredIndustry
-                  : typeof formData.preferredIndustry === 'string' && formData.preferredIndustry
-                  ? formData.preferredIndustry.split(',').map(s => s.trim())
-                  : [];
-                const isChecked = currentList.includes(ind);
-
-                const handleToggle = () => {
-                  let updated;
-                  if (isChecked) {
-                    updated = currentList.filter(i => i !== ind);
-                  } else {
-                    updated = [...currentList, ind];
-                  }
-                  updateField('preferredIndustry', updated);
-                };
-
-                return (
-                  <button
-                    key={ind}
-                    type="button"
-                    onClick={handleToggle}
-                    className={`p-3 rounded-xl border flex items-center justify-between transition text-xs font-medium ${
-                      isChecked
-                        ? 'bg-blue-50/80 border-blue-600 text-blue-700 font-bold shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
-                  >
-                    <span>{ind}</span>
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => {}}
-                      className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
-                    />
-                  </button>
-                );
-              })}
+          {/* Section: Preferred Industry & Placement Site */}
+          <div className="grid grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Preferred Industry
+              </label>
+              <div className="relative">
+                <select
+                  value={formData.preferredIndustry || ''}
+                  onChange={(e) => {
+                    updateField('preferredIndustry', e.target.value);
+                    updateField('placementSite', []); // Reset to empty array on change
+                  }}
+                  className={selectClass()}
+                >
+                  <option value="">Select industry</option>
+                  <option value="Individual Support">Individual Support</option>
+                  <option value="ECEC">ECEC</option>
+                </select>
+                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <ChevronDown size={14} />
+                </span>
+              </div>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1.5">Example: Aged Care, Disability Centre, or both.</p>
+
+            {formData.preferredIndustry && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Placement Sites (Select multiple)
+                </label>
+                <div className="relative">
+                  <div
+                    className={`${selectClass()} flex items-center justify-between cursor-pointer min-h-[38px]`}
+                    onClick={() => setIsPlacementSiteOpen(!isPlacementSiteOpen)}
+                  >
+                    <span className="truncate pr-6">
+                      {Array.isArray(formData.placementSite) && formData.placementSite.length > 0
+                        ? formData.placementSite.join(', ')
+                        : 'Select placement sites'}
+                    </span>
+                    <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                      <ChevronDown size={14} />
+                    </span>
+                  </div>
+
+                  {isPlacementSiteOpen && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                      <div className="p-2 space-y-1">
+                        {formData.preferredIndustry === 'Individual Support' && (
+                          <>
+                            {[
+                              { label: 'Residential aged care facilities', options: ['Nursing homes', 'Residential aged-care homes', 'Aged-care villages with care services', 'Dementia/behavioural support units'] },
+                              { label: 'Home care providers', options: ['In-home aged care', 'Personal care services', 'Domestic assistance', 'Community nursing/home support providers'] },
+                              { label: 'Disability support providers', options: ['NDIS providers', 'Supported Independent Living (SIL)', 'Short-Term Accommodation (STA)', 'Disability group homes', 'Respite services', 'Community participation programs'] },
+                              { label: 'Community care organisations', options: ['Community support centres', 'Community access programs', 'Social support services', 'Day programs for elderly or people with disability'] },
+                              { label: 'Wellness / day centres', options: ["Seniors' wellness centres", 'Community wellness centres', 'Day respite centres', 'Adult day programs'] },
+                              { label: 'Mental health / psychosocial support services', options: ['Community-based support organisations', 'Psychosocial disability services', "Supported accommodation where the student's qualification requirements can be met"] },
+                            ].map((group) => (
+                              <div key={group.label} className="mb-2">
+                                <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-50 rounded uppercase tracking-wider">{group.label}</div>
+                                {group.options.map((opt) => {
+                                  const currentList = Array.isArray(formData.placementSite) ? formData.placementSite : [];
+                                  const isChecked = currentList.includes(opt);
+                                  return (
+                                    <label key={opt} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs text-slate-700 font-medium">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            updateField('placementSite', [...currentList, opt]);
+                                          } else {
+                                            updateField('placementSite', currentList.filter(item => item !== opt));
+                                          }
+                                        }}
+                                        className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
+                                      />
+                                      <span>{opt}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        {formData.preferredIndustry === 'ECEC' && (
+                          <>
+                            {[
+                              { 
+                                label: 'Approved ECEC Placement Sites', 
+                                options: [
+                                  'Long Day Care Centres',
+                                  'Kindergartens / Preschools',
+                                  'Early Learning Centres',
+                                  'Occasional Care Centres',
+                                  'Outside School Hours Care (OSHC)',
+                                  'Family Day Care Services',
+                                  "Community Children's Services"
+                                ] 
+                              },
+                              { 
+                                label: 'Common Placement Hosts', 
+                                options: [
+                                  'Story House Early Learning',
+                                  'Goodstart Early Learning',
+                                  'Affinity Education Group',
+                                  'G8 Education',
+                                  'Guardian Childcare & Education',
+                                  'Busy Bees Australia'
+                                ] 
+                              },
+                              { 
+                                label: 'Generally Not Suitable', 
+                                options: [
+                                  'Primary schools (unless specifically approved for OSHC programs)',
+                                  'Tutoring centres',
+                                  'Playgroups without an approved childcare service',
+                                  'Babysitting services',
+                                  'Unlicensed childcare settings'
+                                ] 
+                              }
+                            ].map((group) => (
+                              <div key={group.label} className="mb-2">
+                                <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-50 rounded uppercase tracking-wider">{group.label}</div>
+                                {group.options.map((opt) => {
+                                  const currentList = Array.isArray(formData.placementSite) ? formData.placementSite : [];
+                                  const isChecked = currentList.includes(opt);
+                                  return (
+                                    <label key={opt} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs text-slate-700 font-medium">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            updateField('placementSite', [...currentList, opt]);
+                                          } else {
+                                            updateField('placementSite', currentList.filter(item => item !== opt));
+                                          }
+                                        }}
+                                        className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
+                                      />
+                                      <span>{opt}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Row 2: Transport, Preferred Placement Location, Placement Radius, Internship Priority */}
-          <div className="grid grid-cols-4 gap-5 items-start">
+          {/* Row 2: Driver's Licence / Transport, Licence Number (if Yes), Preferred Placement Location, Visa Status */}
+          <div className={`grid ${formData.transport === 'Yes' ? 'grid-cols-4' : 'grid-cols-3'} gap-5 items-end`}>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Transport (optional)</label>
-              <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Do you have a valid Driver's Licence / Transport?</label>
+              <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white h-[38px]">
                 <button
                   type="button"
-                  onClick={() => updateField('transport', 'vehicle')}
-                  className={`flex-1 py-2.5 flex flex-col items-center justify-center space-y-1 transition ${formData.transport === 'vehicle' ? 'bg-blue-50/80 text-blue-600 border-r border-blue-100 font-bold' : 'text-slate-400 hover:text-slate-600 border-r border-slate-200'}`}
+                  onClick={() => updateField('transport', 'Yes')}
+                  className={`flex-1 flex items-center justify-center space-y-1 transition text-xs font-semibold ${
+                    formData.transport === 'Yes'
+                      ? 'bg-blue-600 text-white font-bold shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-50 border-r border-slate-200'
+                  }`}
                 >
-                  <Car size={16} />
-                  <span className="text-[10px]">Own Vehicle</span>
+                  <span>Yes</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => updateField('transport', 'public')}
-                  className={`flex-1 py-2.5 flex flex-col items-center justify-center space-y-1 transition ${formData.transport === 'public' ? 'bg-blue-50/80 text-blue-600 border-r border-blue-100 font-bold' : 'text-slate-400 hover:text-slate-600 border-r border-slate-200'}`}
+                  onClick={() => {
+                    updateField('transport', 'No');
+                    updateField('licenceNumber', '');
+                  }}
+                  className={`flex-1 flex items-center justify-center space-y-1 transition text-xs font-semibold ${
+                    formData.transport === 'No'
+                      ? 'bg-blue-600 text-white font-bold shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
                 >
-                  <Train size={16} />
-                  <span className="text-[10px]">Public Transport</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateField('transport', 'both')}
-                  className={`flex-1 py-2.5 flex flex-col items-center justify-center space-y-1 transition ${formData.transport === 'both' ? 'bg-blue-50/80 text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <Users size={16} />
-                  <span className="text-[10px]">Both</span>
+                  <span>No</span>
                 </button>
               </div>
             </div>
 
+            {formData.transport === 'Yes' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Licence Number <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter driver licence number"
+                  value={formData.licenceNumber || ''}
+                  onChange={(e) => updateField('licenceNumber', e.target.value)}
+                  className={inputClass(errors?.licenceNumber)}
+                  autoFocus
+                />
+                {errors?.licenceNumber && (
+                  <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.licenceNumber}</p>
+                )}
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Preferred Placement Location</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Preferred Placement Location
+                <span className="ml-1.5 text-[10px] text-blue-500 font-normal">(auto-filled from address)</span>
+              </label>
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Enter suburb, city or postcode"
-                  value={formData.preferredLocation}
+                  placeholder="Suburb, city or postcode"
+                  value={formData.preferredLocation || ''}
                   onChange={(e) => updateField('preferredLocation', e.target.value)}
                   className={`${inputClass()} pl-3.5 pr-9`}
                 />
@@ -203,34 +298,27 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Placement Radius (km)</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Enter radius"
-                  value={formData.placementRadius}
-                  onChange={(e) => updateField('placementRadius', e.target.value)}
-                  className={`${inputClass()} pr-10`}
-                />
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-xs text-slate-400 font-medium">km</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Internship Priority (optional)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Visa Status <span className="text-rose-500">*</span>
+              </label>
               <div className="relative">
                 <select
-                  value={formData.internshipPriority || 'Normal'}
-                  onChange={(e) => updateField('internshipPriority', e.target.value)}
-                  className={selectClass()}
+                  value={formData.visaStatus || ''}
+                  onChange={(e) => updateField('visaStatus', e.target.value)}
+                  className={selectClass(errors?.visaStatus)}
                 >
-                  <option value="Normal">Normal</option>
-                  <option value="Urgent">Urgent</option>
+                  <option value="">Select visa status</option>
+                  {visaStatuses.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
                 </select>
                 <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
                   <ChevronDown size={14} />
                 </span>
               </div>
+              {errors?.visaStatus && (
+                <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.visaStatus}</p>
+              )}
             </div>
           </div>
 

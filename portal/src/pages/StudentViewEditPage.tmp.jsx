@@ -5,7 +5,6 @@ import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import { fetchStudentById, updateStudent } from '../api/studentsApi';
-import { fetchWorkflows } from '../api/workflowApi';
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
 
@@ -20,7 +19,6 @@ export default function StudentViewEditPage() {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [activeTab, setActiveTab] = useState('personal');
-  const [contactedIndustries, setContactedIndustries] = useState([]);
 
   const loadStudent = useCallback(async () => {
     setLoading(true);
@@ -54,31 +52,6 @@ export default function StudentViewEditPage() {
         populated.availabilityDays = {};
       }
       setFormData(populated);
-
-      // Fetch workflow to get internship requests and contacted industries for this student
-      try {
-        const wfResult = await fetchWorkflows();
-        const workflows = wfResult.data || [];
-        const studentContacts = [];
-        const studentName = `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.name;
-        workflows.forEach(wf => {
-          (wf.requests || []).forEach(req => {
-            const isMatch =
-              req.studentId === id ||
-              req.studentId === data.studentId ||
-              req.studentId === data.id ||
-              req.studentId === data._id ||
-              (studentName && req.student === studentName);
-            if (isMatch && Array.isArray(req.contactedIndustries)) {
-              studentContacts.push(...req.contactedIndustries);
-            }
-          });
-        });
-        setContactedIndustries(studentContacts);
-      } catch (wfErr) {
-        console.error('Could not load workflow data:', wfErr);
-      }
-
     } catch (err) {
       console.error('Could not load student:', err);
       setLoadError(err?.response?.data?.message || 'Could not load student details. Please try again.');
@@ -170,7 +143,6 @@ export default function StudentViewEditPage() {
     { key: 'education', label: 'Education', icon: GraduationCap },
     { key: 'rto', label: 'RTO & Source', icon: Building2 },
     { key: 'additional', label: 'Additional', icon: Info },
-    { key: 'contacts', label: 'Industry Contacts', icon: Building2 },
   ];
 
   const inputClass = "w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition";
@@ -492,73 +464,6 @@ export default function StudentViewEditPage() {
                     <input type="text" value={formData.hasResume || ''} onChange={(e) => updateField('hasResume', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} />
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Industry Contacts */}
-            {activeTab === 'contacts' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                    <Building2 size={16} className="text-blue-600" />
-                    <span>Contacted Industries / Placement History</span>
-                  </h3>
-                  <span className="text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg">
-                    Total Contacted: {contactedIndustries.length}
-                  </span>
-                </div>
-
-                {contactedIndustries.length === 0 ? (
-                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                    <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-semibold text-slate-700">No industries contacted yet</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Industries added under Workflow Step 2 (Internship Requests) will appear here.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {contactedIndustries.map((rec, index) => (
-                      <div key={rec.id || index} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-bold text-slate-900 text-xs">{rec.organizationName}</h4>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              {rec.contactPerson} {rec.phone ? `(${rec.phone})` : ''}
-                            </p>
-                          </div>
-                          <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${
-                            rec.response?.toLowerCase().includes('approved') || rec.response?.toLowerCase().includes('positive')
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : rec.response?.toLowerCase().includes('reject') || rec.response?.toLowerCase().includes('declined')
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : 'bg-blue-50 text-blue-700 border border-blue-200'
-                          }`}>
-                            {rec.response || 'In Discussion'}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1 text-[11px] text-slate-600">
-                          {rec.email && <p className="flex items-center space-x-1.5"><Mail size={12} className="text-slate-400" /><span>{rec.email}</span></p>}
-                          {rec.address && <p className="flex items-center space-x-1.5"><MapPin size={12} className="text-slate-400" /><span>{rec.address}</span></p>}
-                          {rec.industryType && <p className="flex items-center space-x-1.5"><Building2 size={12} className="text-slate-400" /><span>{rec.industryType}</span></p>}
-                        </div>
-
-                        {rec.notes && (
-                          <div className="pt-2 border-t border-slate-200/60 text-[11px]">
-                            <p className="text-slate-700">
-                              <span className="font-semibold text-slate-900">Notes/Discussion: </span>
-                              {rec.notes}
-                            </p>
-                          </div>
-                        )}
-                        {rec.date && (
-                          <p className="text-[10px] text-slate-400">Contacted date: {rec.date}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>

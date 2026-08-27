@@ -1,3 +1,4 @@
+// workflowValidator.js
 import { z } from "zod";
 
 // ===== Workflow Schema =====
@@ -70,7 +71,8 @@ export const internshipRequestSchema = z.object({
   rto: z
     .string()
     .trim()
-    .min(1, "RTO is required"),
+    .optional()
+    .default(""),
 
   status: z
     .enum(["New", "Coordinator Review", "RTO Review", "Appointment", "Approved", "Rejected", "On Hold"])
@@ -119,7 +121,21 @@ export const internshipRequestSchema = z.object({
     .default("Normal"),
 
   contactedIndustries: z
-    .array(z.any())
+    .array(
+      z.object({
+        organizationName: z.string().trim().optional().default(""),
+        email: z.string().trim().optional().default(""),
+        address: z.string().trim().optional().default(""),
+        phone: z.string().trim().optional().default(""),
+        contactPerson: z.string().trim().optional().default(""),
+        industryType: z.string().trim().optional().default(""),
+        notes: z.string().trim().optional().default(""),
+        response: z.string().trim().optional().default("Waiting for Response"),
+        contactedDate: z.any().optional(),
+        appointmentDate: z.string().trim().optional().default(""),
+        appointmentTime: z.string().trim().optional().default(""),
+      })
+    )
     .optional()
     .default([]),
 
@@ -130,7 +146,7 @@ export const internshipRequestSchema = z.object({
     .default(""),
 });
 
-// ===== Appointment Schema (Step 3) =====
+// ===== Appointment Schema (Step 3) - FIXED =====
 export const appointmentSchema = z.object({
   apptId: z
     .string()
@@ -216,10 +232,34 @@ export const appointmentSchema = z.object({
     .optional()
     .default(""),
 
+  industryContactId: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  // ✅ FIX: Added 'Withdrawn' and 'Declined'
   status: z
-    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show"])
+    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show", "Withdrawn", "Declined"])
     .optional()
     .default("Scheduled"),
+
+  cancellationReason: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  cancellationType: z
+    .enum(["student", "industry", "withdrawn", "other"])
+    .optional()
+    .default("student"),
+
+  cancelledAt: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
 
   notes: z
     .string()
@@ -228,7 +268,7 @@ export const appointmentSchema = z.object({
     .default(""),
 });
 
-// ===== Internship Schema (Step 4) =====
+// ===== Internship Schema (Step 4) - FIXED =====
 export const internshipSchema = z.object({
   intId: z
     .string()
@@ -262,8 +302,9 @@ export const internshipSchema = z.object({
     .optional()
     .default(""),
 
+  // ✅ FIX: Added 'Declined' and 'Withdrawn'
   status: z
-    .enum(["Active", "Joined", "Waiting to Join", "Completed", "Cancelled", "On Hold"])
+    .enum(["Active", "Joined", "Waiting to Join", "Completed", "Cancelled", "On Hold", "Declined", "Withdrawn"])
     .optional()
     .default("Active"),
 
@@ -323,6 +364,18 @@ export const internshipSchema = z.object({
     .default(""),
 
   reviewsCompleted: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  cancellationReason: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  cancellationType: z
     .string()
     .trim()
     .optional()

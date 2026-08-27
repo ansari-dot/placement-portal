@@ -14,7 +14,7 @@ const getCollegeInitials = (name) => {
     return "STU";
 };
 
-// Generate a unique student ID based on college/RTO initials + sequential number (e.g. CE 1, AC 1)
+// Generate a unique student ID based on college/RTO initials + sequential number (e.g. CE1, AC1)
 const generateStudentId = async (rtoName) => {
     const initials = getCollegeInitials(rtoName);
     const regex = new RegExp(`^${initials}\\s*(\\d+)$`, "i");
@@ -32,7 +32,7 @@ const generateStudentId = async (rtoName) => {
         }
     });
 
-    return `${initials} ${maxNum + 1}`;
+    return `${initials}${maxNum + 1}`;
 };
 
 export const createStudent = async (studentData) => {

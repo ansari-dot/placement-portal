@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Search, Filter, Download, Plus, MoreVertical,
   ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List,
-  X, XCircle, Building2, User, Calendar, Clock, CheckCircle2,
+  X, Building2, User, Calendar, Clock, CheckCircle2,
   Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText
 } from 'lucide-react';
 import { fetchJobs } from '../../api/jobApi';
@@ -15,9 +15,7 @@ export default function WorkflowStep2Requests({
   onCreateRequest,
   onUpdateRequest,
   onDeleteRequest,
-  onAddContact,
-  students = [],
-  activeStudent = null
+  students = []
 }) {
   const [newRequestStudentId, setNewRequestStudentId] = useState('');
   const [newRequestCompany, setNewRequestCompany] = useState('');
@@ -27,6 +25,7 @@ export default function WorkflowStep2Requests({
   const [selectedJobId, setSelectedJobId] = useState('');
   const [availableJobs, setAvailableJobs] = useState([]);
 
+  // Load open jobs for the picker
   useEffect(() => {
     fetchJobs({ status: 'Open' })
       .then(res => { if (res.success) setAvailableJobs(res.data || []); })
@@ -54,17 +53,46 @@ export default function WorkflowStep2Requests({
   const [rtoFilter, setRtoFilter] = useState('All');
   const [coordinatorFilter, setCoordinatorFilter] = useState('All');
 
-  const [contactRecordsMap, setContactRecordsMap] = useState({});
+  // Industry Contact Records state (Req #8 & #9)
+  const [contactRecordsMap, setContactRecordsMap] = useState({
+    'REQ-001': [
+      {
+        id: 'c1',
+        organizationName: 'Sunnyside Aged Care',
+        email: 'placements@sunnyside.org.au',
+        address: '123 Care Street, Melbourne VIC 3000',
+        phone: '+61 3 9876 5432',
+        contactPerson: 'Rachel Green',
+        industryType: 'Aged Care',
+        notes: 'Discussed placement for Certificate III student. Willing to offer 3-week slot starting next month.',
+        response: 'Positive / Approved for interview',
+        date: '2026-08-20'
+      },
+      {
+        id: 'c2',
+        organizationName: 'Evergreen Disability Support',
+        email: 'hr@evergreendisability.org.au',
+        address: '45 Community Way, Carlton VIC 3053',
+        phone: '+61 3 9123 4567',
+        contactPerson: 'David Miller',
+        industryType: 'Disability Centre',
+        notes: 'Inquired about weekend shifts placement. Waiting for supervisor approval.',
+        response: 'Pending Review',
+        date: '2026-08-22'
+      }
+    ]
+  });
 
+  
   useEffect(() => {
     if (requests && requests.length > 0) {
       const newMap = {};
       requests.forEach(req => {
-        const key = req.id || req.reqId;
-        newMap[key] = req.contactedIndustries || [];
-        if (req.reqId) newMap[req.reqId] = req.contactedIndustries || [];
+        if (req.contactedIndustries && req.contactedIndustries.length > 0) {
+          newMap[req.id || req.reqId] = req.contactedIndustries;
+        }
       });
-      setContactRecordsMap(newMap);
+      setContactRecordsMap(prev => ({ ...prev, ...newMap }));
     }
   }, [requests]);
 
@@ -77,75 +105,39 @@ export default function WorkflowStep2Requests({
     contactPerson: '',
     industryType: 'Aged Care',
     notes: '',
-    response: 'In Discussion',
-    appointmentDate: '',
-    appointmentTime: ''
+    response: 'In Discussion'
   });
 
-  const handleAddOrgRecord = async () => {
+  const handleAddOrgRecord = () => {
     if (!orgForm.organizationName) {
       showToast('Please enter Organisation Name');
       return;
     }
-    if (!orgForm.notes) {
-      showToast('Please add discussion notes / response');
-      return;
-    }
-
-    const targetKey = selectedRequest?.dbId || selectedRequest?.id;
-    if (!targetKey) {
-      showToast('Please select a request first');
-      return;
-    }
-
+    const targetKey = selectedRequest?.dbId || selectedRequest?.id || 'REQ-001';
     const newRecord = {
       id: `c_${Date.now()}`,
       ...orgForm,
-      contactedDate: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0]
     };
-
     setContactRecordsMap(prev => ({
       ...prev,
       [targetKey]: [...(prev[targetKey] || []), newRecord]
     }));
-
-    if (onAddContact) {
-      try {
-        await onAddContact(targetKey, newRecord);
-        showToast(`Added contact record for ${orgForm.organizationName}`);
-        setShowAddOrgModal(false);
-        setOrgForm({
-          organizationName: '',
-          email: '',
-          address: '',
-          phone: '',
-          contactPerson: '',
-          industryType: 'Aged Care',
-          notes: '',
-          response: 'In Discussion',
-          appointmentDate: '',
-          appointmentTime: ''
-        });
-      } catch (err) {
-        const serverMsg =
-          err?.response?.data?.message ||
-          err?.response?.data?.errors?.[0]?.message ||
-          err?.message ||
-          'Unknown error';
-        console.error('Failed to add contact:', err);
-        showToast(`Failed to save contact record: ${serverMsg}`);
-
-        setContactRecordsMap(prev => ({
-          ...prev,
-          [targetKey]: (prev[targetKey] || []).filter(r => r.id !== newRecord.id)
-        }));
-      }
-    } else {
-      showToast(`Added contact record for ${orgForm.organizationName} (not persisted — onAddContact missing)`);
-      setShowAddOrgModal(false);
-    }
+    showToast(`Added contact record for ${orgForm.organizationName}`);
+    setShowAddOrgModal(false);
+    setOrgForm({
+      organizationName: '',
+      email: '',
+      address: '',
+      phone: '',
+      contactPerson: '',
+      industryType: 'Aged Care',
+      notes: '',
+      response: 'In Discussion'
+    });
   };
 
+  // Filter requests
   const requestList = requests || [];
   const filteredRequests = requestList.filter(item => {
     const matchesSearch =
@@ -159,6 +151,7 @@ export default function WorkflowStep2Requests({
     return matchesSearch && matchesStatus && matchesRto;
   });
 
+  // Pagination
   const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
   const paginatedRequests = filteredRequests.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
@@ -287,10 +280,9 @@ export default function WorkflowStep2Requests({
     }
   };
 
-  const currentContacts = (contactRecordsMap[selectedRequest?.dbId || selectedRequest?.id] || []);
-
   return (
     <div className="flex gap-4 items-start pb-8 relative">
+      {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-pulse">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -298,12 +290,15 @@ export default function WorkflowStep2Requests({
         </div>
       )}
 
+      {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
+
+        {/* Metrics Row */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">New Requests</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'New').length}</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">24</h3>
             </div>
             <div className="w-6 h-6 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center">
               <Clock className="w-3 h-3" />
@@ -312,7 +307,7 @@ export default function WorkflowStep2Requests({
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Coordinator Review</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'Coordinator Review').length}</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">18</h3>
             </div>
             <div className="w-6 h-6 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
               <User className="w-3 h-3" />
@@ -321,7 +316,7 @@ export default function WorkflowStep2Requests({
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">RTO Review</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'RTO Review').length}</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">15</h3>
             </div>
             <div className="w-6 h-6 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center">
               <Clock className="w-3 h-3" />
@@ -330,7 +325,7 @@ export default function WorkflowStep2Requests({
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Appointment</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'Appointment').length}</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">22</h3>
             </div>
             <div className="w-6 h-6 bg-cyan-50 text-cyan-600 rounded-lg flex items-center justify-center">
               <Calendar className="w-3 h-3" />
@@ -339,7 +334,7 @@ export default function WorkflowStep2Requests({
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Offered</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'Approved').length}</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">31</h3>
             </div>
             <div className="w-6 h-6 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
               <CheckCircle2 className="w-3 h-3" />
@@ -348,15 +343,17 @@ export default function WorkflowStep2Requests({
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Declined / Closed</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'Rejected').length}</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">12</h3>
             </div>
             <div className="w-6 h-6 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
-              <XCircle className="w-3 h-3" />
+              <XCircleIcon className="w-3 h-3" />
             </div>
           </div>
         </div>
 
+        {/* Toolbar - Single Row */}
         <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2.5">
+          {/* Search */}
           <div className="relative flex-1 min-w-[180px] max-w-[280px]">
             <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
             <input
@@ -375,6 +372,7 @@ export default function WorkflowStep2Requests({
 
           <div className="w-px h-6 bg-slate-200 shrink-0"></div>
 
+          {/* Filter Buttons */}
           <div className="relative shrink-0">
             <button
               onClick={() => { setShowStatusFilter(!showStatusFilter); setShowRtoFilter(false); setShowCoordinatorFilter(false); setShowMoreFilters(false); }}
@@ -520,6 +518,7 @@ export default function WorkflowStep2Requests({
               <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-4">
                 <h4 className="text-sm font-bold text-slate-900 mb-3">Create New Request</h4>
                 <div className="space-y-2">
+                  {/* Student picker */}
                   <select
                     value={newRequestStudentId}
                     onChange={(e) => {
@@ -535,6 +534,7 @@ export default function WorkflowStep2Requests({
                     ))}
                   </select>
 
+                  {/* Job picker — auto-fills Title + Company */}
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Pick from Jobs</label>
                     <select
@@ -566,6 +566,7 @@ export default function WorkflowStep2Requests({
                     <p className="text-[10px] text-slate-400 mt-0.5">Selects a job and auto-fills Title & Company below</p>
                   </div>
 
+                  {/* Editable title */}
                   <input
                     placeholder="Position Title"
                     value={newRequestTitle}
@@ -573,6 +574,7 @@ export default function WorkflowStep2Requests({
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />
 
+                  {/* Editable company */}
                   <input
                     placeholder="Company / Employer"
                     value={newRequestCompany}
@@ -580,6 +582,7 @@ export default function WorkflowStep2Requests({
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                   />
 
+                  {/* RTO (auto-filled from student, editable) */}
                   <input
                     placeholder="RTO (auto-filled from student)"
                     value={newRequestRto}
@@ -650,6 +653,7 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
 
+        {/* Table Subheader Count & Views */}
         <div className="flex justify-between items-center px-1">
           <p className="text-xs text-slate-500 font-medium">{filteredRequests.length} requests found</p>
           <div className="flex items-center space-x-3">
@@ -697,6 +701,7 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
 
+        {/* Table */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
@@ -714,7 +719,6 @@ export default function WorkflowStep2Requests({
                 <th className="p-4">Company</th>
                 <th className="p-4">RTO / Institute</th>
                 <th className="p-4">Status</th>
-                <th className="p-4">Contacted Industries</th>
                 <th className="p-4">Requested On</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
@@ -723,14 +727,12 @@ export default function WorkflowStep2Requests({
               {paginatedRequests.map((item, i) => {
                 const isSelected = selectedRequest ? selectedRequest.id === item.reqId : false;
                 const isRowSelected = selectedRows.includes(item.reqId);
-                const contactCount = (item.contactedIndustries || []).length;
                 return (
                   <tr
                     key={i}
                     onClick={() => {
                       setSelectedRequest({
                         id: item.reqId,
-                        dbId: item.id || item.reqId,
                         title: item.title,
                         student: item.student,
                         studentId: item.studentId || 'STU-0002453',
@@ -774,11 +776,6 @@ export default function WorkflowStep2Requests({
                         {item.status}
                       </span>
                     </td>
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${contactCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-400'}`}>
-                        {contactCount} contacted
-                      </span>
-                    </td>
                     <td className="p-4 text-slate-500">{item.date}</td>
                     <td className="p-4 text-right relative" onClick={(e) => e.stopPropagation()}>
                       <button
@@ -809,7 +806,7 @@ export default function WorkflowStep2Requests({
               })}
               {paginatedRequests.length === 0 && (
                 <tr>
-                  <td colSpan="9" className="p-8 text-center text-slate-400 text-sm">
+                  <td colSpan="8" className="p-8 text-center text-slate-400 text-sm">
                     No requests found matching your filters
                   </td>
                 </tr>
@@ -817,6 +814,7 @@ export default function WorkflowStep2Requests({
             </tbody>
           </table>
 
+          {/* Pagination */}
           <div className="p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
             <p>Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredRequests.length)} of {filteredRequests.length} results</p>
             <div className="flex items-center space-x-2">
@@ -888,6 +886,7 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
 
+        {/* Navigation Buttons */}
         <div className="flex justify-between pt-2">
           {onBack ? (
             <button
@@ -910,9 +909,12 @@ export default function WorkflowStep2Requests({
         </div>
       </div>
 
+      {/* Right Drawer / Detail Panel - Professional Mini Card */}
       {showDrawer && selectedRequest && (
         <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
+          {/* Card Header with Gradient */}
           <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-purple-900 p-5">
+            {/* Decorative elements */}
             <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
             <div className="absolute bottom-0 left-0 w-16 h-16 bg-blue-400/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
 
@@ -935,6 +937,7 @@ export default function WorkflowStep2Requests({
               </button>
             </div>
 
+            {/* Key info badges */}
             <div className="relative mt-4 flex items-center space-x-2">
               <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
                 <Briefcase className="w-2.5 h-2.5 text-purple-300" />
@@ -951,6 +954,7 @@ export default function WorkflowStep2Requests({
             </div>
           </div>
 
+          {/* Tabs */}
           <div className="flex border-b border-slate-100 px-4 text-[11px] font-semibold text-slate-500 space-x-3 bg-white overflow-x-auto">
             {['Overview', 'Contact History', 'Timeline', 'Details'].map((tab) => (
               <button
@@ -967,6 +971,7 @@ export default function WorkflowStep2Requests({
             ))}
           </div>
 
+          {/* Drawer Content */}
           <div className="p-5 space-y-4 text-xs">
             {activeTab === 'Contact History' ? (
               <div className="space-y-3">
@@ -985,13 +990,13 @@ export default function WorkflowStep2Requests({
                   </button>
                 </div>
 
-                {currentContacts.length === 0 ? (
+                {((contactRecordsMap[selectedRequest?.dbId || selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length === 0 ? (
                   <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
                     No industries contacted yet for this student. Click "+ Add Industry" above to record one.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {currentContacts.map((rec, index) => (
+                    {((contactRecordsMap[selectedRequest?.dbId || selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).map((rec, index) => (
                       <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
                         <div className="flex items-start justify-between">
                           <div>
@@ -1004,29 +1009,15 @@ export default function WorkflowStep2Requests({
                         </div>
                         <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>
                         <p className="text-[10px] text-slate-500">📍 {rec.address}</p>
-                        {rec.appointmentDate && (
-                          <div className="text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-md">
-                            📅 Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
-                          </div>
-                        )}
                         <div className="pt-1.5 border-t border-slate-200/60 mt-1 space-y-1">
                           <p className="text-[10px] text-slate-700 font-medium">
                             <span className="font-bold text-slate-900">Notes/Discussion: </span>
                             {rec.notes}
                           </p>
                           {rec.response && (
-                            <p className={`text-[10px] font-bold px-2 py-0.5 rounded-md inline-block ${
-                              rec.response.toLowerCase().includes('approv') || rec.response.toLowerCase().includes('positive')
-                                ? 'text-emerald-700 bg-emerald-50'
-                                : rec.response.toLowerCase().includes('reject') || rec.response.toLowerCase().includes('declin')
-                                ? 'text-rose-700 bg-rose-50'
-                                : 'text-amber-700 bg-amber-50'
-                            }`}>
+                            <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
                               Response: {rec.response}
                             </p>
-                          )}
-                          {(rec.contactedDate || rec.date) && (
-                            <p className="text-[9px] text-slate-400">Date: {rec.contactedDate || rec.date}</p>
                           )}
                         </div>
                       </div>
@@ -1036,6 +1027,7 @@ export default function WorkflowStep2Requests({
               </div>
             ) : (
               <>
+                {/* Key Stats Row */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
                     <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Duration</p>
@@ -1048,11 +1040,12 @@ export default function WorkflowStep2Requests({
                   <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
                     <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Contacted</p>
                     <p className="text-sm font-bold text-blue-600 mt-0.5">
-                      {currentContacts.length}
+                      {((contactRecordsMap[selectedRequest?.dbId || selectedRequest?.id] || contactRecordsMap['REQ-001']) || []).length}
                     </p>
                   </div>
                 </div>
 
+                {/* Quick Actions */}
                 <div className="pt-2 border-t border-slate-100 space-y-2">
                   <button
                     type="button"
@@ -1074,6 +1067,7 @@ export default function WorkflowStep2Requests({
               </>
             )}
 
+            {/* Footer Meta */}
             <div className="pt-3 border-t border-slate-100 space-y-1.5 text-[10px] text-slate-400">
               <div className="flex justify-between">
                 <span>Request ID</span>
@@ -1088,6 +1082,7 @@ export default function WorkflowStep2Requests({
         </div>
       )}
 
+      {/* Add Industry Contact Record Modal (Req #8 & #9) */}
       {showAddOrgModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
@@ -1158,7 +1153,7 @@ export default function WorkflowStep2Requests({
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Phone Number</label>
                   <input
                     type="text"
-                    placeholder="e.g. 03 9123 4567"
+                    placeholder="+61 3 1234 5678"
                     value={orgForm.phone}
                     onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
@@ -1167,10 +1162,10 @@ export default function WorkflowStep2Requests({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Address</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Physical Address</label>
                 <input
                   type="text"
-                  placeholder="e.g. 123 High St, Melbourne VIC"
+                  placeholder="Street Address, Suburb, State"
                   value={orgForm.address}
                   onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
@@ -1178,74 +1173,47 @@ export default function WorkflowStep2Requests({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Response Status</label>
-                <select
-                  value={orgForm.response}
-                  onChange={(e) => setOrgForm({ ...orgForm, response: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
-                >
-                  <option value="In Discussion">In Discussion</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Rejected">Rejected</option>
-                  <option value="Pending">Pending</option>
-                </select>
-              </div>
-
-              {/* NEW: Appointment Date & Time Fields */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Proposed Appointment Date
-                  </label>
-                  <input
-                    type="date"
-                    value={orgForm.appointmentDate}
-                    onChange={(e) => setOrgForm({ ...orgForm, appointmentDate: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Proposed Appointment Time
-                  </label>
-                  <input
-                    type="time"
-                    value={orgForm.appointmentTime}
-                    onChange={(e) => setOrgForm({ ...orgForm, appointmentTime: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Discussion Notes / Response *</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Discussion Notes & Response *</label>
                 <textarea
-                  rows={3}
-                  placeholder="Summary of the conversation, requirements, next steps..."
+                  rows="3"
+                  placeholder="Record what was discussed with the organisation including their response regarding student placement..."
                   value={orgForm.notes}
                   onChange={(e) => setOrgForm({ ...orgForm, notes: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
-                />
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
+                ></textarea>
               </div>
             </div>
 
-            <div className="flex space-x-2 pt-2">
+            <div className="flex space-x-3 pt-2">
               <button
-                onClick={handleAddOrgRecord}
-                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-xl transition-all duration-500 cursor-pointer"
-              >
-                Save Contact Record
-              </button>
-              <button
+                type="button"
                 onClick={() => setShowAddOrgModal(false)}
-                className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition"
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddOrgRecord}
+                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+              >
+                Save Record
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// Internal SVG Helper Icons
+function XCircleIcon(props) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="15" y1="9" x2="9" y2="15"></line>
+      <line x1="9" y1="9" x2="15" y2="15"></line>
+    </svg>
   );
 }

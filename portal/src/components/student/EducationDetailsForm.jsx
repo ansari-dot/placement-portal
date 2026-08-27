@@ -1,30 +1,21 @@
 import { useState, useEffect } from 'react';
 import {
-  GraduationCap, Calendar, ChevronDown, Upload, Info
+  GraduationCap, ChevronDown, Info, X, Upload, Plus, Trash2, ShieldCheck
 } from 'lucide-react';
 import { fetchRtos } from '../../api/rtoApi';
-
-const defaultActiveRtos = [
-  'Care Education',
-  'ACTIT College',
-  'AI Global Institute',
-  'Bright Futures',
-  'Kingsford Institute',
-  'Victoria Training',
-  'Skill Australia',
-  'Northern College',
-  'Sydney City College',
-  'Melbourne Institute of Technology',
-  'Other',
-];
 
 const studentSources = [
   'Walk-in',
   'Social Media',
-  'RTO Referral',
-  'Website',
-  'Agent',
-  'Other relevant sources',
+  'Other',
+];
+
+const studyModes = [
+  'Full Time',
+  'Part Time',
+  'Online',
+  'Blended',
+  'Flexible',
 ];
 
 const courses = [
@@ -46,39 +37,6 @@ const courses = [
   'Other',
 ];
 
-const courseLevels = [
-  'Certificate I', 'Certificate II', 'Certificate III', 'Certificate IV',
-  'Diploma', 'Advanced Diploma', 'Associate Degree', 'Bachelor Degree',
-  'Graduate Certificate', 'Graduate Diploma', 'Master Degree', 'Doctoral Degree',
-  'Other',
-];
-
-const studyModes = [
-  'Full Time', 'Part Time', 'Online', 'Blended', 'Flexible',
-];
-
-const yearSemesters = [
-  '1st Year / Semester 1', '1st Year / Semester 2',
-  '2nd Year / Semester 1', '2nd Year / Semester 2', '2nd Year / Semester 3', '2nd Year / Semester 4',
-  '3rd Year / Semester 1', '3rd Year / Semester 2', '3rd Year / Semester 3', '3rd Year / Semester 4',
-  '4th Year / Semester 1', '4th Year / Semester 2', '4th Year / Semester 3', '4th Year / Semester 4',
-  'Final Year', 'Completed',
-];
-
-const attendanceStatuses = [
-  'Regular', 'Irregular', 'On Leave', 'Suspended', 'Withdrawn',
-];
-
-const academicStatuses = [
-  'Good Standing', 'Conditional', 'Probation', 'At Risk', 'Suspended', 'Excluded',
-];
-
-const previousQualifications = [
-  'High School Diploma', 'Certificate I', 'Certificate II', 'Certificate III',
-  'Certificate IV', 'Diploma', 'Advanced Diploma', 'Bachelor Degree',
-  'Master Degree', 'Other',
-];
-
 const inputClass = (hasError) =>
   `w-full px-3.5 py-2.5 bg-white border rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition ${
     hasError ? 'border-rose-400 focus:ring-2 focus:ring-rose-100' : 'border-slate-200'
@@ -91,26 +49,67 @@ const selectClass = (hasError) =>
       : 'border-slate-200 text-slate-800'
   }`;
 
-// Generate year options
-const currentYear = new Date().getFullYear();
-const years = Array.from({ length: 40 }, (_, i) => String(currentYear - i));
-
 export default function EducationDetailsForm({ formData, updateField, errors }) {
-  const [activeRtos, setActiveRtos] = useState(defaultActiveRtos);
+  const [activeRtos, setActiveRtos] = useState([]);
+  const [loadingRtos, setLoadingRtos] = useState(true);
+  const [isOtherSource, setIsOtherSource] = useState(
+    Boolean(
+      formData.studentSource &&
+      formData.studentSource !== 'Walk-in' &&
+      formData.studentSource !== 'Social Media'
+    )
+  );
 
   useEffect(() => {
-    fetchRtos({ status: 'Active' })
+    let isMounted = true;
+    setLoadingRtos(true);
+    fetchRtos()
       .then(res => {
-        if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-          const names = res.data.map(r => r.name).filter(Boolean);
-          if (names.length > 0) {
-            const combined = Array.from(new Set([...names, ...defaultActiveRtos]));
-            setActiveRtos(combined);
-          }
-        }
+        if (!isMounted) return;
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const names = list
+          .map(r => (typeof r === 'string' ? r : r?.name))
+          .filter(Boolean);
+        const uniqueNames = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+        setActiveRtos(uniqueNames);
       })
-      .catch(() => {});
+      .catch(err => {
+        console.error('Failed to fetch RTOs/Colleges from backend:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoadingRtos(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const handleAddCustomDoc = () => {
+    const current = Array.isArray(formData.additionalDocuments) ? formData.additionalDocuments : [];
+    updateField('additionalDocuments', [...current, { title: '', file: null }]);
+  };
+
+  const handleUpdateCustomDocTitle = (index, title) => {
+    const updated = [...(formData.additionalDocuments || [])];
+    updated[index] = { ...updated[index], title };
+    updateField('additionalDocuments', updated);
+  };
+
+  const handleUpdateCustomDocFile = (index, file) => {
+    const updated = [...(formData.additionalDocuments || [])];
+    updated[index] = { ...updated[index], file };
+    updateField('additionalDocuments', updated);
+  };
+
+  const handleRemoveCustomDoc = (index) => {
+    const updated = (formData.additionalDocuments || []).filter((_, i) => i !== index);
+    updateField('additionalDocuments', updated);
+  };
+
+  const isOtherCollege = (formData.institute || formData.assignedRto) === 'Other';
 
   return (
     <div className="w-full font-sans">
@@ -129,8 +128,8 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
 
         {/* Form Body */}
         <div className="p-6 space-y-6">
-          {/* Row 1: Course / Qualification, Specialisation, Course Level, Study Mode */}
-          <div className="grid grid-cols-4 gap-5">
+          {/* Row 1: Course/Qualification (Mandatory), Study Mode (Mandatory) */}
+          <div className="grid grid-cols-2 gap-5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course / Qualification <span className="text-rose-500">*</span></label>
               <div className="relative">
@@ -152,42 +151,12 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Specialisation (optional)</label>
-              <input
-                type="text"
-                placeholder="Enter specialisation"
-                value={formData.specialisation}
-                onChange={(e) => updateField('specialisation', e.target.value)}
-                className={inputClass()}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course Level (optional)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Study Mode <span className="text-rose-500">*</span></label>
               <div className="relative">
                 <select
-                  value={formData.courseLevel}
-                  onChange={(e) => updateField('courseLevel', e.target.value)}
-                  className={selectClass()}
-                >
-                  <option value="">Select course level</option>
-                  {courseLevels.map((l) => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Study Mode (optional)</label>
-              <div className="relative">
-                <select
-                  value={formData.studyMode}
+                  value={formData.studyMode || ''}
                   onChange={(e) => updateField('studyMode', e.target.value)}
-                  className={selectClass()}
+                  className={selectClass(errors?.studyMode)}
                 >
                   <option value="">Select study mode</option>
                   {studyModes.map((m) => (
@@ -198,11 +167,12 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   <ChevronDown size={14} />
                 </span>
               </div>
+              {errors?.studyMode && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.studyMode}</p>}
             </div>
           </div>
 
-          {/* Row 2: Enrollment ID, College / RTO, Campus, Student Source */}
-          <div className="grid grid-cols-4 gap-5">
+          {/* Row 2: Enrollment ID, College / RTO, Student Source (only when College/RTO = Other) */}
+          <div className="grid grid-cols-3 gap-5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Enrollment / Student ID</label>
               <input
@@ -218,17 +188,27 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO (optional)</label>
               <div className="relative">
                 <select
-                  value={formData.institute || formData.assignedRto}
+                  value={formData.institute || formData.assignedRto || ''}
                   onChange={(e) => {
-                    updateField('institute', e.target.value);
-                    updateField('assignedRto', e.target.value);
+                    const val = e.target.value;
+                    updateField('institute', val);
+                    updateField('assignedRto', val);
                   }}
+                  disabled={loadingRtos}
                   className={selectClass()}
                 >
-                  <option value="">Select College / RTO</option>
+                  <option value="">{loadingRtos ? 'Loading College / RTO...' : 'Select College / RTO'}</option>
+                  {(formData.institute || formData.assignedRto) &&
+                    !activeRtos.includes(formData.institute || formData.assignedRto) &&
+                    (formData.institute || formData.assignedRto) !== 'Other' && (
+                      <option value={formData.institute || formData.assignedRto}>
+                        {formData.institute || formData.assignedRto}
+                      </option>
+                    )}
                   {activeRtos.map((rto) => (
                     <option key={rto} value={rto}>{rto}</option>
                   ))}
+                  <option value="Other">Other</option>
                 </select>
                 <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
                   <ChevronDown size={14} />
@@ -236,193 +216,162 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Campus / Location</label>
-              <input
-                type="text"
-                placeholder="Enter campus or location"
-                value={formData.campus}
-                onChange={(e) => updateField('campus', e.target.value)}
-                className={inputClass()}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Student Source (optional)</label>
-              <div className="relative">
-                <select
-                  value={formData.studentSource}
-                  onChange={(e) => updateField('studentSource', e.target.value)}
-                  className={selectClass()}
-                >
-                  <option value="">Select source</option>
-                  {studentSources.map((src) => (
-                    <option key={src} value={src}>{src}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
+            {isOtherCollege && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Student Source (optional)</label>
+                {isOtherSource || (formData.studentSource && formData.studentSource !== 'Walk-in' && formData.studentSource !== 'Social Media') ? (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Type source (e.g. Referral, Website...)"
+                      value={formData.studentSource === 'Other' ? '' : formData.studentSource || ''}
+                      onChange={(e) => updateField('studentSource', e.target.value)}
+                      className={`${inputClass()} pr-8`}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOtherSource(false);
+                        updateField('studentSource', '');
+                      }}
+                      title="Switch back to options"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <select
+                      value={formData.studentSource || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'Other') {
+                          setIsOtherSource(true);
+                          updateField('studentSource', '');
+                        } else {
+                          setIsOtherSource(false);
+                          updateField('studentSource', val);
+                        }
+                      }}
+                      className={selectClass()}
+                    >
+                      <option value="">Select source</option>
+                      {studentSources.map((src) => (
+                        <option key={src} value={src}>{src}</option>
+                      ))}
+                    </select>
+                    <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                      <ChevronDown size={14} />
+                    </span>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Row 3: Start Date, Expected End Date, Current Year/Semester, Attendance Status, Academic Status */}
-          <div className="grid grid-cols-5 gap-5">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Start Date (optional)</label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => updateField('startDate', e.target.value)}
-                  className={`${inputClass()} pr-9 [color-scheme:light]`}
-                />
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Calendar size={16} />
-                </span>
+          {/* Section: Compliance & Verification Documents */}
+          <div className="pt-2 border-t border-slate-100 space-y-4">
+            <div className="flex items-center space-x-2">
+              <ShieldCheck size={16} className="text-blue-600" />
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Compliance & Check Documents</h4>
+            </div>
+
+            <div className="grid grid-cols-2 gap-5">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">Police Check Document</label>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
+                    Most Preferable
+                  </span>
+                </div>
+                <label className="w-full px-3.5 py-2.5 bg-white border border-dashed border-amber-300 hover:border-amber-500 rounded-xl flex items-center space-x-2 cursor-pointer transition">
+                  <Upload size={16} className="text-amber-600 shrink-0" />
+                  <span className="text-xs font-semibold text-amber-700 truncate">
+                    {formData.policeCheckDoc ? (formData.policeCheckDoc.name || formData.policeCheckDoc) : 'Upload Police Check'}
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => updateField('policeCheckDoc', e.target.files[0])}
+                  />
+                </label>
+                <p className="text-[10px] text-amber-700/80 font-medium mt-1">National Police Certificate (Most preferred for placement)</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">COVID-19 Check Document (optional)</label>
+                <label className="w-full px-3.5 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl flex items-center space-x-2 cursor-pointer hover:border-blue-600 transition">
+                  <Upload size={16} className="text-blue-600 shrink-0" />
+                  <span className="text-xs font-semibold text-blue-600 truncate">
+                    {formData.covidCheckDoc ? (formData.covidCheckDoc.name || formData.covidCheckDoc) : 'Upload COVID-19 Report'}
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => updateField('covidCheckDoc', e.target.files[0])}
+                  />
+                </label>
+                <p className="text-[10px] text-slate-400 mt-1">Vaccination Certificate / Test Report (PDF/JPG/PNG)</p>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Expected End Date (optional)</label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={formData.expectedEndDate}
-                  onChange={(e) => updateField('expectedEndDate', e.target.value)}
-                  className={`${inputClass()} pr-9 [color-scheme:light]`}
-                />
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Calendar size={16} />
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Current Year / Semester (optional)</label>
-              <div className="relative">
-                <select
-                  value={formData.currentYearSemester}
-                  onChange={(e) => updateField('currentYearSemester', e.target.value)}
-                  className={selectClass()}
+            {/* Dynamic Custom Document Addition Bar */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="text-xs font-bold text-slate-800">Additional Custom Documents / Requirements</h5>
+                  <p className="text-[10px] text-slate-400">Add any extra documents manually with a custom title (e.g. NDIS Screening, First Aid, Flu Vaccine).</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddCustomDoc}
+                  className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition cursor-pointer"
                 >
-                  <option value="">Select year / semester</option>
-                  {yearSemesters.map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
+                  <Plus size={14} />
+                  <span>Add Custom Document</span>
+                </button>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Attendance Status (optional)</label>
-              <div className="relative">
-                <select
-                  value={formData.attendanceStatus}
-                  onChange={(e) => updateField('attendanceStatus', e.target.value)}
-                  className={selectClass()}
-                >
-                  <option value="">Select attendance status</option>
-                  {attendanceStatuses.map((a) => (
-                    <option key={a} value={a}>{a}</option>
+              {Array.isArray(formData.additionalDocuments) && formData.additionalDocuments.length > 0 && (
+                <div className="space-y-2.5">
+                  {formData.additionalDocuments.map((docItem, idx) => (
+                    <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          placeholder="Document Title (e.g. NDIS Check, First Aid Certificate)"
+                          value={docItem.title || ''}
+                          onChange={(e) => handleUpdateCustomDocTitle(idx, e.target.value)}
+                          className={inputClass()}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="w-full px-3.5 py-2 bg-white border border-dashed border-slate-300 rounded-xl flex items-center space-x-2 cursor-pointer hover:border-blue-600 transition">
+                          <Upload size={14} className="text-blue-600 shrink-0" />
+                          <span className="text-xs font-semibold text-blue-600 truncate">
+                            {docItem.file ? (docItem.file.name || docItem.file) : 'Upload File'}
+                          </span>
+                          <input
+                            type="file"
+                            className="hidden"
+                            onChange={(e) => handleUpdateCustomDocFile(idx, e.target.files[0])}
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomDoc(idx)}
+                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                        title="Remove Document"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Academic Status <span className="text-rose-500">*</span></label>
-              <div className="relative">
-                <select
-                  value={formData.academicStatus}
-                  onChange={(e) => updateField('academicStatus', e.target.value)}
-                  className={selectClass(errors?.academicStatus)}
-                >
-                  <option value="">Select academic status</option>
-                  {academicStatuses.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-              {errors?.academicStatus && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.academicStatus}</p>}
-            </div>
-          </div>
-
-          {/* Row 4: GPA, Previous Qualification, Year of Completion, Upload Documents */}
-          <div className="grid grid-cols-4 gap-5">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">GPA / Percentage</label>
-              <input
-                type="text"
-                placeholder="Enter GPA or percentage"
-                value={formData.gpa}
-                onChange={(e) => updateField('gpa', e.target.value)}
-                className={inputClass()}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Previous Qualification</label>
-              <div className="relative">
-                <select
-                  value={formData.previousQualification}
-                  onChange={(e) => updateField('previousQualification', e.target.value)}
-                  className={selectClass()}
-                >
-                  <option value="">Select previous qualification</option>
-                  {previousQualifications.map((q) => (
-                    <option key={q} value={q}>{q}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Year of Completion</label>
-              <div className="relative">
-                <select
-                  value={formData.yearOfCompletion}
-                  onChange={(e) => updateField('yearOfCompletion', e.target.value)}
-                  className={selectClass()}
-                >
-                  <option value="">Select year</option>
-                  {years.map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Calendar size={16} />
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Upload Documents (optional)</label>
-              <label className="w-full px-3.5 py-2 bg-white border border-dashed border-slate-300 rounded-xl flex items-center space-x-2 cursor-pointer hover:border-blue-600 transition">
-                <Upload size={16} className="text-blue-600 shrink-0" />
-                <span className="text-xs font-semibold text-blue-600">
-                  {formData.documents ? formData.documents.name : 'Upload Files'}
-                </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => updateField('documents', e.target.files[0])}
-                />
-              </label>
-              <p className="text-[10px] text-slate-400 mt-1">PDF, JPG, PNG (Max. 5MB each)</p>
+                </div>
+              )}
             </div>
           </div>
 
