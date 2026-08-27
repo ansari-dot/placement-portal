@@ -219,6 +219,25 @@ const studentSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    licenceNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    policeCheckDoc: {
+      type: String,
+      default: null,
+    },
+    covidCheckDoc: {
+      type: String,
+      default: null,
+    },
+    additionalDocuments: [
+      {
+        title: { type: String, trim: true, default: "" },
+        file: { type: String, default: "" },
+      }
+    ],
     preferredLocation: {
       type: String,
       trim: true,
@@ -228,6 +247,10 @@ const studentSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: "",
+    },
+    placementSite: {
+      type: mongoose.Schema.Types.Mixed,
+      default: [],
     },
     preferredIndustry: {
       type: mongoose.Schema.Types.Mixed,

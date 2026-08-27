@@ -137,23 +137,68 @@ export const createInternshipRequest = async (workflowId, requestData) => {
   return request;
 };
 
+// FIXED: previously this function replaced the whole subdocument with a
+// spread-plain-object built from validated data that ALWAYS included every
+// zod-default field (rto: "", workType: "", status: "New", priority:
+// "Normal", notes: "" ...) even when the caller only wanted to push a
+// contacted-industry record. That silently wiped out real request data on
+// every "Add Industry" click and could return null (404) if anything
+// downstream choked. Now we only ever touch the subdocument fields that
+// were actually passed in `requestData`, and we push contacts without
+// touching anything else.
 export const updateInternshipRequest = async (workflowId, requestId, requestData) => {
   const workflow = await WorkflowModel.findById(workflowId);
   if (!workflow) return null;
 
-  const requestIndex = workflow.requests.findIndex(
-    (r) => r._id.toString() === requestId
-  );
+  const normalizedId = String(requestId || "").trim();
+
+  const requestIndex = workflow.requests.findIndex((r) => {
+    return (
+      String(r._id) === normalizedId ||
+      (r.reqId && r.reqId === normalizedId) ||
+      (r.id && String(r.id) === normalizedId)
+    );
+  });
   if (requestIndex === -1) return null;
 
-  // Sync update with stand-alone InternshipRequest collection
-  await InternshipRequestModel.findByIdAndUpdate(requestId, requestData, { runValidators: true });
+  const matchedRequest = workflow.requests[requestIndex];
+  const actualDbId = matchedRequest._id;
 
-  workflow.requests[requestIndex] = {
-    ...workflow.requests[requestIndex].toObject(),
-    ...requestData,
-  };
+  const { contactedIndustries: newContacts, ...otherFields } = requestData || {};
+
+  // Push new contact records — never overwrite the existing array
+  if (Array.isArray(newContacts) && newContacts.length > 0) {
+    matchedRequest.contactedIndustries.push(...newContacts);
+  }
+
+  // Apply only fields that were explicitly provided, directly onto the
+  // live subdocument (keeps it a real Mongoose subdocument, no risky
+  // plain-object replace).
+  Object.keys(otherFields).forEach((key) => {
+    matchedRequest[key] = otherFields[key];
+  });
+
   await workflow.save();
+
+  // Best-effort sync to the standalone collection (only used for reqId
+  // generation) — this must NEVER be able to break the real update above.
+  try {
+    if (Array.isArray(newContacts) && newContacts.length > 0) {
+      await InternshipRequestModel.findByIdAndUpdate(
+        actualDbId,
+        { $push: { contactedIndustries: { $each: newContacts } } },
+        { runValidators: true }
+      );
+    }
+    if (Object.keys(otherFields).length > 0) {
+      await InternshipRequestModel.findByIdAndUpdate(actualDbId, otherFields, {
+        runValidators: true,
+      });
+    }
+  } catch (dbErr) {
+    console.warn("InternshipRequestModel sync skipped:", dbErr.message);
+  }
+
   return workflow.requests[requestIndex];
 };
 
@@ -167,7 +212,11 @@ export const deleteInternshipRequest = async (workflowId, requestId) => {
   if (requestIndex === -1) return null;
 
   // Sync deletion with stand-alone InternshipRequest collection
-  await InternshipRequestModel.findByIdAndDelete(requestId);
+  try {
+    await InternshipRequestModel.findByIdAndDelete(requestId);
+  } catch (dbErr) {
+    console.warn("InternshipRequestModel delete sync skipped:", dbErr.message);
+  }
 
   const [removed] = workflow.requests.splice(requestIndex, 1);
   await workflow.save();
@@ -187,7 +236,6 @@ export const createAppointment = async (workflowId, appointmentData) => {
   workflow.appointments.push(appointment);
   await workflow.save();
 
-  // Trigger Notification
   try {
     await NotificationModel.create({
       title: "Appointment Scheduled",
@@ -211,12 +259,13 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
   );
   if (appointmentIndex === -1) return null;
 
-  // Sync update with stand-alone Appointment collection
-  const updatedAppt = await AppointmentModel.findByIdAndUpdate(
-    appointmentId,
-    appointmentData,
-    { returnDocument: "after", runValidators: true }
-  );
+  try {
+    await AppointmentModel.findByIdAndUpdate(appointmentId, appointmentData, {
+      runValidators: true,
+    });
+  } catch (dbErr) {
+    console.warn("AppointmentModel sync skipped:", dbErr.message);
+  }
 
   Object.assign(workflow.appointments[appointmentIndex], appointmentData);
   await workflow.save();
@@ -232,8 +281,11 @@ export const deleteAppointment = async (workflowId, appointmentId) => {
   );
   if (appointmentIndex === -1) return null;
 
-  // Sync deletion with stand-alone Appointment collection
-  await AppointmentModel.findByIdAndDelete(appointmentId);
+  try {
+    await AppointmentModel.findByIdAndDelete(appointmentId);
+  } catch (dbErr) {
+    console.warn("AppointmentModel delete sync skipped:", dbErr.message);
+  }
 
   const [removed] = workflow.appointments.splice(appointmentIndex, 1);
   await workflow.save();
@@ -253,7 +305,6 @@ export const createInternship = async (workflowId, internshipData) => {
   workflow.internships.push(internship);
   await workflow.save();
 
-  // Trigger Notification
   try {
     await NotificationModel.create({
       title: "Internship Placement Created",
@@ -277,13 +328,17 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
   );
   if (internshipIndex === -1) return null;
 
-  // Sync update with stand-alone Internship collection
-  await InternshipModel.findByIdAndUpdate(internshipId, internshipData, { runValidators: true });
+  try {
+    await InternshipModel.findByIdAndUpdate(internshipId, internshipData, {
+      runValidators: true,
+    });
+  } catch (dbErr) {
+    console.warn("InternshipModel sync skipped:", dbErr.message);
+  }
 
-  workflow.internships[internshipIndex] = {
-    ...workflow.internships[internshipIndex].toObject(),
-    ...internshipData,
-  };
+  Object.keys(internshipData).forEach((key) => {
+    workflow.internships[internshipIndex][key] = internshipData[key];
+  });
   await workflow.save();
   return workflow.internships[internshipIndex];
 };
@@ -297,8 +352,11 @@ export const deleteInternship = async (workflowId, internshipId) => {
   );
   if (internshipIndex === -1) return null;
 
-  // Sync deletion with stand-alone Internship collection
-  await InternshipModel.findByIdAndDelete(internshipId);
+  try {
+    await InternshipModel.findByIdAndDelete(internshipId);
+  } catch (dbErr) {
+    console.warn("InternshipModel delete sync skipped:", dbErr.message);
+  }
 
   const [removed] = workflow.internships.splice(internshipIndex, 1);
   await workflow.save();
@@ -329,7 +387,6 @@ export const getWorkflowDashboardData = async () => {
     WorkflowModel.find().sort({ updatedAt: -1 }).limit(5)
   ]);
 
-  // Breakdown for Internship Requests
   const requestsStats = {
     pending: requests.filter((r) => ["New", "Coordinator Review", "RTO Review"].includes(r.status)).length,
     assigned: requests.filter((r) => ["Coordinator Review", "RTO Review"].includes(r.status)).length,
@@ -340,14 +397,12 @@ export const getWorkflowDashboardData = async () => {
     declined: requests.filter((r) => r.status === "Rejected").length,
   };
 
-  // Breakdown for Appointments
   const appointmentsStats = {
     scheduled: appointments.filter((a) => ["Scheduled", "Rescheduled"].includes(a.status)).length,
     completed: appointments.filter((a) => a.status === "Completed").length,
     cancelled: appointments.filter((a) => ["Cancelled", "No Show"].includes(a.status)).length,
   };
 
-  // Breakdown for Internships
   const internshipsStats = {
     active: internships.filter((i) => i.status === "Active").length,
     joined: internships.filter((i) => i.status === "Joined").length,
@@ -357,7 +412,6 @@ export const getWorkflowDashboardData = async () => {
     cancelled: internships.filter((i) => i.status === "Cancelled").length,
   };
 
-  // Format Recent Activity Feed from actual database records
   const rawActivities = [];
 
   requests.slice(0, 5).forEach((r) => {
@@ -390,7 +444,6 @@ export const getWorkflowDashboardData = async () => {
     });
   });
 
-  // Sort activities by most recent timestamp first
   rawActivities.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   const recentActivities = rawActivities.slice(0, 5).map((act) => {
@@ -412,7 +465,6 @@ export const getWorkflowDashboardData = async () => {
     };
   });
 
-  // 6-Month Trend Data for Requests vs Placements Chart
   const months = [];
   const now = new Date();
   for (let i = 5; i >= 0; i--) {
@@ -420,14 +472,12 @@ export const getWorkflowDashboardData = async () => {
     const monthName = d.toLocaleString("en-US", { month: "short" });
     const year = d.getFullYear();
     const monthKey = `${monthName} ${year}`;
-    
-    // Count requests in this month
+
     const reqCount = requests.filter((r) => {
       const rDate = new Date(r.createdAt || now);
       return rDate.getMonth() === d.getMonth() && rDate.getFullYear() === d.getFullYear();
     }).length;
 
-    // Count placements (Approved requests or active internships) in this month
     const placeCount = internships.filter((intItem) => {
       const iDate = new Date(intItem.createdAt || now);
       return iDate.getMonth() === d.getMonth() && iDate.getFullYear() === d.getFullYear();

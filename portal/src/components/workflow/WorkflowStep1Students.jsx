@@ -10,7 +10,8 @@ export default function WorkflowStep1Students({
   students = [], 
   initialSelectedStudentIds = [], 
   onToggleStudent, 
-  onNext 
+  onNext,
+  internshipRequestMap = {}
 }) {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
@@ -111,10 +112,23 @@ export default function WorkflowStep1Students({
     showToast(`${action} applied to ${selectedRows.length} students`);
   };
 
+  // FIX (Bug #1): contactedIndustries ab stu se copy ho raha hai taake
+  // Step 1 profile drawer mein backend se aayi hui industries dikhein
+  // (pehle yeh field pass hi nahi ho rahi thi, isliye drawer hamesha khali dikhta tha)
   const handleRowAction = (action, stu) => {
     setShowRowMenu(null);
     if (action === 'view') {
-      setSelectedStudent({ ...selectedStudent, name: stu.name, email: stu.email, id: stu.id, institute: stu.rto, status: stu.status, addedOn: stu.addedOn });
+      setSelectedStudent({
+        ...selectedStudent,
+        name: stu.name,
+        email: stu.email,
+        id: stu.id,
+        studentId: stu.studentId || stu.id,
+        institute: stu.rto,
+        status: stu.status,
+        addedOn: stu.addedOn,
+        contactedIndustries: stu.contactedIndustries || []
+      });
       setShowDrawer(true);
     } else if (action === 'edit') {
       showToast(`Editing ${stu.name}`);
@@ -455,6 +469,7 @@ export default function WorkflowStep1Students({
                 <th className="p-4">RTO / Institute</th>
                 <th className="p-4">Status</th>
                 <th className="p-4">Placement Status</th>
+                <th className="p-4">Internship Request</th>
                 <th className="p-4">Added On</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
@@ -463,10 +478,28 @@ export default function WorkflowStep1Students({
               {paginatedStudents.map((stu, i) => {
                 const isSelected = selectedStudent?.id === stu.id;
                 const isRowSelected = selectedRows.includes(stu.id);
+                const reqValue = internshipRequestMap[stu.id] || (stu.studentId && internshipRequestMap[stu.studentId]) || (stu.name && internshipRequestMap[stu.name]);
                 return (
                   <tr 
                     key={i} 
-                    onClick={() => { setSelectedStudent({ ...selectedStudent, name: stu.name, email: stu.email, id: stu.id, institute: stu.rto, status: stu.status, addedOn: stu.addedOn }); setShowDrawer(true); }}
+                    onClick={() => {
+                      // FIX (Bug #1): contactedIndustries ab yahan bhi pass ho raha hai
+                      // taake row click se drawer open hone par bhi backend se aayi
+                      // hui contacted industries dikhein (pehle sirf name/email/etc
+                      // pass ho rahe thay, industries ki field missing thi)
+                      setSelectedStudent({
+                        ...selectedStudent,
+                        name: stu.name,
+                        email: stu.email,
+                        id: stu.id,
+                        studentId: stu.studentId || stu.id,
+                        institute: stu.rto,
+                        status: stu.status,
+                        addedOn: stu.addedOn,
+                        contactedIndustries: stu.contactedIndustries || []
+                      });
+                      setShowDrawer(true);
+                    }}
                     className={`cursor-pointer transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
                   >
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
@@ -486,7 +519,7 @@ export default function WorkflowStep1Students({
                         <p className="text-[11px] text-slate-400">{stu.email}</p>
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-slate-700">{stu.id}</td>
+                    <td className="p-4 font-medium text-slate-700">{stu.studentId || stu.id}</td>
                     <td className="p-4 text-slate-600">{stu.rto}</td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -503,6 +536,22 @@ export default function WorkflowStep1Students({
                       }`}>
                         {stu.placementStatus}
                       </span>
+                    </td>
+                    <td className="p-4">
+                      {reqValue ? (
+                        <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                          reqValue === 'Urgent'
+                            ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                            : 'bg-blue-50 text-blue-600 border border-blue-200'
+                        }`}>
+                          {reqValue === 'Urgent' && <span>🔥</span>}
+                          <span>{reqValue} Priority</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">
+                          None
+                        </span>
+                      )}
                     </td>
                     <td className="p-4 text-slate-500">{stu.addedOn}</td>
                     <td className="p-4 text-right relative" onClick={(e) => e.stopPropagation()}>
@@ -538,7 +587,7 @@ export default function WorkflowStep1Students({
               })}
               {paginatedStudents.length === 0 && (
                 <tr>
-                  <td colSpan="8" className="p-8 text-center text-slate-400 text-sm">
+                  <td colSpan="9" className="p-8 text-center text-slate-400 text-sm">
                     No students found matching your search
                   </td>
                 </tr>
@@ -691,7 +740,7 @@ export default function WorkflowStep1Students({
 
         {/* Tabs */}
         <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-5 bg-white">
-          {['Overview', 'Education', 'RTO & Source', 'Notes'].map((tab) => (
+          {['Overview', 'Education', 'RTO & Source', 'Notes', 'Industry Contacts'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -707,7 +756,64 @@ export default function WorkflowStep1Students({
           ))}
         </div>
 
+        
+        {/* Industry Contacts Tab Content */}
+        {activeTab === 'Industry Contacts' && (
+          <div className="p-5 space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Contacted Industries</span>
+              </h5>
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                Total: {(selectedStudent?.contactedIndustries || []).length}
+              </span>
+            </div>
+
+            {(!selectedStudent?.contactedIndustries || selectedStudent.contactedIndustries.length === 0) ? (
+              <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
+                No industries contacted yet for this student.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {selectedStudent.contactedIndustries.map((rec, index) => (
+                  <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-bold text-slate-900 text-xs">{rec.organizationName}</p>
+                        <p className="text-[10px] text-slate-500">{rec.contactPerson} {rec.phone ? `(${rec.phone})` : ''}</p>
+                      </div>
+                      <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${
+                        rec.response?.toLowerCase().includes('approved') || rec.response?.toLowerCase().includes('positive')
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : rec.response?.toLowerCase().includes('reject') || rec.response?.toLowerCase().includes('declined')
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : 'bg-blue-50 text-blue-700 border border-blue-200'
+                      }`}>
+                        {rec.response || 'In Discussion'}
+                      </span>
+                    </div>
+                    {rec.email && <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>}
+                    {rec.address && <p className="text-[10px] text-slate-500">📍 {rec.address}</p>}
+                    {rec.notes && (
+                      <div className="pt-1.5 border-t border-slate-200/60 mt-1">
+                        <p className="text-[10px] text-slate-700 font-medium">
+                          <span className="font-bold text-slate-900">Notes: </span>
+                          {rec.notes}
+                        </p>
+                      </div>
+                    )}
+                    {(rec.contactedDate || rec.date) && <p className="text-[9px] text-slate-400">Date: {rec.contactedDate || rec.date}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+
         {/* Drawer Details Content */}
+        {activeTab !== 'Industry Contacts' && (
         <div className="p-5 space-y-4 text-xs">
           {/* Key Stats Row */}
           <div className="grid grid-cols-3 gap-2">
@@ -862,6 +968,7 @@ export default function WorkflowStep1Students({
             </div>
           </div>
         </div>
+        )}
       </div>
       )}
 

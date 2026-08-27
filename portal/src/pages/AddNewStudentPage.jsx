@@ -9,7 +9,6 @@ import Header from '../components/common/Header';
 import PersonalInformationForm from '../components/student/PersonalInformationForm';
 import EducationDetailsForm from '../components/student/EducationDetailsForm';
 import RtoSourceForm from '../components/student/RtoSourceForm';
-import AdditionalInformationForm from '../components/student/AdditionalInformationForm';
 import ReviewSubmitForm from '../components/student/ReviewSubmitForm';
 
 // Backend API
@@ -56,15 +55,20 @@ const initialFormData = {
   yearOfCompletion: '',
   documents: null,
 
-  // RTO & Source
+  // RTO & Source / Additional Info
   assignedRto: '',
   courses: '',
   internshipPriority: '',
   studentSource: '',
   transport: '',
+  licenceNumber: '',
+  policeCheckDoc: null,
+  covidCheckDoc: null,
+  additionalDocuments: [],
   preferredLocation: '',
   placementRadius: '',
   preferredIndustry: '',
+  placementSite: [],
   availabilityDays: {},
   availabilityFrom: '09:00 AM',
   availabilityTo: '05:00 PM',
@@ -93,14 +97,13 @@ export default function AddNewStudentPage() {
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
-  const totalSteps = 5;
+  const totalSteps = 4;
 
   const steps = [
     { number: 1, title: 'Personal Information', subtitle: 'Basic details of the student' },
     { number: 2, title: 'Education Details', subtitle: 'Course and education info' },
-    { number: 3, title: 'RTO & Source', subtitle: 'RTO and source information' },
-    { number: 4, title: 'Additional Information', subtitle: 'Other relevant details' },
-    { number: 5, title: 'Review & Submit', subtitle: 'Review and save student' },
+    { number: 3, title: 'Additional Information', subtitle: 'Industry, visa & placement preferences' },
+    { number: 4, title: 'Review & Submit', subtitle: 'Review and save student' },
   ];
 
   const updateField = (field, value) => {
@@ -130,9 +133,10 @@ export default function AddNewStudentPage() {
     } else if (step === 2) {
       if (!formData.courseQualification) newErrors.courseQualification = 'Course is required';
     } else if (step === 3) {
-      // All fields optional under RTO & Source
-    } else if (step === 4) {
-      // All fields optional under Additional Info
+      if (formData.transport === 'Yes' && (!formData.licenceNumber || !formData.licenceNumber.trim())) {
+        newErrors.licenceNumber = 'Licence number is required';
+      }
+      if (!formData.visaStatus) newErrors.visaStatus = 'Visa Status is required';
     }
 
     setErrors(newErrors);
@@ -184,6 +188,14 @@ export default function AddNewStudentPage() {
       // File objects cannot be sent as JSON - convert to filename string or null
       if (payload.documents instanceof File) payload.documents = payload.documents.name;
       if (payload.resumeFile instanceof File) payload.resumeFile = payload.resumeFile.name;
+      if (payload.policeCheckDoc instanceof File) payload.policeCheckDoc = payload.policeCheckDoc.name;
+      if (payload.covidCheckDoc instanceof File) payload.covidCheckDoc = payload.covidCheckDoc.name;
+      if (Array.isArray(payload.additionalDocuments)) {
+        payload.additionalDocuments = payload.additionalDocuments.map(item => ({
+          title: item.title || '',
+          file: item.file instanceof File ? item.file.name : item.file || ''
+        }));
+      }
 
       // Date fields need to be in a valid format
       if (payload.dateOfBirth) payload.dateOfBirth = new Date(payload.dateOfBirth);
@@ -221,8 +233,6 @@ export default function AddNewStudentPage() {
       case 3:
         return <RtoSourceForm formData={formData} updateField={updateField} updateFields={updateFields} errors={errors} />;
       case 4:
-        return <AdditionalInformationForm formData={formData} updateField={updateField} errors={errors} />;
-      case 5:
         return <ReviewSubmitForm formData={formData} onEdit={setCurrentStep} confirmed={confirmed} setConfirmed={setConfirmed} />;
       default:
         return <PersonalInformationForm formData={formData} updateField={updateField} errors={errors} />;

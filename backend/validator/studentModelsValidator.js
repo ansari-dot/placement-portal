@@ -137,8 +137,8 @@ export const studentSchema = z.object({
   studyMode: z
     .string()
     .trim()
-    .optional()
-    .default(""),
+    .min(1, "Study mode is required"),
+
 
   enrollmentId: z
     .string()
@@ -235,6 +235,29 @@ export const studentSchema = z.object({
     .optional()
     .default(""),
 
+  licenceNumber: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  policeCheckDoc: z
+    .string()
+    .nullable()
+    .optional()
+    .default(null),
+
+  covidCheckDoc: z
+    .string()
+    .nullable()
+    .optional()
+    .default(null),
+
+  additionalDocuments: z
+    .any()
+    .optional()
+    .default([]),
+
   preferredLocation: z
     .string()
     .trim()
@@ -246,6 +269,11 @@ export const studentSchema = z.object({
     .trim()
     .optional()
     .default(""),
+
+  placementSite: z
+    .any()
+    .optional()
+    .default([]),
 
   preferredIndustry: z
     .any()
