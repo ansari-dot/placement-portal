@@ -257,9 +257,8 @@ export default function WorkflowPage() {
   }, [workflow]);
 
   const mapAppointmentsForStep3 = useCallback(() => {
-    console.log('📋 Mapping appointments from workflow:', workflow?.appointments);
+    console.log('📋 mapAppointmentsForStep3 - appointments:', workflow?.appointments);
     if (!workflow?.appointments || workflow.appointments.length === 0) {
-      console.log('⚠️ No appointments found in workflow');
       return [];
     }
 
@@ -283,73 +282,76 @@ export default function WorkflowPage() {
       industryContactId: appt.industryContactId || '',
       status: appt.status || 'Scheduled',
       notes: appt.notes || '',
-      // ✅ CRITICAL: Ensure cancellation fields are mapped
       cancellationReason: appt.cancellationReason || '',
       cancellationType: appt.cancellationType || '',
       cancelledAt: appt.cancelledAt || '',
     }));
   }, [workflow]);
 
+  // ─── ✅ Map ALL appointments to internships ──────────────────────────────
   const mapInternshipsForStep4 = useCallback(() => {
     const result = [];
+    const existingStudentIds = new Set();
     
-    // Add existing internships
-    if (workflow?.internships && workflow.internships.length > 0) {
-      workflow.internships.forEach((int) => {
-        const intDbId = norm(int.studentId);
-        const intName = norm(int.student);
+    console.log('📋 ========== MAP INTERNSHIPS START ==========');
+    console.log('📋 Workflow appointments count:', workflow?.appointments?.length || 0);
+    
+    // ✅ Process ALL appointments to create internships
+    const allAppointments = workflow?.appointments || [];
+    console.log('📋 Processing ALL appointments:', allAppointments.length);
 
-        const matchingRequests = (workflow?.requests || []).filter((r) => {
-          const reqStudentId = norm(r.studentId);
-          const reqStudentName = norm(r.student);
-          return (
-            (reqStudentId && intDbId && reqStudentId === intDbId) ||
-            (reqStudentName && intName && reqStudentName === intName)
-          );
-        });
+    allAppointments.forEach((appt, index) => {
+      console.log(`📋 Appointment ${index + 1}:`, appt);
+      
+      const studentName = appt.student || 'Unknown Student';
+      const studentId = appt.studentId || '';
+      
+      // ✅ Check if student already has an internship
+      const existingForStudent = result.find(item => 
+        item.studentId === studentId || 
+        (item.student && item.student.toLowerCase() === studentName.toLowerCase())
+      );
+      
+      if (existingForStudent) {
+        console.log(`⏭️ Student ${studentName} already has internship, updating status...`);
+        
+        // ✅ Update status based on appointment
+        if (appt.status === 'Completed') {
+          existingForStudent.status = 'Completed';
+          existingForStudent.progress = 100;
+        } else if (appt.status === 'Declined') {
+          existingForStudent.status = 'Declined';
+          existingForStudent.cancellationReason = appt.cancellationReason || 'Industry rejected the student';
+          existingForStudent.cancellationType = appt.cancellationType || 'industry';
+        } else if (appt.status === 'Withdrawn') {
+          existingForStudent.status = 'Withdrawn';
+          existingForStudent.cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
+          existingForStudent.cancellationType = appt.cancellationType || 'withdrawn';
+        } else if (appt.status === 'Cancelled') {
+          existingForStudent.status = 'Cancelled';
+          existingForStudent.cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
+        } else if (appt.status === 'Scheduled') {
+          existingForStudent.status = 'Waiting to Join';
+        }
+        
+        // ✅ Update date if appointment date is newer
+        if (appt.date && new Date(appt.date) > new Date(existingForStudent.start)) {
+          existingForStudent.start = appt.date;
+          const start = new Date(appt.date);
+          const end = new Date(start);
+          end.setDate(end.getDate() + (12 * 7));
+          existingForStudent.end = end.toISOString().split('T')[0];
+        }
+        
+        // ✅ Update company if changed
+        if (appt.company && appt.company !== existingForStudent.company) {
+          existingForStudent.company = appt.company;
+        }
+        
+        return;
+      }
 
-        result.push({
-          id: int.id || int._id || '',
-          intId: int.intId || '',
-          title: int.title || '',
-          student: int.student || '',
-          studentId: int.studentId || '',
-          company: int.company || '',
-          rto: int.rto || '',
-          status: int.status || 'Active',
-          start: int.start || '',
-          end: int.end || '',
-          duration: int.duration || '',
-          workType: int.workType || '',
-          location: int.location || '',
-          coordinator: int.coordinator || '',
-          progress: int.progress || 0,
-          tasksCompleted: int.tasksCompleted || '',
-          trainingCompleted: int.trainingCompleted || '',
-          reviewsCompleted: int.reviewsCompleted || '',
-          cancellationReason: int.cancellationReason || '',
-          cancellationType: int.cancellationType || '',
-          contactedIndustries: matchingRequests.flatMap((r) => 
-            (r.contactedIndustries || []).map(ind => ({
-              ...ind,
-              appointmentDate: ind.appointmentDate || '',
-              appointmentTime: ind.appointmentTime || '',
-            }))
-          ),
-        });
-      });
-    }
-
-    // Process successful appointments (Scheduled or Completed)
-    const successfulAppointments = (workflow?.appointments || []).filter(appt => 
-      appt.status === 'Scheduled' || appt.status === 'Completed'
-    );
-
-    const existingStudentIds = new Set(result.map(i => i.studentId));
-
-    successfulAppointments.forEach(appt => {
-      if (existingStudentIds.has(appt.studentId)) return;
-
+      // ✅ Create new internship if no existing
       const startDate = appt.date || new Date().toISOString().split('T')[0];
       const duration = '12 weeks';
       
@@ -358,38 +360,66 @@ export default function WorkflowPage() {
       end.setDate(end.getDate() + (12 * 7));
       const endDate = end.toISOString().split('T')[0];
 
-      result.push({
-        id: `INT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        intId: `INT-${String(result.length + 1).padStart(6, '0')}`,
-        student: appt.student || 'Unknown Student',
-        studentId: appt.studentId || '',
+      let status = 'Waiting to Join';
+      let cancellationReason = '';
+      let cancellationType = '';
+      
+      if (appt.status === 'Completed') {
+        status = 'Completed';
+      } else if (appt.status === 'Scheduled') {
+        status = 'Waiting to Join';
+      } else if (appt.status === 'Declined') {
+        status = 'Declined';
+        cancellationReason = appt.cancellationReason || 'Industry rejected the student';
+        cancellationType = appt.cancellationType || 'industry';
+      } else if (appt.status === 'Withdrawn') {
+        status = 'Withdrawn';
+        cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
+        cancellationType = appt.cancellationType || 'withdrawn';
+      } else if (appt.status === 'Cancelled') {
+        status = 'Cancelled';
+        cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
+      } else if (appt.status === 'No Show') {
+        status = 'Declined';
+        cancellationReason = 'Student did not show up for appointment';
+        cancellationType = 'student';
+      }
+
+      console.log(`✅ CREATING NEW internship from appointment: ${studentName} → ${status}`);
+
+      const newItem = {
+        id: appt.id || appt._id || `INT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        intId: appt.apptId ? `INT-${appt.apptId.substring(4)}` : `INT-${String(result.length + 1).padStart(6, '0')}`,
+        student: studentName,
+        studentId: studentId,
         company: appt.company || 'Unknown Company',
         title: appt.position || 'Internship Placement',
         rto: appt.rto || 'TBD',
-        status: 'Waiting to Join',
+        status: status,
         start: startDate,
         end: endDate,
         duration: duration,
         workType: appt.meetingType || 'In-Person',
         location: appt.location || 'TBD',
         coordinator: appt.interviewer || '',
-        progress: 0,
+        progress: status === 'Completed' ? 100 : 0,
         tasksCompleted: '0',
         trainingCompleted: '0',
         reviewsCompleted: '0',
-        cancellationReason: '',
-        cancellationType: '',
-        contactedIndustries: [],
+        notes: appt.notes || '',
         _appointmentId: appt.id || appt._id,
         _appointmentDate: appt.date,
         _appointmentTime: appt.time,
         _appointmentStatus: appt.status,
-      });
+        cancellationReason: cancellationReason || appt.cancellationReason || '',
+        cancellationType: cancellationType || appt.cancellationType || '',
+        contactedIndustries: appt.contactedIndustries || [],
+      };
 
-      existingStudentIds.add(appt.studentId);
+      result.push(newItem);
     });
 
-    console.log('📋 Mapped internships:', result);
+    console.log('📋 FINAL internships count:', result.length);
     return result;
   }, [workflow]);
 
@@ -458,11 +488,15 @@ export default function WorkflowPage() {
     }
   }, [workflowId, refreshWorkflowData]);
 
+  // ✅ DELETE APPOINTMENT - Step 4 se delete kar sakte hain
   const handleDeleteAppointment = useCallback(async (appointmentId) => {
     if (!workflowId) return;
     try {
-      await deleteAppointment(workflowId, appointmentId);
+      console.log('🗑️ Deleting appointment:', appointmentId);
+      const result = await deleteAppointment(workflowId, appointmentId);
+      console.log('✅ Appointment deleted:', result);
       await refreshWorkflowData();
+      return result;
     } catch (err) {
       console.error('Failed to delete appointment:', err);
       throw err;
@@ -572,6 +606,8 @@ export default function WorkflowPage() {
             onToggleStudent={handleToggleStudent}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}
+            onCreateAppointment={handleCreateAppointment}
+            appointments={mapAppointmentsForStep3()}
           />
         );
       case 2:
@@ -614,6 +650,7 @@ export default function WorkflowPage() {
             onCreateInternship={handleCreateInternship}
             onUpdateInternship={handleUpdateInternship}
             onDeleteInternship={handleDeleteInternship}
+            onDeleteAppointment={handleDeleteAppointment}
             students={mapStudentsForStep1()}
           />
         );
@@ -625,6 +662,8 @@ export default function WorkflowPage() {
             onToggleStudent={handleToggleStudent}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}
+            onCreateAppointment={handleCreateAppointment}
+            appointments={mapAppointmentsForStep3()}
           />
         );
     }
