@@ -1,4 +1,3 @@
-// workflow.model.js
 import mongoose from "mongoose";
 
 // ===== Internship Request Schema (Step 2) =====
@@ -96,10 +95,7 @@ const internshipRequestSchema = new mongoose.Schema(
         industryType: { type: String, trim: true, default: "" },
         notes: { type: String, trim: true, default: "" },
         response: { type: String, trim: true, default: "" },
-        contactedDate: { type: Date, default: Date.now },
-        // ✅ NEW: Appointment fields
-        appointmentDate: { type: String, trim: true, default: "" },
-        appointmentTime: { type: String, trim: true, default: "" },
+        contactedDate: { type: Date, default: Date.now }
       }
     ],
     notes: {
@@ -113,7 +109,7 @@ const internshipRequestSchema = new mongoose.Schema(
   }
 );
 
-// ===== Appointment Schema (Step 3) - FIXED =====
+// ===== Appointment Schema (Step 3) =====
 const appointmentSchema = new mongoose.Schema(
   {
     apptId: {
@@ -195,46 +191,13 @@ const appointmentSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
-    industryContactId: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    // ✅ FIX: Added 'Withdrawn' and 'Declined' to status enum
     status: {
       type: String,
       enum: {
-        values: [
-          "Scheduled",
-          "Completed",
-          "Cancelled",
-          "Rescheduled",
-          "No Show",
-          "Withdrawn",
-          "Declined"
-        ],
+        values: ["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show"],
         message: "Invalid appointment status",
       },
       default: "Scheduled",
-    },
-    // ✅ NEW: Cancellation fields
-    cancellationReason: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    cancellationType: {
-      type: String,
-      enum: {
-        values: ["student", "industry", "withdrawn", "other"],
-        message: "Invalid cancellation type",
-      },
-      default: "student",
-    },
-    cancelledAt: {
-      type: String,
-      trim: true,
-      default: "",
     },
     notes: {
       type: String,
@@ -247,7 +210,7 @@ const appointmentSchema = new mongoose.Schema(
   }
 );
 
-// ===== Internship Schema (Step 4) - FIXED =====
+// ===== Internship Schema (Step 4) =====
 const internshipSchema = new mongoose.Schema(
   {
     intId: {
@@ -281,7 +244,6 @@ const internshipSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
-    // ✅ FIX: Added 'Declined' and 'Withdrawn' to status enum
     status: {
       type: String,
       enum: {
@@ -292,8 +254,6 @@ const internshipSchema = new mongoose.Schema(
           "Completed",
           "Cancelled",
           "On Hold",
-          "Declined",
-          "Withdrawn"
         ],
         message: "Invalid internship status",
       },
@@ -346,17 +306,6 @@ const internshipSchema = new mongoose.Schema(
       default: "",
     },
     reviewsCompleted: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    // ✅ NEW: Cancellation fields for internships
-    cancellationReason: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    cancellationType: {
       type: String,
       trim: true,
       default: "",

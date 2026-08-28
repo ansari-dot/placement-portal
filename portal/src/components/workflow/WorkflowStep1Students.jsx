@@ -3,16 +3,21 @@ import React, { useState } from 'react';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
-  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare
+  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function WorkflowStep1Students({ 
   students = [], 
   initialSelectedStudentIds = [], 
   onToggleStudent, 
   onNext,
-  internshipRequestMap = {}
+  internshipRequestMap = {},
+  onGoToStep,
+  onCreateAppointment, // NEW: For creating appointment
+  appointments = [] // NEW: For checking existing appointments
 }) {
+  const navigate = useNavigate();
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,6 +39,27 @@ export default function WorkflowStep1Students({
   const [toast, setToast] = useState(null);
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // ─── NEW: Appointment Form State (In Drawer) ──────────────────────────
+  const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [apptFormData, setApptFormData] = useState({
+    studentId: '',
+    studentName: '',
+    company: '',
+    position: 'Internship Interview',
+    date: new Date().toISOString().split('T')[0],
+    time: '10:00',
+    interviewer: '',
+    location: '',
+    meetingType: 'In-Person',
+    notes: '',
+    industryId: '',
+    industryName: '',
+    rto: '',
+    email: '',
+    phone: ''
+  });
+  const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
 
   const studentList = students;
 
@@ -112,9 +138,6 @@ export default function WorkflowStep1Students({
     showToast(`${action} applied to ${selectedRows.length} students`);
   };
 
-  // FIX (Bug #1): contactedIndustries ab stu se copy ho raha hai taake
-  // Step 1 profile drawer mein backend se aayi hui industries dikhein
-  // (pehle yeh field pass hi nahi ho rahi thi, isliye drawer hamesha khali dikhta tha)
   const handleRowAction = (action, stu) => {
     setShowRowMenu(null);
     if (action === 'view') {
@@ -130,11 +153,125 @@ export default function WorkflowStep1Students({
         contactedIndustries: stu.contactedIndustries || []
       });
       setShowDrawer(true);
+      // Reset appointment form when opening drawer
+      setShowAppointmentForm(false);
     } else if (action === 'edit') {
       showToast(`Editing ${stu.name}`);
     } else if (action === 'delete') {
       showToast(`Delete action for ${stu.name}`);
     }
+  };
+
+  // ─── NEW: Open Appointment Form in Drawer ──────────────────────────────
+  const handleOpenAppointmentForm = (stu, industryData = null) => {
+    const target = stu || selectedStudent;
+    if (!target) {
+      showToast('Please select a student first');
+      return;
+    }
+
+    setApptFormData({
+      studentId: target.id,
+      studentName: target.name,
+      company: industryData?.organizationName || target.company || '',
+      position: 'Internship Interview',
+      date: industryData?.appointmentDate || new Date().toISOString().split('T')[0],
+      time: industryData?.appointmentTime || '10:00',
+      interviewer: industryData?.contactPerson || '',
+      location: industryData?.address || '',
+      meetingType: 'In-Person',
+      notes: '',
+      industryId: industryData?.id || '',
+      industryName: industryData?.organizationName || '',
+      rto: target.rto || target.institute || '',
+      email: target.email || '',
+      phone: target.phone || ''
+    });
+
+    setShowAppointmentForm(true);
+  };
+
+  // ─── NEW: Create Appointment from Drawer ───────────────────────────────
+  const handleCreateAppointmentFromDrawer = async () => {
+    if (!apptFormData.studentId || !apptFormData.date || !apptFormData.time) {
+      showToast('Please fill in required fields (Student, Date, Time)');
+      return;
+    }
+
+    setIsCreatingAppointment(true);
+
+    const payload = {
+      student: apptFormData.studentName,
+      studentId: apptFormData.studentId,
+      rto: apptFormData.rto || 'N/A',
+      email: apptFormData.email || '',
+      phone: apptFormData.phone || '',
+      company: apptFormData.company || 'Company',
+      position: apptFormData.position || 'Internship Interview',
+      date: apptFormData.date,
+      time: apptFormData.time,
+      interviewer: apptFormData.interviewer || 'Hiring Manager',
+      location: apptFormData.location || 'HQ Office',
+      meetingType: apptFormData.meetingType || 'In-Person',
+      linkedReq: '',
+      linkedReqStatus: '',
+      industryContactId: apptFormData.industryId || '',
+      status: 'Scheduled',
+      notes: apptFormData.notes || ''
+    };
+
+    console.log('📤 Creating appointment from Step 1:', payload);
+
+    if (onCreateAppointment) {
+      try {
+        const result = await onCreateAppointment(payload);
+        console.log('✅ Appointment created from Step 1:', result);
+        showToast('Appointment created successfully!');
+        
+        // Close the appointment form
+        setShowAppointmentForm(false);
+        setIsCreatingAppointment(false);
+        
+        // Navigate to Step 3 to see the appointment
+        navigate('/workflow?step=3');
+        
+      } catch (err) {
+        console.error('Failed to create appointment:', err);
+        showToast(err.message || 'Failed to create appointment');
+        setIsCreatingAppointment(false);
+      }
+    } else {
+      showToast('onCreateAppointment prop is missing!');
+      setIsCreatingAppointment(false);
+    }
+  };
+
+  // ─── Close Appointment Form ─────────────────────────────────────────────
+  const handleCloseAppointmentForm = () => {
+    setShowAppointmentForm(false);
+    setApptFormData({
+      studentId: '',
+      studentName: '',
+      company: '',
+      position: 'Internship Interview',
+      date: new Date().toISOString().split('T')[0],
+      time: '10:00',
+      interviewer: '',
+      location: '',
+      meetingType: 'In-Person',
+      notes: '',
+      industryId: '',
+      industryName: '',
+      rto: '',
+      email: '',
+      phone: ''
+    });
+  };
+
+  // ─── Navigate to Step 3 (Legacy) ───────────────────────────────────────
+  const handleAddAppointment = (stu, industryData = null) => {
+    // Open the form directly in drawer instead of navigating
+    handleOpenAppointmentForm(stu, industryData);
   };
 
   const [showGenRequestModal, setShowGenRequestModal] = useState(false);
@@ -483,10 +620,6 @@ export default function WorkflowStep1Students({
                   <tr 
                     key={i} 
                     onClick={() => {
-                      // FIX (Bug #1): contactedIndustries ab yahan bhi pass ho raha hai
-                      // taake row click se drawer open hone par bhi backend se aayi
-                      // hui contacted industries dikhein (pehle sirf name/email/etc
-                      // pass ho rahe thay, industries ki field missing thi)
                       setSelectedStudent({
                         ...selectedStudent,
                         name: stu.name,
@@ -499,6 +632,7 @@ export default function WorkflowStep1Students({
                         contactedIndustries: stu.contactedIndustries || []
                       });
                       setShowDrawer(true);
+                      setShowAppointmentForm(false);
                     }}
                     className={`cursor-pointer transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
                   >
@@ -562,10 +696,14 @@ export default function WorkflowStep1Students({
                         <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
                       </button>
                       {showRowMenu === stu.id && (
-                        <div className="absolute right-4 top-10 w-48 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
+                        <div className="absolute right-4 top-10 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
                           <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu); }} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
                             <Plus className="w-3.5 h-3.5 text-blue-600" />
                             <span>Generate Request</span>
+                          </button>
+                          <button onClick={() => { setShowRowMenu(null); handleOpenAppointmentForm(stu); }} className="w-full text-left px-3 py-2 text-xs text-emerald-600 font-semibold hover:bg-emerald-50 rounded-lg flex items-center space-x-2">
+                            <CalendarIcon className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Schedule Appointment</span>
                           </button>
                           <button onClick={() => handleRowAction('view', stu)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                             <Eye className="w-3.5 h-3.5 text-slate-400" />
@@ -682,294 +820,435 @@ export default function WorkflowStep1Students({
         )}
       </div>
 
-      {/* Right Drawer / Detail Panel - Professional Mini Card */}
+      {/* ─── RIGHT DRAWER ────────────────────────────────────────────────── */}
       {showDrawer && selectedStudent && (
-      <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
-        {/* Card Header with Gradient */}
-        <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-5">
-          {/* Decorative elements */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-          <div className="absolute bottom-0 left-0 w-16 h-16 bg-emerald-400/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
+        <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
           
-          <div className="relative flex items-start justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="relative">
-                <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-700 shrink-0 border-2 border-white/20 ring-2 ring-white/10">
-                  <img 
-                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" 
-                    alt={selectedStudent.name} 
-                    className="w-full h-full object-cover"
+          {/* ─── If Appointment Form is open, show form instead of profile ─── */}
+          {showAppointmentForm ? (
+            // ─── APPOINTMENT FORM IN DRAWER ──────────────────────────────
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 className="text-xs font-bold text-slate-900">Schedule New Appointment</h4>
+                <button onClick={handleCloseAppointmentForm} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Student</label>
+                  <div className="px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 text-slate-700 font-semibold">
+                    {apptFormData.studentName}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Industry / Organisation</label>
+                  <div className="px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 text-slate-700">
+                    {apptFormData.company || apptFormData.industryName || 'N/A'}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Position / Placement Role</label>
+                  <input
+                    placeholder="e.g. Aged Care Assistant"
+                    value={apptFormData.position}
+                    onChange={(e) => setApptFormData({ ...apptFormData, position: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                   />
                 </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900"></div>
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h4 className="font-bold text-white text-sm tracking-wide">{selectedStudent.name}</h4>
-                </div>
-                <p className="text-[10px] text-slate-300 font-mono mt-0.5">{selectedStudent.id}</p>
-                <div className="flex items-center space-x-1.5 mt-1.5">
-                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-bold rounded-full border border-emerald-400/20 flex items-center space-x-1">
-                    <CheckCircle2 className="w-2.5 h-2.5" />
-                    <span>{selectedStudent.status}</span>
-                  </span>
-                  <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] font-bold rounded-full border border-blue-400/20 flex items-center space-x-1">
-                    <Award className="w-2.5 h-2.5" />
-                    <span>Ready</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <button onClick={() => setShowDrawer(false)} className="text-slate-400 hover:text-white transition mt-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
 
-          {/* Contact info */}
-          <div className="relative mt-4 space-y-1.5">
-            <div className="flex items-center space-x-2 text-[10px] text-slate-300">
-              <Mail className="w-3 h-3 text-slate-400" />
-              <span className="truncate">{selectedStudent.email}</span>
-            </div>
-            <div className="flex items-center space-x-2 text-[10px] text-slate-300">
-              <Phone className="w-3 h-3 text-slate-400" />
-              <span>{selectedStudent.phone}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-5 bg-white">
-          {['Overview', 'Education', 'RTO & Source', 'Notes', 'Industry Contacts'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`py-3 relative transition ${
-                activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
-              }`}
-            >
-              {tab}
-              {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full"></div>
-              )}
-            </button>
-          ))}
-        </div>
-
-        
-        {/* Industry Contacts Tab Content */}
-        {activeTab === 'Industry Contacts' && (
-          <div className="p-5 space-y-3 text-xs">
-            <div className="flex items-center justify-between">
-              <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-                <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>Contacted Industries</span>
-              </h5>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
-                Total: {(selectedStudent?.contactedIndustries || []).length}
-              </span>
-            </div>
-
-            {(!selectedStudent?.contactedIndustries || selectedStudent.contactedIndustries.length === 0) ? (
-              <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
-                No industries contacted yet for this student.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {selectedStudent.contactedIndustries.map((rec, index) => (
-                  <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-bold text-slate-900 text-xs">{rec.organizationName}</p>
-                        <p className="text-[10px] text-slate-500">{rec.contactPerson} {rec.phone ? `(${rec.phone})` : ''}</p>
-                      </div>
-                      <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${
-                        rec.response?.toLowerCase().includes('approved') || rec.response?.toLowerCase().includes('positive')
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : rec.response?.toLowerCase().includes('reject') || rec.response?.toLowerCase().includes('declined')
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                          : 'bg-blue-50 text-blue-700 border border-blue-200'
-                      }`}>
-                        {rec.response || 'In Discussion'}
-                      </span>
-                    </div>
-                    {rec.email && <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>}
-                    {rec.address && <p className="text-[10px] text-slate-500">📍 {rec.address}</p>}
-                    {rec.notes && (
-                      <div className="pt-1.5 border-t border-slate-200/60 mt-1">
-                        <p className="text-[10px] text-slate-700 font-medium">
-                          <span className="font-bold text-slate-900">Notes: </span>
-                          {rec.notes}
-                        </p>
-                      </div>
-                    )}
-                    {(rec.contactedDate || rec.date) && <p className="text-[9px] text-slate-400">Date: {rec.contactedDate || rec.date}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Appointment Date *</label>
+                    <input
+                      type="date"
+                      value={apptFormData.date}
+                      onChange={(e) => setApptFormData({ ...apptFormData, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Appointment Time *</label>
+                    <input
+                      type="time"
+                      value={apptFormData.time}
+                      onChange={(e) => setApptFormData({ ...apptFormData, time: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Interviewer / Contact</label>
+                    <input
+                      placeholder="Contact Person Name"
+                      value={apptFormData.interviewer}
+                      onChange={(e) => setApptFormData({ ...apptFormData, interviewer: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Meeting Type</label>
+                    <select
+                      value={apptFormData.meetingType}
+                      onChange={(e) => setApptFormData({ ...apptFormData, meetingType: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
+                    >
+                      <option value="In-Person">In-Person</option>
+                      <option value="Video">Video</option>
+                      <option value="Phone">Phone</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Location / Address</label>
+                  <input
+                    placeholder="e.g. 123 Care Street or Zoom Link"
+                    value={apptFormData.location}
+                    onChange={(e) => setApptFormData({ ...apptFormData, location: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Notes</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Record specific requirements, instructions, or information..."
+                    value={apptFormData.notes}
+                    onChange={(e) => setApptFormData({ ...apptFormData, notes: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-2 pt-2">
+                <button
+                  onClick={handleCreateAppointmentFromDrawer}
+                  disabled={isCreatingAppointment}
+                  className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] text-white text-xs font-semibold rounded-xl transition-all duration-500 cursor-pointer disabled:opacity-50"
+                >
+                  {isCreatingAppointment ? 'Creating...' : 'Create Appointment'}
+                </button>
+                <button
+                  onClick={handleCloseAppointmentForm}
+                  className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            // ─── STUDENT PROFILE ──────────────────────────────────────────
+            <>
+              {/* Card Header with Gradient */}
+              <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-5">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                <div className="absolute bottom-0 left-0 w-16 h-16 bg-emerald-400/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
+                
+                <div className="relative flex items-start justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="relative">
+                      <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-700 shrink-0 border-2 border-white/20 ring-2 ring-white/10">
+                        <img 
+                          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" 
+                          alt={selectedStudent.name} 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900"></div>
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h4 className="font-bold text-white text-sm tracking-wide">{selectedStudent.name}</h4>
+                      </div>
+                      <p className="text-[10px] text-slate-300 font-mono mt-0.5">{selectedStudent.id}</p>
+                      <div className="flex items-center space-x-1.5 mt-1.5">
+                        <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-bold rounded-full border border-emerald-400/20 flex items-center space-x-1">
+                          <CheckCircle2 className="w-2.5 h-2.5" />
+                          <span>{selectedStudent.status}</span>
+                        </span>
+                        <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] font-bold rounded-full border border-blue-400/20 flex items-center space-x-1">
+                          <Award className="w-2.5 h-2.5" />
+                          <span>Ready</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowDrawer(false)} className="text-slate-400 hover:text-white transition mt-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Contact info */}
+                <div className="relative mt-4 space-y-1.5">
+                  <div className="flex items-center space-x-2 text-[10px] text-slate-300">
+                    <Mail className="w-3 h-3 text-slate-400" />
+                    <span className="truncate">{selectedStudent.email}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-[10px] text-slate-300">
+                    <Phone className="w-3 h-3 text-slate-400" />
+                    <span>{selectedStudent.phone}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-5 bg-white">
+                {['Overview', 'Education', 'RTO & Source', 'Notes', 'Industry Contacts'].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`py-3 relative transition ${
+                      activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
+                    }`}
+                  >
+                    {tab}
+                    {activeTab === tab && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full"></div>
+                    )}
+                  </button>
                 ))}
               </div>
-            )}
-          </div>
-        )}
 
+              {/* ─── INDUSTRY CONTACTS TAB ─────────────────────────────────── */}
+              {activeTab === 'Industry Contacts' && (
+                <div className="p-5 space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Contacted Industries</span>
+                    </h5>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                      Total: {(selectedStudent?.contactedIndustries || []).length}
+                    </span>
+                  </div>
 
-        {/* Drawer Details Content */}
-        {activeTab !== 'Industry Contacts' && (
-        <div className="p-5 space-y-4 text-xs">
-          {/* Key Stats Row */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">GPA</p>
-              <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.gpa}</p>
-            </div>
-            <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Year</p>
-              <p className="text-sm font-bold text-slate-900 mt-0.5">2nd</p>
-            </div>
-            <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-              <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Radius</p>
-              <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.radius}</p>
-            </div>
-          </div>
+                  {(!selectedStudent?.contactedIndustries || selectedStudent.contactedIndustries.length === 0) ? (
+                    <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
+                      No industries contacted yet for this student.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {selectedStudent.contactedIndustries.map((rec, index) => (
+                        <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-bold text-slate-900 text-xs">{rec.organizationName}</p>
+                              <p className="text-[10px] text-slate-500">{rec.contactPerson} {rec.phone ? `(${rec.phone})` : ''}</p>
+                            </div>
+                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${
+                              rec.response?.toLowerCase().includes('approved') || rec.response?.toLowerCase().includes('positive')
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : rec.response?.toLowerCase().includes('reject') || rec.response?.toLowerCase().includes('declined')
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
+                              {rec.response || 'In Discussion'}
+                            </span>
+                          </div>
+                          {rec.email && <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>}
+                          {rec.address && <p className="text-[10px] text-slate-500">📍 {rec.address}</p>}
+                          {rec.notes && (
+                            <div className="pt-1.5 border-t border-slate-200/60 mt-1">
+                              <p className="text-[10px] text-slate-700 font-medium">
+                                <span className="font-bold text-slate-900">Notes: </span>
+                                {rec.notes}
+                              </p>
+                            </div>
+                          )}
+                          {(rec.contactedDate || rec.date) && <p className="text-[9px] text-slate-400">Date: {rec.contactedDate || rec.date}</p>}
+                          
+                          {/* ─── Schedule Appointment button for each industry ─── */}
+                          <button
+                            onClick={() => handleOpenAppointmentForm(selectedStudent, rec)}
+                            className="w-full mt-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg flex items-center justify-center space-x-1.5 transition text-[10px] border border-emerald-200"
+                          >
+                            <CalendarIcon className="w-3.5 h-3.5" />
+                            <span>Schedule Appointment</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-          {/* Personal Details Section */}
-          <div>
-            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
-              <span className="w-1 h-3 bg-blue-600 rounded-full"></span>
-              <span>Personal Details</span>
-            </h5>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Date of Birth</span>
-                </span>
-                <span className="font-semibold text-slate-800">{selectedStudent.dob}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Globe className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Nationality</span>
-                </span>
-                <span className="font-semibold text-slate-800">{selectedStudent.nationality}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Location</span>
-                </span>
-                <span className="font-semibold text-slate-800">{selectedStudent.location}</span>
-              </div>
-            </div>
-          </div>
+              {/* ─── OTHER TABS CONTENT ────────────────────────────────────── */}
+              {activeTab !== 'Industry Contacts' && (
+                <div className="p-5 space-y-4 text-xs">
+                  {/* Key Stats Row */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">GPA</p>
+                      <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.gpa}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Year</p>
+                      <p className="text-sm font-bold text-slate-900 mt-0.5">2nd</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Radius</p>
+                      <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.radius}</p>
+                    </div>
+                  </div>
 
-          {/* Education Section */}
-          <div>
-            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
-              <span className="w-1 h-3 bg-emerald-500 rounded-full"></span>
-              <span>Education</span>
-            </h5>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Course</span>
-                </span>
-                <span className="font-semibold text-slate-800 text-right">{selectedStudent.course}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Institute</span>
-                </span>
-                <span className="font-semibold text-blue-600">{selectedStudent.institute}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Layers className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Semester</span>
-                </span>
-                <span className="font-semibold text-slate-800">{selectedStudent.semester}</span>
-              </div>
-            </div>
-          </div>
+                  {/* Personal Details Section */}
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
+                      <span className="w-1 h-3 bg-blue-600 rounded-full"></span>
+                      <span>Personal Details</span>
+                    </h5>
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Date of Birth</span>
+                        </span>
+                        <span className="font-semibold text-slate-800">{selectedStudent.dob}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <Globe className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Nationality</span>
+                        </span>
+                        <span className="font-semibold text-slate-800">{selectedStudent.nationality}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Location</span>
+                        </span>
+                        <span className="font-semibold text-slate-800">{selectedStudent.location}</span>
+                      </div>
+                    </div>
+                  </div>
 
-          {/* Placement Preferences Section */}
-          <div>
-            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
-              <span className="w-1 h-3 bg-amber-500 rounded-full"></span>
-              <span>Placement Preferences</span>
-            </h5>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Availability</span>
-                </span>
-                <span className="font-semibold text-slate-800 text-right">{selectedStudent.availability}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Industry</span>
-                </span>
-                <span className="font-semibold text-slate-800">{selectedStudent.industry}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center space-x-2">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Radius</span>
-                </span>
-                <span className="font-semibold text-slate-800">{selectedStudent.radius}</span>
-              </div>
-            </div>
-          </div>
+                  {/* Education Section */}
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
+                      <span className="w-1 h-3 bg-emerald-500 rounded-full"></span>
+                      <span>Education</span>
+                    </h5>
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Course</span>
+                        </span>
+                        <span className="font-semibold text-slate-800 text-right">{selectedStudent.course}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Institute</span>
+                        </span>
+                        <span className="font-semibold text-blue-600">{selectedStudent.institute}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <Layers className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Semester</span>
+                        </span>
+                        <span className="font-semibold text-slate-800">{selectedStudent.semester}</span>
+                      </div>
+                    </div>
+                  </div>
 
-          {/* Quick Actions */}
-          <div className="pt-4 border-t border-slate-100 space-y-2">
-            <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-              <span>Quick Actions</span>
-            </h5>
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={() => showToast('Opening full profile...')}
-                className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-              >
-                <User className="w-3.5 h-3.5 text-slate-500" />
-                <span>Profile</span>
-              </button>
-              <button 
-                onClick={() => showToast('Editing student...')}
-                className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-              >
-                <Edit className="w-3.5 h-3.5 text-slate-500" />
-                <span>Edit</span>
-              </button>
-            </div>
-            <button 
-              onClick={handleCreateRequest}
-              className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Internship Request</span>
-              <ArrowUpRight className="w-3 h-3 text-blue-200" />
-            </button>
-          </div>
+                  {/* Placement Preferences Section */}
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
+                      <span className="w-1 h-3 bg-amber-500 rounded-full"></span>
+                      <span>Placement Preferences</span>
+                    </h5>
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Availability</span>
+                        </span>
+                        <span className="font-semibold text-slate-800 text-right">{selectedStudent.availability}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Industry</span>
+                        </span>
+                        <span className="font-semibold text-slate-800">{selectedStudent.industry}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 flex items-center space-x-2">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Radius</span>
+                        </span>
+                        <span className="font-semibold text-slate-800">{selectedStudent.radius}</span>
+                      </div>
+                    </div>
+                  </div>
 
-          {/* Footer Meta */}
-          <div className="pt-3 border-t border-slate-100 space-y-1.5 text-[10px] text-slate-400">
-            <div className="flex justify-between">
-              <span>Added On</span>
-              <span className="text-slate-600 font-medium">{selectedStudent.addedOn}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Last Updated</span>
-              <span className="text-slate-600 font-medium">{selectedStudent.updatedOn}</span>
-            </div>
-          </div>
+                  {/* Quick Actions */}
+                  <div className="pt-4 border-t border-slate-100 space-y-2">
+                    <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Quick Actions</span>
+                    </h5>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => showToast('Opening full profile...')}
+                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                      >
+                        <User className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Profile</span>
+                      </button>
+                      <button 
+                        onClick={() => showToast('Editing student...')}
+                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Edit</span>
+                      </button>
+                    </div>
+                    <button 
+                      onClick={handleCreateRequest}
+                      className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Create Internship Request</span>
+                      <ArrowUpRight className="w-3 h-3 text-blue-200" />
+                    </button>
+                    
+                    {/* ─── Schedule Appointment button in drawer ─── */}
+                    <button 
+                      onClick={() => handleOpenAppointmentForm(selectedStudent)}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition shadow-xs text-[11px]"
+                    >
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                      <span>Schedule Appointment</span>
+                      <ArrowUpRight className="w-3 h-3 text-emerald-200" />
+                    </button>
+                  </div>
+
+                  {/* Footer Meta */}
+                  <div className="pt-3 border-t border-slate-100 space-y-1.5 text-[10px] text-slate-400">
+                    <div className="flex justify-between">
+                      <span>Added On</span>
+                      <span className="text-slate-600 font-medium">{selectedStudent.addedOn}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Last Updated</span>
+                      <span className="text-slate-600 font-medium">{selectedStudent.updatedOn}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
-        )}
-      </div>
       )}
 
       {/* Generate Internship Request Modal */}
@@ -1055,7 +1334,7 @@ export default function WorkflowStep1Students({
   );
 }
 
-// Simple internal helper for Users icon to avoid external dependency mismatch
+// Simple internal helper for Users icon
 function UsersIcon(props) {
   return (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

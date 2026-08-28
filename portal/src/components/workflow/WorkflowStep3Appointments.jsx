@@ -1,5 +1,6 @@
 // src/components/workflow/WorkflowStep3Appointments.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
   FileText, CheckCircle2, UserX, Clock, Plus, Filter,
@@ -18,6 +19,10 @@ export default function WorkflowStep3Appointments({
   students = [],
   requests = []
 }) {
+  // ─── Get pre-selected student from navigation state ─────────────────────
+  const location = useLocation();
+  const preSelectedStudent = location.state?.preSelectedStudent || null;
+
   // Modal State
   const [showNewAppointment, setShowNewAppointment] = useState(false);
   const [newApptStudentId, setNewApptStudentId] = useState('');
@@ -31,6 +36,54 @@ export default function WorkflowStep3Appointments({
   const [newApptLocation, setNewApptLocation] = useState('HQ Office / Online');
   const [newApptMeetingType, setNewApptMeetingType] = useState('In-Person');
   const [newApptNotes, setNewApptNotes] = useState('');
+
+  // ─── Auto-fill form when pre-selected student data is available ─────────
+  useEffect(() => {
+    if (preSelectedStudent) {
+      console.log('📋 Pre-selected student data:', preSelectedStudent);
+      
+      // Set student ID
+      setNewApptStudentId(preSelectedStudent.id || preSelectedStudent.studentId || '');
+      
+      // Auto-fill company
+      if (preSelectedStudent.company) {
+        setNewApptCompany(preSelectedStudent.company);
+      }
+      
+      // Auto-fill interviewer
+      if (preSelectedStudent.interviewer) {
+        setNewApptInterviewer(preSelectedStudent.interviewer);
+      }
+      
+      // Auto-fill location
+      if (preSelectedStudent.location) {
+        setNewApptLocation(preSelectedStudent.location);
+      }
+      
+      // Auto-fill appointment date
+      if (preSelectedStudent.appointmentDate) {
+        setNewApptDate(preSelectedStudent.appointmentDate);
+      }
+      
+      // Auto-fill appointment time
+      if (preSelectedStudent.appointmentTime) {
+        setNewApptTime(preSelectedStudent.appointmentTime);
+      }
+      
+      // Auto-fill position
+      if (preSelectedStudent.position) {
+        setNewApptPosition(preSelectedStudent.position);
+      }
+      
+      // Auto-fill phone
+      if (preSelectedStudent.phone) {
+        // We don't have a phone field in the form, but we could add it
+      }
+      
+      // Open the modal automatically
+      setShowNewAppointment(true);
+    }
+  }, [preSelectedStudent]);
 
   // UI Navigation & View State
   const [activeTab, setActiveTab] = useState('Calendar View');
@@ -380,6 +433,10 @@ export default function WorkflowStep3Appointments({
         setNewApptPosition('Internship Interview');
         setNewApptInterviewer('');
         setNewApptNotes('');
+        // Clear pre-selected student after creation
+        if (preSelectedStudent) {
+          window.history.replaceState({}, document.title);
+        }
       } catch (err) {
         console.error(err);
         showToast(err.message || 'Failed to create appointment');

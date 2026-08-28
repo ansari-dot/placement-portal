@@ -17,6 +17,7 @@ export default function WorkflowStep4Internships({
   onCreateInternship,
   onUpdateInternship,
   onDeleteInternship,
+  onDeleteAppointment,
   students = []
 }) {
   const [newIntStudentId, setNewIntStudentId] = useState('');
@@ -74,70 +75,84 @@ export default function WorkflowStep4Internships({
 
   const getStatusColor = (status) => {
     switch(status) {
-      case 'Active': return 'bg-emerald-50 text-emerald-600';
-      case 'Joined': return 'bg-blue-50 text-blue-600';
-      case 'Waiting to Join': return 'bg-amber-50 text-amber-600';
-      case 'Completed': return 'bg-purple-50 text-purple-600';
-      case 'Declined': return 'bg-rose-50 text-rose-600';
-      case 'Withdrawn': return 'bg-orange-50 text-orange-600';
-      case 'Cancelled': return 'bg-slate-100 text-slate-500';
-      default: return 'bg-slate-100 text-slate-500';
+      case 'Active': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'Joined': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Waiting to Join': return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'Completed': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'Declined': return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'Withdrawn': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Cancelled': return 'bg-slate-100 text-slate-600 border-slate-200';
+      default: return 'bg-slate-100 text-slate-500 border-slate-200';
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch(status) {
-      case 'Active': return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />;
-      case 'Joined': return <User className="w-3.5 h-3.5 text-blue-600" />;
-      case 'Waiting to Join': return <Clock className="w-3.5 h-3.5 text-amber-600" />;
-      case 'Completed': return <Award className="w-3.5 h-3.5 text-purple-600" />;
-      case 'Declined': return <ThumbsDown className="w-3.5 h-3.5 text-rose-600" />;
-      case 'Withdrawn': return <UserX className="w-3.5 h-3.5 text-orange-600" />;
-      case 'Cancelled': return <AlertCircle className="w-3.5 h-3.5 text-slate-500" />;
-      default: return <Info className="w-3.5 h-3.5 text-slate-400" />;
-    }
-  };
-
-  // ─── DYNAMIC: Process all appointments ────────────────────────────────────
-
+  // ─── ✅ FIX: Process EACH appointment individually ───────────────────────
   const processedInternships = useMemo(() => {
-    let result = [...(internships || [])];
-    const existingStudentIds = new Set(result.map(i => i.studentId));
+    console.log('📋 Step4: Processing appointments:', appointments?.length || 0);
+    
+    if (!appointments || appointments.length === 0) {
+      console.log('⚠️ No appointments received in Step4');
+      return [];
+    }
 
-    // Process ALL appointments - Successful AND Rejected/Declined
-    (appointments || []).forEach(appt => {
-      // Skip if student already has an internship record
-      if (existingStudentIds.has(appt.studentId)) return;
+    // ✅ Create a separate internship for EACH appointment
+    // No duplicate check - show all appointments
+    const result = [];
 
-      const startDate = appt.date || new Date().toISOString().split('T')[0];
-      const duration = '12 weeks';
+    appointments.forEach((appt, index) => {
+      console.log(`📋 Step4: Processing appt ${index + 1}:`, appt);
       
-      // Determine status based on appointment status
+      const studentName = appt.student || 'Unknown Student';
+      const studentId = appt.studentId || '';
+      
+      const startDate = appt.date || new Date().toISOString().split('T')[0];
+      const start = new Date(startDate);
+      const end = new Date(start);
+      end.setDate(end.getDate() + (12 * 7));
+      const endDate = end.toISOString().split('T')[0];
+
       let status = 'Waiting to Join';
-      if (appt.status === 'Completed' || appt.status === 'Scheduled') {
+      let cancellationReason = '';
+      let cancellationType = '';
+      
+      if (appt.status === 'Completed') {
+        status = 'Completed';
+      } else if (appt.status === 'Scheduled') {
         status = 'Waiting to Join';
       } else if (appt.status === 'Declined') {
         status = 'Declined';
+        cancellationReason = appt.cancellationReason || 'Industry rejected the student';
+        cancellationType = appt.cancellationType || 'industry';
       } else if (appt.status === 'Withdrawn') {
         status = 'Withdrawn';
+        cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
+        cancellationType = appt.cancellationType || 'withdrawn';
       } else if (appt.status === 'Cancelled') {
         status = 'Cancelled';
+        cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
       } else if (appt.status === 'No Show') {
         status = 'Declined';
+        cancellationReason = 'Student did not show up for appointment';
+        cancellationType = 'student';
       }
 
+      // ✅ Generate unique ID for each internship
+      const uniqueId = appt.id || appt._id || `INT-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 4)}`;
+      
+      console.log(`✅ Step4: Creating internship ${index + 1} for ${studentName} → ${status}`);
+
       result.push({
-        id: appt.id || appt._id || `INT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        intId: appt.apptId ? `INT-${appt.apptId.substring(4)}` : `INT-${String(result.length + 1).padStart(6, '0')}`,
-        student: appt.student || 'Unknown Student',
-        studentId: appt.studentId || '',
+        id: uniqueId,
+        intId: appt.apptId || `INT-${String(index + 1).padStart(6, '0')}`,
+        student: studentName,
+        studentId: studentId,
         company: appt.company || 'Unknown Company',
         title: appt.position || 'Internship Placement',
         rto: appt.rto || 'TBD',
         status: status,
         start: startDate,
-        end: calculateEndDate(startDate, duration),
-        duration: duration,
+        end: endDate,
+        duration: '12 weeks',
         workType: appt.meetingType || 'In-Person',
         location: appt.location || 'TBD',
         coordinator: appt.interviewer || '',
@@ -150,16 +165,16 @@ export default function WorkflowStep4Internships({
         _appointmentDate: appt.date,
         _appointmentTime: appt.time,
         _appointmentStatus: appt.status,
-        cancellationReason: appt.cancellationReason || '',
-        cancellationType: appt.cancellationType || '',
+        cancellationReason: cancellationReason || appt.cancellationReason || '',
+        cancellationType: cancellationType || appt.cancellationType || '',
         contactedIndustries: appt.contactedIndustries || [],
+        _index: index, // Keep track of original index
       });
-
-      existingStudentIds.add(appt.studentId);
     });
 
+    console.log('📋 Step4: FINAL internships count:', result.length);
     return result;
-  }, [internships, appointments]);
+  }, [appointments]);
 
   // ─── Metrics ──────────────────────────────────────────────────────────────
 
@@ -235,9 +250,32 @@ export default function WorkflowStep4Internships({
     showToast(`${action} applied to ${selectedRows.length} internships`);
   };
 
+  const handleDeleteAppointment = async (appointmentId) => {
+    if (!appointmentId) {
+      showToast('Invalid appointment ID');
+      return;
+    }
+    
+    if (window.confirm('Are you sure you want to delete this appointment? This action cannot be undone.')) {
+      try {
+        if (onDeleteAppointment) {
+          await onDeleteAppointment(appointmentId);
+          showToast('Appointment deleted successfully');
+        } else {
+          showToast('Delete function not available');
+        }
+      } catch (err) {
+        console.error('Failed to delete appointment:', err);
+        showToast('Failed to delete appointment');
+      }
+    }
+  };
+
   const handleRowAction = async (action, item) => {
     setShowRowMenu(null);
     const dbId = item.id || item.intId;
+    const appointmentId = item._appointmentId || item.id;
+    
     if (action === 'view') {
       setSelectedInternship(item);
       setShowDrawer(true);
@@ -257,16 +295,10 @@ export default function WorkflowStep4Internships({
         showToast(`Mock updated status to ${nextStatus}`);
       }
     } else if (action === 'delete') {
-      if (onDeleteInternship && dbId && !dbId.startsWith('INT-')) {
-        try {
-          await onDeleteInternship(dbId);
-          showToast('Internship deleted successfully');
-        } catch (err) {
-          console.error(err);
-          showToast('Failed to delete internship');
-        }
+      if (appointmentId) {
+        await handleDeleteAppointment(appointmentId);
       } else {
-        showToast(`Delete action for ${item.intId} (mock)`);
+        showToast('Cannot delete: No appointment ID found');
       }
     }
   };
@@ -671,12 +703,9 @@ export default function WorkflowStep4Internships({
                       </td>
                       <td className="p-4 text-slate-600">{item.title}</td>
                       <td className="p-4">
-                        <div className="flex items-center space-x-1.5">
-                          {getStatusIcon(item.status)}
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getStatusColor(item.status)}`}>
-                            {item.status}
-                          </span>
-                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStatusColor(item.status)}`}>
+                          {item.status}
+                        </span>
                       </td>
                       <td className="p-4">
                         <div className="flex flex-col">
@@ -700,7 +729,7 @@ export default function WorkflowStep4Internships({
                           <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
                         </button>
                         {showRowMenu === item.intId && (
-                          <div className="absolute right-4 top-10 w-40 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
+                          <div className="absolute right-4 top-10 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
                             <button onClick={() => handleRowAction('view', item)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                               <Eye className="w-3.5 h-3.5 text-slate-400" />
                               <span>View Details</span>
@@ -711,7 +740,7 @@ export default function WorkflowStep4Internships({
                             </button>
                             <button onClick={() => handleRowAction('delete', item)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
+                              <span>Delete Appointment</span>
                             </button>
                           </div>
                         )}
@@ -853,23 +882,24 @@ export default function WorkflowStep4Internships({
             </div>
 
             {/* Show cancellation reason if exists */}
-            {selectedInternship.cancellationReason && (
-              <div className="relative mt-3 p-2 bg-white/10 rounded-xl border border-white/10">
-                <div className="flex items-start space-x-2">
-                  <MessageCircle className="w-3 h-3 text-slate-300 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Reason</p>
-                    <p className="text-[10px] text-slate-200">{selectedInternship.cancellationReason}</p>
-                    {selectedInternship.cancellationType && (
-                      <p className="text-[8px] text-slate-400 mt-0.5">
-                        Type: {selectedInternship.cancellationType === 'student' ? 'Student Request' : 
-                                selectedInternship.cancellationType === 'industry' ? 'Industry Rejected' : 
-                                selectedInternship.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
-                      </p>
-                    )}
+            {(selectedInternship.status === 'Declined' || selectedInternship.status === 'Withdrawn' || selectedInternship.status === 'Cancelled') && 
+              selectedInternship.cancellationReason && (
+                <div className="relative mt-3 p-2 bg-white/10 rounded-xl border border-white/10">
+                  <div className="flex items-start space-x-2">
+                    <MessageCircle className="w-3 h-3 text-slate-300 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Reason</p>
+                      <p className="text-[10px] text-slate-200">{selectedInternship.cancellationReason}</p>
+                      {selectedInternship.cancellationType && (
+                        <p className="text-[8px] text-slate-400 mt-0.5">
+                          Type: {selectedInternship.cancellationType === 'student' ? 'Student Request' : 
+                                  selectedInternship.cancellationType === 'industry' ? 'Industry Rejected' : 
+                                  selectedInternship.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
             )}
           </div>
 
