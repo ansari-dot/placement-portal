@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Pencil, Loader2, User, GraduationCap, Building2, Phone, Mail, MapPin, Info, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Pencil, Loader2, User, GraduationCap, Building2, Phone, Mail, MapPin, Info, AlertTriangle, Clock } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
@@ -43,7 +43,7 @@ export default function StudentViewEditPage() {
         'availabilityFrom', 'availabilityTo', 'willingToRelocate', 'placementNotes',
         'visaStatus', 'visaSubclass', 'visaExpiryDate', 'workRights', 'workExperience',
         'englishProficiency', 'emergencyContactName', 'emergencyContactPhone', 'heardAboutUs',
-        'hasResume', 'additionalNotes'
+        'hasResume', 'additionalNotes', 'placementHours'
       ];
       const populated = {};
       fields.forEach(f => {
@@ -171,6 +171,7 @@ export default function StudentViewEditPage() {
     { key: 'rto', label: 'RTO & Source', icon: Building2 },
     { key: 'additional', label: 'Additional', icon: Info },
     { key: 'contacts', label: 'Industry Contacts', icon: Building2 },
+    { key: 'placementhours', label: 'Placement Hours', icon: Clock },
   ];
 
   const inputClass = "w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition";
@@ -343,19 +344,64 @@ export default function StudentViewEditPage() {
                 <div className="grid grid-cols-4 gap-5">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Course / Qualification</label>
-                    <input type="text" value={formData.courseQualification || ''} onChange={(e) => updateField('courseQualification', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} />
+                    {isEdit ? (
+                      <select
+                        value={formData.courseQualification || ''}
+                        onChange={(e) => updateField('courseQualification', e.target.value)}
+                        className={fieldClass(isEdit)}
+                      >
+                        <option value="">Select course / qualification</option>
+                        {['Individual Support', 'Early Childhood Education and Care', 'Hospitality Management', 'Other'].map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        {formData.courseQualification && !['Individual Support', 'Early Childhood Education and Care', 'Hospitality Management', 'Other'].includes(formData.courseQualification) && (
+                          <option value={formData.courseQualification}>{formData.courseQualification}</option>
+                        )}
+                      </select>
+                    ) : (
+                      <input type="text" value={formData.courseQualification || ''} disabled className={fieldClass(false)} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Certificate Level</label>
+                    {isEdit ? (
+                      <select
+                        value={formData.courseLevel || ''}
+                        onChange={(e) => updateField('courseLevel', e.target.value)}
+                        className={fieldClass(isEdit)}
+                      >
+                        <option value="">Select certificate level</option>
+                        {['Other'].map(l => (
+                          <option key={l} value={l}>{l}</option>
+                        ))}
+                        {formData.courseLevel && !['Other'].includes(formData.courseLevel) && (
+                          <option value={formData.courseLevel}>{formData.courseLevel}</option>
+                        )}
+                      </select>
+                    ) : (
+                      <input type="text" value={formData.courseLevel || ''} disabled className={fieldClass(false)} />
+                    )}
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Specialisation</label>
                     <input type="text" value={formData.specialisation || ''} onChange={(e) => updateField('specialisation', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Course Level</label>
-                    <input type="text" value={formData.courseLevel || ''} onChange={(e) => updateField('courseLevel', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} />
-                  </div>
-                  <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Study Mode</label>
-                    <input type="text" value={formData.studyMode || ''} onChange={(e) => updateField('studyMode', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} />
+                    {isEdit ? (
+                      <select
+                        value={formData.studyMode || ''}
+                        onChange={(e) => updateField('studyMode', e.target.value)}
+                        className={fieldClass(isEdit)}
+                      >
+                        <option value="">Select study mode</option>
+                        {['Full Time','Part Time','Online','Blended','Flexible'].map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" value={formData.studyMode || ''} disabled className={fieldClass(false)} />
+                    )}
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Institute</label>
@@ -559,6 +605,36 @@ export default function StudentViewEditPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Placement Hours */}
+            {activeTab === 'placementhours' && (
+              <div className="space-y-6">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <Clock size={16} className="text-blue-600" />
+                  <span>Placement Hours</span>
+                </h3>
+                <div className="max-w-xs">
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                    Total Placement Hours
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="e.g. 120"
+                    value={formData.placementHours ?? ''}
+                    onChange={(e) =>
+                      updateField('placementHours', e.target.value === '' ? '' : Number(e.target.value))
+                    }
+                    disabled={!isEdit}
+                    className={fieldClass(isEdit)}
+                  />
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Enter the number of placement hours completed (e.g. 120, 160, 180, 200, 300).
+                  </p>
+                </div>
               </div>
             )}
           </div>

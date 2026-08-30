@@ -1,15 +1,55 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
-  Search, ChevronDown, 
+  ChevronDown, 
   MapPin, ArrowRight, ArrowLeft, 
-  Bookmark, X
+  Bookmark, AlertCircle
 } from 'lucide-react';
 import IndustryProgressPanel from './IndustryProgressPanel';
 
-export default function AddNewIndustryStep3({ onNext, onPrev }) {
+const AU_STATES = [
+  'New South Wales (NSW)',
+  'Victoria (VIC)',
+  'Queensland (QLD)',
+  'Western Australia (WA)',
+  'South Australia (SA)',
+  'Tasmania (TAS)',
+  'Australian Capital Territory (ACT)',
+  'Northern Territory (NT)',
+];
+
+export default function AddNewIndustryStep3({ onNext, onPrev, formData, updateFormData }) {
+  const [errors, setErrors] = useState({});
+
+  const handleChange = (field, value) => {
+    updateFormData({ [field]: value });
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    if (!formData.address?.trim()) newErrors.address = 'Address is required';
+    if (!formData.suburb?.trim()) newErrors.suburb = 'Suburb / City is required';
+    if (!formData.state?.trim()) newErrors.state = 'State is required';
+    return newErrors;
+  };
+
+  const handleNext = () => {
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+    onNext();
+  };
+
+  const inputBase = "w-full bg-white border rounded-lg px-3.5 py-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 shadow-sm transition-colors";
+  const inputClass = (field) => `${inputBase} ${errors[field] ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`;
+  const selectClass = (field) => `w-full appearance-none bg-white border rounded-lg px-3.5 py-2.5 pr-10 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm cursor-pointer transition-colors ${errors[field] ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`;
+
   return (
     <div className="bg-slate-50 text-slate-800 font-sans">
-      {/* Layout Grid: Form Container (left) & Sidebar Guides (right) */}
       <div className="grid grid-cols-12 gap-6">
         
         {/* Left Column: Step 3 Form */}
@@ -20,42 +60,58 @@ export default function AddNewIndustryStep3({ onNext, onPrev }) {
             <p className="text-xs text-slate-500">Add the registered address and location details for this industry.</p>
           </div>
 
-          {/* Form Fields Grid - Address Lines */}
+          {/* Address Lines */}
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">
-                Registered Address Line 1 <span className="text-rose-500">*</span>
+                Registered Address <span className="text-rose-500">*</span>
               </label>
               <input 
-                type="text" 
-                defaultValue="Level 3, 20 Martin Place" 
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm"
+                type="text"
+                placeholder="e.g. Level 3, 20 Martin Place"
+                value={formData.address || ''}
+                onChange={(e) => handleChange('address', e.target.value)}
+                className={inputClass('address')}
               />
+              {errors.address && (
+                <p className="flex items-center gap-1 text-[11px] text-rose-500 font-medium">
+                  <AlertCircle className="w-3 h-3 shrink-0" />{errors.address}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">
-                Registered Address Line 2
+                Address Line 2
               </label>
               <input 
-                type="text" 
-                defaultValue="Sydney NSW 2000" 
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm"
+                type="text"
+                placeholder="e.g. Suite 401"
+                value={formData.addressLine2 || ''}
+                onChange={(e) => handleChange('addressLine2', e.target.value)}
+                className={inputClass('addressLine2')}
               />
             </div>
           </div>
 
-          {/* Form Fields Grid - Suburb, State, Postcode, Country */}
+          {/* Suburb, State, Postcode, Country */}
           <div className="grid grid-cols-4 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">
                 Suburb / City <span className="text-rose-500">*</span>
               </label>
               <input 
-                type="text" 
-                defaultValue="Sydney" 
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm"
+                type="text"
+                placeholder="e.g. Sydney"
+                value={formData.suburb || ''}
+                onChange={(e) => handleChange('suburb', e.target.value)}
+                className={inputClass('suburb')}
               />
+              {errors.suburb && (
+                <p className="flex items-center gap-1 text-[11px] text-rose-500 font-medium">
+                  <AlertCircle className="w-3 h-3 shrink-0" />{errors.suburb}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -63,105 +119,82 @@ export default function AddNewIndustryStep3({ onNext, onPrev }) {
                 State / Territory <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <select className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 pr-10 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm cursor-pointer">
-                  <option>New South Wales (NSW)</option>
-                  <option>Victoria (VIC)</option>
-                  <option>Queensland (QLD)</option>
+                <select
+                  value={formData.state || ''}
+                  onChange={(e) => handleChange('state', e.target.value)}
+                  className={selectClass('state')}
+                >
+                  <option value="">Select state</option>
+                  {AU_STATES.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
                 </select>
                 <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
+              {errors.state && (
+                <p className="flex items-center gap-1 text-[11px] text-rose-500 font-medium">
+                  <AlertCircle className="w-3 h-3 shrink-0" />{errors.state}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">
-                Postcode <span className="text-rose-500">*</span>
+                Postcode
               </label>
               <input 
-                type="text" 
-                defaultValue="2000" 
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm"
+                type="text"
+                placeholder="e.g. 2000"
+                value={formData.postCode || ''}
+                onChange={(e) => handleChange('postCode', e.target.value)}
+                className={inputClass('postCode')}
               />
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">
-                Country <span className="text-rose-500">*</span>
+                Country
               </label>
               <div className="relative">
-                <select className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 pr-10 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm cursor-pointer">
+                <select
+                  value={formData.country || 'Australia'}
+                  onChange={(e) => handleChange('country', e.target.value)}
+                  className={selectClass('country')}
+                >
                   <option>Australia</option>
+                  <option>New Zealand</option>
+                  <option>United Kingdom</option>
+                  <option>United States</option>
+                  <option>Other</option>
                 </select>
                 <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
             </div>
           </div>
 
-          {/* Location on Map */}
+          {/* Map visual (static) */}
           <div className="space-y-2 pt-2">
             <label className="block text-xs font-semibold text-slate-700">
-              Location on Map <span className="text-rose-500">*</span>
+              Location Preview
             </label>
-            <p className="text-[11px] text-slate-400">Search and select the exact location of the industry.</p>
-            
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <input 
-                type="text" 
-                defaultValue="20 Martin Place, Sydney NSW 2000, Australia" 
-                className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-10 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 shadow-sm"
-              />
-              <button className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+            <p className="text-[11px] text-slate-400">Based on the address entered above.</p>
 
-            {/* Simulated Interactive Map */}
-            <div className="relative w-full h-72 rounded-xl border border-slate-200 overflow-hidden bg-slate-100">
-              {/* Map Graphics Simulation */}
+            <div className="w-full h-48 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 relative">
               <div className="absolute inset-0 opacity-80 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] bg-emerald-50/40">
-                <div className="absolute top-12 left-1/4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Wynyard</div>
-                <div className="absolute top-20 right-1/4 text-[10px] font-semibold text-emerald-800">Royal Botanic Garden Sydney</div>
-                <div className="absolute bottom-12 left-1/3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">King Street Wharf</div>
-                <div className="absolute bottom-20 right-1/3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">St James</div>
-                
-                {/* Pin */}
+                <div className="absolute top-12 left-1/4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  {formData.suburb || 'Suburb'}
+                </div>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
                   <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg ring-4 ring-blue-500/30">
                     <MapPin className="w-5 h-5" />
                   </div>
+                  {(formData.address || formData.suburb) && (
+                    <div className="mt-2 bg-white/90 text-slate-700 text-[10px] font-semibold px-2 py-1 rounded-lg shadow text-center max-w-[180px]">
+                      {[formData.address, formData.suburb, formData.state].filter(Boolean).join(', ')}
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Map Zoom Controls */}
-              <div className="absolute right-4 bottom-4 flex flex-col bg-white rounded-lg shadow-md border border-slate-200 overflow-hidden">
-                <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 text-slate-700 border-b border-slate-200 font-bold">+</button>
-                <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 text-slate-700 font-bold">−</button>
-                <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 text-indigo-600 border-t border-slate-200">
-                  <MapPin className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Service Areas (Optional) */}
-          <div className="space-y-2 pt-2">
-            <label className="block text-xs font-semibold text-slate-700">
-              Service Areas (Optional)
-            </label>
-            <p className="text-[11px] text-slate-400">Select the regions or areas where this industry operates.</p>
-            
-            <div className="relative">
-              <div className="w-full bg-white border border-slate-200 rounded-lg p-2 flex items-center flex-wrap gap-2 text-sm">
-                <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-md border border-indigo-100">
-                  New South Wales (NSW) <X className="w-3 h-3 cursor-pointer" />
-                </span>
-                <input 
-                  type="text" 
-                  placeholder="Select additional areas (if any)" 
-                  className="flex-1 bg-transparent border-none text-sm text-slate-700 placeholder-slate-400 outline-none min-w-[200px]"
-                />
-              </div>
-              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
@@ -181,7 +214,7 @@ export default function AddNewIndustryStep3({ onNext, onPrev }) {
                 <span>Save as Draft</span>
               </button>
               <button
-                onClick={onNext}
+                onClick={handleNext}
                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-colors"
               >
                 <span>Next</span>
@@ -192,7 +225,7 @@ export default function AddNewIndustryStep3({ onNext, onPrev }) {
 
         </div>
 
-        {/* Right Column: Progress & Checklist Widgets */}
+        {/* Right Column */}
         <IndustryProgressPanel currentStep={3} />
 
       </div>

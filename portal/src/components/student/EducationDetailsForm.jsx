@@ -10,30 +10,13 @@ const studentSources = [
   'Other',
 ];
 
-const studyModes = [
-  'Full Time',
-  'Part Time',
-  'Online',
-  'Blended',
-  'Flexible',
-];
+// Keep only course options in this education section; certificate-level values are no longer listed here.
+const courseLevels = ['Other'];
 
 const courses = [
-  'Bachelor of Information Technology',
-  'Bachelor of Business',
-  'Bachelor of Nursing',
-  'Bachelor of Engineering',
-  'Diploma of Information Technology',
-  'Diploma of Business',
-  'Diploma of Leadership and Management',
-  'Diploma of Marketing',
-  'Diploma of Project Management',
-  'Certificate IV in Business',
-  'Certificate IV in Accounting',
-  'Certificate IV in Human Resources',
-  'Certificate III in Aged Care',
-  'Certificate III in Early Childhood Education',
-  'Certificate III in Hospitality',
+  'Individual Support',
+  'Early Childhood Education and Care',
+  'Hospitality Management',
   'Other',
 ];
 
@@ -151,25 +134,27 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Study Mode <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Certificate Level <span className="text-rose-500">*</span></label>
               <div className="relative">
                 <select
-                  value={formData.studyMode || ''}
-                  onChange={(e) => updateField('studyMode', e.target.value)}
-                  className={selectClass(errors?.studyMode)}
+                  value={formData.courseLevel || ''}
+                  onChange={(e) => updateField('courseLevel', e.target.value)}
+                  className={selectClass(errors?.courseLevel)}
                 >
-                  <option value="">Select study mode</option>
-                  {studyModes.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                  <option value="">Select certificate level</option>
+                  {courseLevels.map((l) => (
+                    <option key={l} value={l}>{l}</option>
                   ))}
                 </select>
                 <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
                   <ChevronDown size={14} />
                 </span>
               </div>
-              {errors?.studyMode && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.studyMode}</p>}
+              {errors?.courseLevel && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.courseLevel}</p>}
             </div>
           </div>
+
+
 
           {/* Row 2: Enrollment ID, College / RTO, Student Source (only when College/RTO = Other) */}
           <div className="grid grid-cols-3 gap-5">

@@ -35,32 +35,63 @@ export const createIndustryController = async (req, res) => {
     const {
       industryName,
       industryCode,
-      industryType, // maps to sector
+      industryType,       // maps to sector
+      contactPersonName,
+      contactEmail,
+      contactPhone,
+      contactJobTitle,
+      address,
+      suburb,
+      state,
+      postCode,
+      country,
       abn,
       website,
       shortDescription,
-      suburb,
-      state
     } = req.body;
 
-    if (!industryName || !industryCode || !industryType) {
+    // Validate all required fields
+    const missing = [];
+    if (!industryName) missing.push('Industry Name');
+    if (!industryType) missing.push('Industry Type');
+    if (!contactPersonName) missing.push('Contact Person Name');
+    if (!contactEmail) missing.push('Email Address');
+    if (!contactPhone) missing.push('Phone Number');
+    if (!address) missing.push('Address');
+
+    if (missing.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Company Name, Code, and Sector are required'
+        message: `The following fields are required: ${missing.join(', ')}`,
+        missingFields: missing,
       });
     }
 
+    // Auto-generate a unique industry code if not provided
+    const finalCode = industryCode || industryName.replace(/\s+/g, '').substring(0, 6).toUpperCase() + Date.now().toString().slice(-4);
+
+    const location = [suburb, state].filter(Boolean).join(', ') || 'Australia';
+
     const industry = new IndustryModel({
       name: industryName,
-      code: industryCode,
+      code: finalCode,
       sector: industryType,
+      contactPersonName,
+      contactEmail,
+      contactPhone,
+      contactJobTitle,
+      address,
+      suburb,
+      state,
+      postCode,
+      country: country || 'Australia',
       abn,
       website,
       shortDescription,
-      location: suburb && state ? `${suburb}, ${state}` : 'Sydney, NSW',
+      location,
       status: 'Active',
-      students: Math.floor(Math.random() * 20),
-      jobs: Math.floor(Math.random() * 10) + 1
+      students: 0,
+      jobs: 0,
     });
 
     await industry.save();
@@ -70,6 +101,38 @@ export const createIndustryController = async (req, res) => {
       message: 'Industry created successfully',
       data: industry
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateIndustryController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+
+    // Remap frontend field names to model field names if needed
+    if (updateData.industryName) { updateData.name = updateData.industryName; delete updateData.industryName; }
+    if (updateData.industryType) { updateData.sector = updateData.industryType; delete updateData.industryType; }
+    if (updateData.industryCode) { updateData.code = updateData.industryCode; delete updateData.industryCode; }
+
+    // Rebuild location string if address parts changed
+    if (updateData.suburb || updateData.state) {
+      const industryDoc = await IndustryModel.findById(id);
+      if (industryDoc) {
+        const suburb = updateData.suburb ?? industryDoc.suburb;
+        const state = updateData.state ?? industryDoc.state;
+        updateData.location = [suburb, state].filter(Boolean).join(', ');
+      }
+    }
+
+    const industry = await IndustryModel.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+
+    if (!industry) {
+      return res.status(404).json({ success: false, message: 'Industry not found' });
+    }
+
+    res.status(200).json({ success: true, message: 'Industry updated successfully', data: industry });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -1,12 +1,14 @@
-// src/components/workflow/WorkflowStep2Requests.jsx
+﻿// src/components/workflow/WorkflowStep2Requests.jsx
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search, Filter, Download, Plus, MoreVertical,
   ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List,
   X, XCircle, Building2, User, Calendar, Clock, CheckCircle2,
-  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText
+  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText, UserCheck
 } from 'lucide-react';
 import { fetchJobs } from '../../api/jobApi';
+import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 
 export default function WorkflowStep2Requests({
   requests = [],
@@ -19,6 +21,7 @@ export default function WorkflowStep2Requests({
   students = [],
   activeStudent = null
 }) {
+  const navigate = useNavigate();
   const [newRequestStudentId, setNewRequestStudentId] = useState('');
   const [newRequestCompany, setNewRequestCompany] = useState('');
   const [newRequestTitle, setNewRequestTitle] = useState('');
@@ -69,6 +72,15 @@ export default function WorkflowStep2Requests({
   }, [requests]);
 
   const [showAddOrgModal, setShowAddOrgModal] = useState(false);
+  // â”€â”€â”€ Edit Request Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [editRequest, setEditRequest] = useState(null); // item being edited
+  const [editForm, setEditForm] = useState({ status: '', company: '', rto: '', priority: 'Normal', notes: '' });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  // â”€â”€â”€ Delete Confirm Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [deleteConfirmReq, setDeleteConfirmReq] = useState(null);
+  const [isDeletingReq, setIsDeletingReq] = useState(false);
+  // â”€â”€â”€ Assign Coordinator Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [assignCoordinatorTarget, setAssignCoordinatorTarget] = useState(null);
   const [orgForm, setOrgForm] = useState({
     organizationName: '',
     email: '',
@@ -81,16 +93,24 @@ export default function WorkflowStep2Requests({
     appointmentDate: '',
     appointmentTime: ''
   });
+  const [orgFormErrors, setOrgFormErrors] = useState({});
 
   const handleAddOrgRecord = async () => {
-    if (!orgForm.organizationName) {
-      showToast('Please enter Organisation Name');
+    // Validate all required fields
+    const errors = {};
+    if (!orgForm.organizationName.trim()) errors.organizationName = 'Industry / Organisation name is required';
+    if (!orgForm.contactPerson.trim()) errors.contactPerson = 'Contact person name is required';
+    if (!orgForm.email.trim()) errors.email = 'Email address is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(orgForm.email.trim())) errors.email = 'Enter a valid email address';
+    if (!orgForm.phone.trim()) errors.phone = 'Phone number is required';
+    if (!orgForm.address.trim()) errors.address = 'Address is required';
+    if (!orgForm.notes.trim()) errors.notes = 'Discussion notes / response is required';
+
+    if (Object.keys(errors).length > 0) {
+      setOrgFormErrors(errors);
       return;
     }
-    if (!orgForm.notes) {
-      showToast('Please add discussion notes / response');
-      return;
-    }
+    setOrgFormErrors({});
 
     const targetKey = selectedRequest?.dbId || selectedRequest?.id;
     if (!targetKey) {
@@ -126,6 +146,7 @@ export default function WorkflowStep2Requests({
           appointmentDate: '',
           appointmentTime: ''
         });
+        setOrgFormErrors({});
       } catch (err) {
         const serverMsg =
           err?.response?.data?.message ||
@@ -141,8 +162,9 @@ export default function WorkflowStep2Requests({
         }));
       }
     } else {
-      showToast(`Added contact record for ${orgForm.organizationName} (not persisted — onAddContact missing)`);
+      showToast(`Added contact record for ${orgForm.organizationName} (not persisted â€” onAddContact missing)`);
       setShowAddOrgModal(false);
+      setOrgFormErrors({});
     }
   };
 
@@ -221,32 +243,34 @@ export default function WorkflowStep2Requests({
       });
       setShowDrawer(true);
     } else if (action === 'edit') {
-      const nextStatuses = ['New', 'Coordinator Review', 'RTO Review', 'Appointment', 'Approved', 'Rejected'];
-      const currentIndex = nextStatuses.indexOf(item.status);
-      const nextStatus = nextStatuses[(currentIndex + 1) % nextStatuses.length];
-      if (onUpdateRequest) {
-        try {
-          await onUpdateRequest(dbId, { status: nextStatus });
-          showToast(`Updated status to ${nextStatus}`);
-        } catch (err) {
-          console.error(err);
-          showToast('Failed to update status');
-        }
+      const matchedStudent = students.find(s =>
+        (s.id && (s.id === item.studentId || s.id === item.id)) ||
+        (s.studentId && s.studentId === item.studentId) ||
+        (s.name && s.name.toLowerCase() === (item.student || '').toLowerCase())
+      );
+      const studentDbId = matchedStudent?.id || item.studentId || item.id;
+
+      if (studentDbId) {
+        navigate(`/students/${studentDbId}/edit`);
       } else {
-        showToast(`Mock updated status to ${nextStatus}`);
+        showToast('Unable to open the student profile for editing');
       }
+    } else if (action === 'assignCoordinator') {
+      const matchedStudent = students.find(s =>
+        (s.id && (s.id === item.studentId || s.id === item.id)) ||
+        (s.studentId && s.studentId === item.studentId) ||
+        (s.name && s.name.toLowerCase() === (item.student || '').toLowerCase())
+      );
+      const target = matchedStudent || {
+        id: item.studentId || item.id,
+        dbId: item.studentId || item.id,
+        name: item.student || 'Student',
+        studentId: item.studentId || '',
+      };
+      setAssignCoordinatorTarget(target);
     } else if (action === 'delete') {
-      if (onDeleteRequest) {
-        try {
-          await onDeleteRequest(dbId);
-          showToast('Request deleted successfully');
-        } catch (err) {
-          console.error(err);
-          showToast('Failed to delete request');
-        }
-      } else {
-        showToast(`Delete action for ${item.reqId} (mock)`);
-      }
+      // Open confirm modal â€” do NOT delete immediately
+      setDeleteConfirmReq(item);
     }
   };
 
@@ -270,8 +294,50 @@ export default function WorkflowStep2Requests({
   };
 
   const handleCreateAppointment = () => {
-    showToast('Creating appointment...');
-    if (onNext) setTimeout(onNext, 800);
+    if (!selectedRequest) {
+      if (onNext) onNext();
+      return;
+    }
+    const prefillData = {
+      student: selectedRequest.student,
+      studentId: selectedRequest.studentId || selectedRequest.dbId || '',
+      rto: selectedRequest.rto || '',
+      reqId: selectedRequest.id || selectedRequest.reqId || '',
+      company: selectedRequest.company || '',
+      position: selectedRequest.title || 'Internship Placement',
+      appointmentDate: new Date().toISOString().split('T')[0],
+      appointmentTime: '10:00',
+      openModal: true
+    };
+    showToast('Opening Step 3 Appointment...');
+    if (onNext) setTimeout(() => onNext(selectedRequest, selectedRequest.company, prefillData), 300);
+  };
+
+  const handleAddAppointmentForIndustry = (rec) => {
+    if (!selectedRequest) return;
+    const prefillData = {
+      student: selectedRequest.student,
+      studentId: selectedRequest.studentId || selectedRequest.dbId || '',
+      rto: selectedRequest.rto || '',
+      reqId: selectedRequest.id || selectedRequest.reqId || '',
+      company: rec.organizationName || selectedRequest.company || '',
+      industryId: rec.id || '',
+      industryName: rec.organizationName || '',
+      industryType: rec.industryType || '',
+      interviewer: rec.contactPerson || '',
+      location: rec.address || '',
+      position: selectedRequest.title || 'Internship Placement',
+      appointmentDate: rec.appointmentDate || new Date().toISOString().split('T')[0],
+      appointmentTime: rec.appointmentTime || '10:00',
+      notes: rec.notes ? `Discussion Notes: ${rec.notes}` : '',
+      email: rec.email || '',
+      phone: rec.phone || '',
+      openModal: true
+    };
+    showToast(`Loading appointment for ${rec.organizationName}...`);
+    if (onNext) {
+      onNext(selectedRequest, rec.organizationName, prefillData);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -290,7 +356,8 @@ export default function WorkflowStep2Requests({
   const currentContacts = (contactRecordsMap[selectedRequest?.dbId || selectedRequest?.id] || []);
 
   return (
-    <div className="flex gap-4 items-start pb-8 relative">
+    <>
+      <div className="flex gap-4 items-start pb-8 relative">
       {toast && (
         <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-pulse">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -556,7 +623,7 @@ export default function WorkflowStep2Requests({
                       }}
                       className="w-full px-3 py-2 text-xs border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500 bg-blue-50/40 text-slate-700"
                     >
-                      <option value="">— Select a Job (auto-fill) —</option>
+                      <option value="">â€” Select a Job (auto-fill) â€”</option>
                       {availableJobs.map(j => (
                         <option key={j._id || j.id} value={j._id || j.id}>
                           {j.title} @ {j.employer}
@@ -761,7 +828,7 @@ export default function WorkflowStep2Requests({
                       </div>
                       <div>
                         <p className="font-bold text-slate-900">{item.student}</p>
-                        <p className="text-[11px] text-slate-400">{item.studentId || 'STU-0002453'}</p>
+                        <p className="text-[11px] text-slate-400">ST{paginatedRequests.indexOf(item) + 1 + (currentPage - 1) * pageSize}</p>
                       </div>
                     </td>
                     <td className="p-4 text-slate-600 font-medium flex items-center space-x-1.5 pt-5">
@@ -797,6 +864,11 @@ export default function WorkflowStep2Requests({
                             <Edit className="w-3.5 h-3.5 text-slate-400" />
                             <span>Edit</span>
                           </button>
+                          <button onClick={() => handleRowAction('assignCoordinator', item)} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
+                            <UserCheck className="w-3.5 h-3.5 text-blue-500" />
+                            <span>Assign Coordinator</span>
+                          </button>
+                          <div className="my-0.5 border-t border-slate-100" />
                           <button onClick={() => handleRowAction('delete', item)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Delete</span>
@@ -924,7 +996,11 @@ export default function WorkflowStep2Requests({
                     {selectedRequest.status}
                   </span>
                 </div>
-                <p className="text-xs font-semibold text-slate-200 mt-1.5">{selectedRequest.title}</p>
+                <p className="text-sm font-bold text-white mt-1.5 flex items-center space-x-1.5">
+                  <User className="w-3.5 h-3.5 text-blue-300 shrink-0" />
+                  <span>{selectedRequest.student}</span>
+                </p>
+                <p className="text-xs font-semibold text-slate-200 mt-0.5">{selectedRequest.title}</p>
                 <p className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
                   <Clock className="w-3 h-3" />
                   <span>Requested on {selectedRequest.requestedOn}</span>
@@ -1002,11 +1078,11 @@ export default function WorkflowStep2Requests({
                             {rec.industryType}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>
-                        <p className="text-[10px] text-slate-500">📍 {rec.address}</p>
+                        <p className="text-[10px] text-slate-600 font-mono truncate">âœ‰ {rec.email}</p>
+                        <p className="text-[10px] text-slate-500">ðŸ“ {rec.address}</p>
                         {rec.appointmentDate && (
                           <div className="text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-md">
-                            📅 Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
+                            ðŸ“… Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
                           </div>
                         )}
                         <div className="pt-1.5 border-t border-slate-200/60 mt-1 space-y-1">
@@ -1028,6 +1104,19 @@ export default function WorkflowStep2Requests({
                           {(rec.contactedDate || rec.date) && (
                             <p className="text-[9px] text-slate-400">Date: {rec.contactedDate || rec.date}</p>
                           )}
+                        </div>
+
+                        {/* + Add Appointment for this specific industry */}
+                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                          <span className="text-[9px] text-slate-400 font-medium">Ready to interview?</span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddAppointmentForIndustry(rec)}
+                            className="px-2.5 py-1.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-[10px] font-bold rounded-lg flex items-center space-x-1.5 transition-all duration-300 shadow-xs cursor-pointer"
+                          >
+                            <Calendar className="w-3 h-3" />
+                            <span>+ Add Appointment</span>
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1080,6 +1169,10 @@ export default function WorkflowStep2Requests({
                 <span className="text-slate-600 font-medium">{selectedRequest.id}</span>
               </div>
               <div className="flex justify-between">
+                <span>Student</span>
+                <span className="text-slate-700 font-bold">{selectedRequest.student}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>Requested On</span>
                 <span className="text-slate-600 font-medium">{selectedRequest.requestedOn}</span>
               </div>
@@ -1096,26 +1189,31 @@ export default function WorkflowStep2Requests({
                 <h3 className="text-base font-bold text-slate-900">Add Industry / Organisation Contact</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Record organisation contacted for student's placement</p>
               </div>
-              <button onClick={() => setShowAddOrgModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowAddOrgModal(false); setOrgFormErrors({}); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Industry / Organisation Name *</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Industry / Organisation Name <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
                   placeholder="e.g. Sunnyside Aged Care Center"
                   value={orgForm.organizationName}
-                  onChange={(e) => setOrgForm({ ...orgForm, organizationName: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                  onChange={(e) => { setOrgForm({ ...orgForm, organizationName: e.target.value }); if (orgFormErrors.organizationName) setOrgFormErrors(p => ({...p, organizationName: ''})); }}
+                  className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.organizationName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
+                {orgFormErrors.organizationName && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.organizationName}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Industry Type *</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Industry Type <span className="text-rose-500">*</span>
+                  </label>
                   <select
                     value={orgForm.industryType}
                     onChange={(e) => setOrgForm({ ...orgForm, industryType: e.target.value })}
@@ -1131,50 +1229,62 @@ export default function WorkflowStep2Requests({
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Contact Person Name</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Contact Person Name <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. Jane Smith"
                     value={orgForm.contactPerson}
-                    onChange={(e) => setOrgForm({ ...orgForm, contactPerson: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    onChange={(e) => { setOrgForm({ ...orgForm, contactPerson: e.target.value }); if (orgFormErrors.contactPerson) setOrgFormErrors(p => ({...p, contactPerson: ''})); }}
+                    className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.contactPerson ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                   />
+                  {orgFormErrors.contactPerson && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.contactPerson}</p>}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email Address</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Email Address <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="email"
                     placeholder="contact@org.com.au"
                     value={orgForm.email}
-                    onChange={(e) => setOrgForm({ ...orgForm, email: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    onChange={(e) => { setOrgForm({ ...orgForm, email: e.target.value }); if (orgFormErrors.email) setOrgFormErrors(p => ({...p, email: ''})); }}
+                    className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.email ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                   />
+                  {orgFormErrors.email && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.email}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Phone Number</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Phone Number <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. 03 9123 4567"
                     value={orgForm.phone}
-                    onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    onChange={(e) => { setOrgForm({ ...orgForm, phone: e.target.value }); if (orgFormErrors.phone) setOrgFormErrors(p => ({...p, phone: ''})); }}
+                    className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                   />
+                  {orgFormErrors.phone && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.phone}</p>}
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Address</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Address <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
                   placeholder="e.g. 123 High St, Melbourne VIC"
                   value={orgForm.address}
-                  onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                  onChange={(e) => { setOrgForm({ ...orgForm, address: e.target.value }); if (orgFormErrors.address) setOrgFormErrors(p => ({...p, address: ''})); }}
+                  className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.address ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
+                {orgFormErrors.address && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.address}</p>}
               </div>
 
               <div>
@@ -1191,7 +1301,7 @@ export default function WorkflowStep2Requests({
                 </select>
               </div>
 
-              {/* NEW: Appointment Date & Time Fields */}
+              {/* Appointment Date & Time Fields */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
@@ -1218,14 +1328,17 @@ export default function WorkflowStep2Requests({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Discussion Notes / Response *</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Discussion Notes / Response <span className="text-rose-500">*</span>
+                </label>
                 <textarea
                   rows={3}
                   placeholder="Summary of the conversation, requirements, next steps..."
                   value={orgForm.notes}
-                  onChange={(e) => setOrgForm({ ...orgForm, notes: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
+                  onChange={(e) => { setOrgForm({ ...orgForm, notes: e.target.value }); if (orgFormErrors.notes) setOrgFormErrors(p => ({...p, notes: ''})); }}
+                  className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 resize-none ${orgFormErrors.notes ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
+                {orgFormErrors.notes && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.notes}</p>}
               </div>
             </div>
 
@@ -1237,7 +1350,7 @@ export default function WorkflowStep2Requests({
                 Save Contact Record
               </button>
               <button
-                onClick={() => setShowAddOrgModal(false)}
+                onClick={() => { setShowAddOrgModal(false); setOrgFormErrors({}); }}
                 className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
               >
                 Cancel
@@ -1246,6 +1359,164 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
       )}
+
+      {/* â”€â”€â”€ EDIT REQUEST MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {editRequest && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Edit Internship Request</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">{editRequest.reqId} Â· {editRequest.student}</p>
+              </div>
+              <button onClick={() => setEditRequest(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
+                <select
+                  value={editForm.status}
+                  onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
+                >
+                  {['New','Coordinator Review','RTO Review','Appointment','Approved','Rejected','On Hold'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company</label>
+                <input
+                  type="text"
+                  value={editForm.company}
+                  onChange={e => setEditForm(p => ({ ...p, company: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">RTO</label>
+                <input
+                  type="text"
+                  value={editForm.rto}
+                  onChange={e => setEditForm(p => ({ ...p, rto: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Priority</label>
+                <select
+                  value={editForm.priority}
+                  onChange={e => setEditForm(p => ({ ...p, priority: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="Urgent">ðŸ”¥ Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Notes</label>
+                <textarea
+                  rows={3}
+                  value={editForm.notes}
+                  onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none text-xs"
+                  placeholder="Optional notes..."
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-2 pt-1">
+              <button
+                onClick={() => setEditRequest(null)}
+                disabled={isSavingEdit}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isSavingEdit}
+                onClick={async () => {
+                  const dbId = editRequest.id || editRequest._id || editRequest.reqId;
+                  if (!onUpdateRequest) { showToast('Update not available'); return; }
+                  setIsSavingEdit(true);
+                  try {
+                    await onUpdateRequest(dbId, editForm);
+                    showToast('Request updated successfully');
+                    setEditRequest(null);
+                  } catch (err) {
+                    showToast('Failed to update request');
+                  } finally {
+                    setIsSavingEdit(false);
+                  }
+                }}
+                className="flex-[2] py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {isSavingEdit ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Saving...</span></> : <span>Save Changes</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* â”€â”€â”€ DELETE CONFIRM MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {deleteConfirmReq && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4.5 h-4.5" size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Request</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Delete internship request <span className="font-semibold text-slate-800">{deleteConfirmReq.reqId}</span> for <span className="font-semibold">{deleteConfirmReq.student}</span>? This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex space-x-2 pt-1">
+              <button
+                onClick={() => setDeleteConfirmReq(null)}
+                disabled={isDeletingReq}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isDeletingReq}
+                onClick={async () => {
+                  const dbId = deleteConfirmReq.id || deleteConfirmReq.reqId || deleteConfirmReq._id;
+                  if (!dbId) { setDeleteConfirmReq(null); return; }
+                  setIsDeletingReq(true);
+                  try {
+                    if (onDeleteRequest) await onDeleteRequest(dbId);
+                    showToast('Request deleted');
+                  } catch (err) { showToast('Failed to delete'); }
+                  finally { setIsDeletingReq(false); setDeleteConfirmReq(null); }
+                }}
+                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {isDeletingReq ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Deleting...</span></> : <><Trash2 className="w-3.5 h-3.5"/><span>Delete</span></>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
+    {assignCoordinatorTarget && (
+      <AssignCoordinatorModal
+        student={assignCoordinatorTarget}
+        onClose={() => setAssignCoordinatorTarget(null)}
+        onAssigned={() => {
+          setAssignCoordinatorTarget(null);
+          showToast('Coordinator assigned successfully');
+        }}
+      />
+    )}
+  </>
   );
 }
+

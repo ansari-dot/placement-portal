@@ -503,7 +503,18 @@ export const getWorkflowDashboardDataController = async (req, res) => {
 
 export const getWorkflowStudentsController = async (req, res) => {
   try {
-    const students = await getWorkflowStudents();
+    // Non-admin users only see students assigned to them
+    let filter = {};
+    if (req.user && req.user.role !== 'Administrator') {
+      filter = { assignedCoordinator: req.user._id };
+    } else if (req.query.coordinatorId) {
+      if (req.query.coordinatorId === 'unassigned') {
+        filter = { $or: [{ assignedCoordinator: null }, { assignedCoordinator: { $exists: false } }] };
+      } else {
+        filter = { assignedCoordinator: req.query.coordinatorId };
+      }
+    }
+    const students = await getWorkflowStudents(filter);
     res.status(200).json({
       message: "Workflow students fetched successfully",
       success: true,

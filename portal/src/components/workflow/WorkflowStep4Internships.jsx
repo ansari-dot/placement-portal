@@ -14,6 +14,7 @@ export default function WorkflowStep4Internships({
   appointments = [],
   requests = [],
   onBack,
+  onNext,
   onCreateInternship,
   onUpdateInternship,
   onDeleteInternship,
@@ -45,6 +46,14 @@ export default function WorkflowStep4Internships({
   const [statusFilter, setStatusFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
   const [activeStatusTab, setActiveStatusTab] = useState('All Internships');
+
+  // ─── Edit Internship Modal ────────────────────────────────────────────────
+  const [editInternship, setEditInternship] = useState(null);
+  const [editIntForm, setEditIntForm] = useState({ status: '', company: '', title: '', notes: '' });
+  const [isSavingInt, setIsSavingInt] = useState(false);
+  // ─── Delete Confirm Modal ─────────────────────────────────────────────────
+  const [deleteConfirmInt, setDeleteConfirmInt] = useState(null);
+  const [isDeletingInt, setIsDeletingInt] = useState(false);
 
   const showToast = (message) => {
     setToast(message);
@@ -250,55 +259,51 @@ export default function WorkflowStep4Internships({
     showToast(`${action} applied to ${selectedRows.length} internships`);
   };
 
-  const handleDeleteAppointment = async (appointmentId) => {
-    if (!appointmentId) {
-      showToast('Invalid appointment ID');
-      return;
-    }
-    
-    if (window.confirm('Are you sure you want to delete this appointment? This action cannot be undone.')) {
-      try {
-        if (onDeleteAppointment) {
-          await onDeleteAppointment(appointmentId);
-          showToast('Appointment deleted successfully');
-        } else {
-          showToast('Delete function not available');
-        }
-      } catch (err) {
-        console.error('Failed to delete appointment:', err);
-        showToast('Failed to delete appointment');
+  const handleDeleteAppointment = (appointmentId, item) => {
+    // Open confirmation modal — do NOT delete immediately
+    setDeleteConfirmInt(item || { _appointmentId: appointmentId, id: appointmentId });
+  };
+
+  const handleConfirmedDeleteInt = async () => {
+    const appointmentId = deleteConfirmInt?._appointmentId || deleteConfirmInt?.id || deleteConfirmInt?.intId;
+    if (!appointmentId) return;
+    setIsDeletingInt(true);
+    try {
+      if (onDeleteInternship) {
+        await onDeleteInternship(appointmentId);
+      } else if (onDeleteAppointment) {
+        await onDeleteAppointment(appointmentId);
       }
+      showToast('Deleted successfully');
+    } catch (err) {
+      showToast('Failed to delete');
+    } finally {
+      setIsDeletingInt(false);
+      setDeleteConfirmInt(null);
     }
   };
 
   const handleRowAction = async (action, item) => {
     setShowRowMenu(null);
-    const dbId = item.id || item.intId;
-    const appointmentId = item._appointmentId || item.id;
     
     if (action === 'view') {
       setSelectedInternship(item);
       setShowDrawer(true);
     } else if (action === 'edit') {
-      const nextStatuses = ['Waiting to Join', 'Joined', 'Active', 'Completed'];
-      const currentIndex = nextStatuses.indexOf(item.status);
-      const nextStatus = nextStatuses[(currentIndex + 1) % nextStatuses.length];
-      if (onUpdateInternship && dbId && !dbId.startsWith('INT-')) {
-        try {
-          await onUpdateInternship(dbId, { status: nextStatus });
-          showToast(`Updated status to ${nextStatus}`);
-        } catch (err) {
-          console.error(err);
-          showToast('Failed to update status');
-        }
-      } else {
-        showToast(`Mock updated status to ${nextStatus}`);
-      }
+      // Open proper edit modal
+      setEditIntForm({
+        status:  item.status || 'Waiting to Join',
+        company: item.company || '',
+        title:   item.title || '',
+        notes:   item.notes || '',
+      });
+      setEditInternship(item);
     } else if (action === 'delete') {
-      if (appointmentId) {
-        await handleDeleteAppointment(appointmentId);
+      const deleteId = item._appointmentId || item.id || item.intId;
+      if (deleteId) {
+        setDeleteConfirmInt(item);
       } else {
-        showToast('Cannot delete: No appointment ID found');
+        showToast('Cannot delete: No ID found');
       }
     }
   };
@@ -740,7 +745,7 @@ export default function WorkflowStep4Internships({
                             </button>
                             <button onClick={() => handleRowAction('delete', item)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete Appointment</span>
+                              <span>Delete Internship</span>
                             </button>
                           </div>
                         )}
@@ -811,18 +816,27 @@ export default function WorkflowStep4Internships({
           </div>
         </div>
 
-        {/* ─── Back Button ────────────────────────────────────────────────── */}
-        {onBack && (
-          <div className="flex justify-start pt-2">
+        {/* ─── Back & Next Buttons ────────────────────────────────────────────────── */}
+        <div className="flex justify-between pt-2">
+          {onBack ? (
             <button
               onClick={onBack}
-              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 rounded-xl flex items-center space-x-2 transition shadow-xs"
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 rounded-xl flex items-center space-x-2 transition shadow-xs cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>Back to Appointments</span>
             </button>
-          </div>
-        )}
+          ) : <div />}
+          {onNext && (
+            <button
+              onClick={onNext}
+              className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-xs font-semibold text-white rounded-xl flex items-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs"
+            >
+              <span>Continue to Placement Hours</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ─── Right Drawer ────────────────────────────────────────────────── */}
@@ -1075,6 +1089,143 @@ export default function WorkflowStep4Internships({
               <ExternalLink className="w-3.5 h-3.5" />
               <span>View Full Details</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── EDIT INTERNSHIP MODAL ────────────────────────────────────────── */}
+      {editInternship && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Edit Internship</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">{editInternship.intId} · {editInternship.student}</p>
+              </div>
+              <button onClick={() => setEditInternship(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
+                <select
+                  value={editIntForm.status}
+                  onChange={e => setEditIntForm(p => ({ ...p, status: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
+                >
+                  {['Waiting to Join','Joined','Active','Completed','Cancelled','On Hold'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company</label>
+                <input
+                  type="text"
+                  value={editIntForm.company}
+                  onChange={e => setEditIntForm(p => ({ ...p, company: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Title / Position</label>
+                <input
+                  type="text"
+                  value={editIntForm.title}
+                  onChange={e => setEditIntForm(p => ({ ...p, title: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Notes</label>
+                <textarea
+                  rows={3}
+                  value={editIntForm.notes}
+                  onChange={e => setEditIntForm(p => ({ ...p, notes: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none text-xs"
+                  placeholder="Optional notes..."
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-2 pt-1">
+              <button
+                onClick={() => setEditInternship(null)}
+                disabled={isSavingInt}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isSavingInt}
+                onClick={async () => {
+                  const dbId = editInternship._appointmentId || editInternship.id || editInternship.intId;
+                  if (!onUpdateInternship && !onUpdateAppointment) { showToast('Update not available'); return; }
+                  setIsSavingInt(true);
+                  try {
+                    if (onUpdateInternship) {
+                      await onUpdateInternship(dbId, editIntForm);
+                    } else if (onUpdateAppointment) {
+                      await onUpdateAppointment(dbId, {
+                        status: editIntForm.status === 'Waiting to Join' ? 'Scheduled' : editIntForm.status,
+                        company: editIntForm.company,
+                        position: editIntForm.title,
+                        notes: editIntForm.notes,
+                      });
+                    }
+                    showToast('Internship updated successfully');
+                    setEditInternship(null);
+                  } catch (err) {
+                    showToast('Failed to update internship');
+                  } finally {
+                    setIsSavingInt(false);
+                  }
+                }}
+                className="flex-[2] py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {isSavingInt ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Saving...</span></> : <span>Save Changes</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── DELETE CONFIRM MODAL ─────────────────────────────────────────── */}
+      {deleteConfirmInt && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Internship</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Delete internship record for <span className="font-semibold text-slate-800">{deleteConfirmInt.student}</span>
+                  {deleteConfirmInt.company ? <> at <span className="font-semibold">{deleteConfirmInt.company}</span></> : ''}? This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex space-x-2 pt-1">
+              <button
+                onClick={() => setDeleteConfirmInt(null)}
+                disabled={isDeletingInt}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isDeletingInt}
+                onClick={handleConfirmedDeleteInt}
+                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {isDeletingInt
+                  ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Deleting...</span></>
+                  : <><Trash2 className="w-3.5 h-3.5"/><span>Delete</span></>}
+              </button>
+            </div>
           </div>
         </div>
       )}

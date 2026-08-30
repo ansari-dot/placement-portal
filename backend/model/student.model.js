@@ -279,6 +279,10 @@ const studentSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    placementHours: {
+      type: Number,
+      default: null,
+    },
 
     // ===== Contacted Industries / Placement History =====
     contactedIndustries: [
@@ -354,6 +358,17 @@ const studentSchema = new mongoose.Schema(
       trim: true,
       maxlength: [2000, "Additional notes cannot exceed 2000 characters"],
       default: "",
+    },
+
+    // ===== Coordinator Assignment =====
+    assignedCoordinator: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    assignedCoordinatorName: {
+      type: String,
+      default: '',
     },
 
     // ===== System / Display Fields =====

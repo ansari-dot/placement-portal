@@ -1,12 +1,11 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Download, Columns, Users, UserCheck } from 'lucide-react';
+import { Download, Columns } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { defaultStudents, emptyFilters, parseAge, parseDate, btnSecondary } from './studentData';
 import { downloadStudentsCSV } from './csvUtils';
-import { fetchStudents, deleteStudent } from '../../api/studentsApi';
-import { fetchUsers } from '../../api/userApi';
+import { fetchAllStudents, deleteStudent } from '../../api/studentsApi';
 import StudentFilters from './StudentFilters';
 import StudentTableHeader from './StudentTableHeader';
 import StudentTableRow from './StudentTableRow';
@@ -35,15 +34,13 @@ const mapBackendStudent = (s) => ({
   placementHours: s.placementHours ?? null,
   source: s.source || s.studentSource || '',
   created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
-  // Coordinator assignment
   assignedCoordinator: s.assignedCoordinator || null,
   assignedCoordinatorName: s.assignedCoordinatorName || '',
 });
 
-export default function MyStudentsTable() {
+export default function AllStudentsTable() {
   const navigate = useNavigate();
   const authUser = useSelector((state) => state.auth.user);
-  const isAdmin = authUser?.role === 'Administrator';
 
   const [rowsPerPage, setRowsPerPage] = useState('10 per page');
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,35 +55,19 @@ export default function MyStudentsTable() {
   const [loadError, setLoadError] = useState(null);
   const columnsRef = useRef(null);
 
-  // Coordinators list & selection for Admins
-  const [coordinators, setCoordinators] = useState([]);
-  const [selectedCoordinator, setSelectedCoordinator] = useState('All');
-
   // Assign coordinator modal
-  const [assignTarget, setAssignTarget] = useState(null); // student object
-
-  useEffect(() => {
-    fetchUsers({ status: 'Active' })
-      .then((res) => {
-        setCoordinators(res?.data ?? []);
-      })
-      .catch(() => {});
-  }, []);
+  const [assignTarget, setAssignTarget] = useState(null);
 
   const loadStudents = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const response = await fetchStudents();
-      // The API helper returns response.data already, which is { message, success, data: [ ... ] }
+      const response = await fetchAllStudents();
       const studentList = response?.data ?? response ?? [];
-      // Always use the real backend data (even if 0 students) so newly added
-      // students are shown properly instead of being hidden by sample data.
       const backendStudents = (Array.isArray(studentList) ? studentList : []).map(mapBackendStudent);
       setStudents(backendStudents);
     } catch (err) {
       console.error('Could not load students from backend:', err);
-      // Only fall back to sample data when the server is unreachable.
       setLoadError('Could not connect to the server. Showing sample data.');
       setStudents(defaultStudents);
     } finally {
@@ -106,36 +87,9 @@ export default function MyStudentsTable() {
   const updateFilter = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setCurrentPage(1); };
   const clearFilters = () => { setFilters(emptyFilters); setCurrentPage(1); };
 
+  // No coordinator filtering — show ALL students, only apply search/filter criteria
   const filteredStudents = useMemo(() => {
-    const norm = (v) => String(v || '').trim().toLowerCase();
-    const currentUserId = authUser?._id || authUser?.id;
-    const currentUserName = authUser?.name;
-
     return students.filter(s => {
-      // ── Role-based and Coordinator filter ──
-      if (!isAdmin) {
-        // Coordinator sees ONLY their assigned students
-        const isAssignedToMe =
-          (s.assignedCoordinator && currentUserId && norm(s.assignedCoordinator) === norm(currentUserId)) ||
-          (s.assignedCoordinatorName && currentUserName && norm(s.assignedCoordinatorName) === norm(currentUserName));
-        if (!isAssignedToMe) return false;
-      } else {
-        // Admin filter by selected coordinator
-        if (selectedCoordinator !== 'All') {
-          if (selectedCoordinator === 'unassigned') {
-            if (s.assignedCoordinator || s.assignedCoordinatorName) return false;
-          } else {
-            const selectedCoord = coordinators.find(c => (c._id || c.id) === selectedCoordinator);
-            const coordId = selectedCoord?._id || selectedCoord?.id || selectedCoordinator;
-            const coordName = selectedCoord?.name;
-            const isMatch =
-              (s.assignedCoordinator && norm(s.assignedCoordinator) === norm(coordId)) ||
-              (s.assignedCoordinatorName && coordName && norm(s.assignedCoordinatorName) === norm(coordName));
-            if (!isMatch) return false;
-          }
-        }
-      }
-
       if (filters.firstName && !(s.name || '').toLowerCase().includes(filters.firstName.toLowerCase())) return false;
       if (filters.lastName) {
         const parts = (s.name || '').split(' ');
@@ -166,7 +120,7 @@ export default function MyStudentsTable() {
       }
       return true;
     });
-  }, [students, filters, isAdmin, authUser, selectedCoordinator, coordinators]);
+  }, [students, filters]);
 
   const sortedStudents = useMemo(() => {
     if (!sortField) return filteredStudents;
@@ -288,58 +242,20 @@ export default function MyStudentsTable() {
             </div>
           )}
 
-          {/* Admin Coordinator Switcher & Scope Banner */}
-          {isAdmin ? (
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <Users className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900">Coordinator View & Progress</h4>
-                  <p className="text-[10px] text-slate-400">Select any coordinator to filter and monitor their assigned students and placement progress</p>
-                </div>
+          {/* Info banner */}
+          <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-3.5 px-4 flex items-center justify-between shadow-2xs">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               </div>
-
-              <div className="flex items-center space-x-2">
-                <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Filter by Coordinator:</label>
-                <select
-                  value={selectedCoordinator}
-                  onChange={(e) => {
-                    setSelectedCoordinator(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-600 bg-white"
-                >
-                  <option value="All">All Users / Coordinators ({students.length} students)</option>
-                  {coordinators.map((c) => {
-                    const count = students.filter(s =>
-                      (s.assignedCoordinator && String(s.assignedCoordinator) === String(c._id || c.id)) ||
-                      (s.assignedCoordinatorName && s.assignedCoordinatorName.toLowerCase() === (c.name || '').toLowerCase())
-                    ).length;
-                    return (
-                      <option key={c._id || c.id} value={c._id || c.id}>
-                        {c.name} ({c.role || 'Coordinator'}) — {count} student(s)
-                      </option>
-                    );
-                  })}
-                  <option value="unassigned">Unassigned Students ({students.filter(s => !s.assignedCoordinator && !s.assignedCoordinatorName).length})</option>
-                </select>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 px-4 flex items-center justify-between shadow-2xs">
-              <div className="flex items-center space-x-2.5">
-                <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                <p className="text-xs text-blue-900 font-semibold">
-                  Showing your assigned student list ({filteredStudents.length} assigned to <span className="font-bold">{authUser?.name || 'you'}</span>)
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">All Students Directory</h4>
+                <p className="text-[10px] text-slate-400">
+                  Showing all {students.length} student(s) across the portal. Use "Assign Coordinator" to assign students to coordinators.
                 </p>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                Coordinator View
-              </span>
             </div>
-          )}
+          </div>
 
           <StudentFilters
             filters={filters}
@@ -401,7 +317,7 @@ export default function MyStudentsTable() {
                       onToggleActions={() => setOpenActionsId(openActionsId === student.id ? null : student.id)}
                       onRowAction={handleRowAction}
                       hiddenColumns={hiddenColumns}
-                      canAssign={isAdmin}
+                      canAssign={true}
                     />
                   ))}
                 </tbody>
@@ -422,7 +338,7 @@ export default function MyStudentsTable() {
         </>
       )}
 
-      {/* Assign Coordinator Modal — rendered inside wrapper but displays as fixed overlay */}
+      {/* Assign Coordinator Modal */}
       {assignTarget && (
         <AssignCoordinatorModal
           student={assignTarget}

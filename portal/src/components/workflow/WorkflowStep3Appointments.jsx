@@ -17,7 +17,12 @@ export default function WorkflowStep3Appointments({
   onUpdateAppointment,
   onDeleteAppointment,
   students = [],
-  requests = []
+  requests = [],
+  activeStudent = null,
+  activeRequest = null,
+  activeCompany = null,
+  prefilledAppointmentData = null,
+  onClearPrefilledData = null
 }) {
   // ─── Get pre-selected student from navigation state ─────────────────────
   const location = useLocation();
@@ -39,51 +44,60 @@ export default function WorkflowStep3Appointments({
 
   // ─── Auto-fill form when pre-selected student data is available ─────────
   useEffect(() => {
-    if (preSelectedStudent) {
-      console.log('📋 Pre-selected student data:', preSelectedStudent);
-      
-      // Set student ID
-      setNewApptStudentId(preSelectedStudent.id || preSelectedStudent.studentId || '');
-      
-      // Auto-fill company
-      if (preSelectedStudent.company) {
-        setNewApptCompany(preSelectedStudent.company);
+    const data = prefilledAppointmentData || preSelectedStudent || null;
+    if (data) {
+      console.log('📋 Pre-selected / prefilled appointment data:', data);
+
+      const norm = (v) => String(v || '').trim().toLowerCase();
+
+      // Find matching student
+      const matchedStu = students.find(s =>
+        (data.studentId && (norm(s.id) === norm(data.studentId) || norm(s._id) === norm(data.studentId) || norm(s.studentId) === norm(data.studentId))) ||
+        (data.student && norm(s.name) === norm(data.student)) ||
+        (data.studentName && norm(s.name) === norm(data.studentName))
+      );
+
+      if (matchedStu) {
+        setNewApptStudentId(matchedStu.id || matchedStu._id || matchedStu.studentId);
+      } else if (data.studentId) {
+        setNewApptStudentId(data.studentId);
       }
-      
-      // Auto-fill interviewer
-      if (preSelectedStudent.interviewer) {
-        setNewApptInterviewer(preSelectedStudent.interviewer);
+
+      if (data.reqId) {
+        setNewApptReqId(data.reqId);
       }
-      
-      // Auto-fill location
-      if (preSelectedStudent.location) {
-        setNewApptLocation(preSelectedStudent.location);
+      if (data.industryId) {
+        setNewApptIndustryId(data.industryId);
       }
-      
-      // Auto-fill appointment date
-      if (preSelectedStudent.appointmentDate) {
-        setNewApptDate(preSelectedStudent.appointmentDate);
+      if (data.company) {
+        setNewApptCompany(data.company);
       }
-      
-      // Auto-fill appointment time
-      if (preSelectedStudent.appointmentTime) {
-        setNewApptTime(preSelectedStudent.appointmentTime);
+      if (data.interviewer) {
+        setNewApptInterviewer(data.interviewer);
       }
-      
-      // Auto-fill position
-      if (preSelectedStudent.position) {
-        setNewApptPosition(preSelectedStudent.position);
+      if (data.location) {
+        setNewApptLocation(data.location);
       }
-      
-      // Auto-fill phone
-      if (preSelectedStudent.phone) {
-        // We don't have a phone field in the form, but we could add it
+      if (data.appointmentDate) {
+        setNewApptDate(data.appointmentDate);
       }
-      
+      if (data.appointmentTime) {
+        setNewApptTime(data.appointmentTime);
+      }
+      if (data.position) {
+        setNewApptPosition(data.position);
+      }
+      if (data.meetingType) {
+        setNewApptMeetingType(data.meetingType);
+      }
+      if (data.notes) {
+        setNewApptNotes(data.notes);
+      }
+
       // Open the modal automatically
       setShowNewAppointment(true);
     }
-  }, [preSelectedStudent]);
+  }, [prefilledAppointmentData, preSelectedStudent, students]);
 
   // UI Navigation & View State
   const [activeTab, setActiveTab] = useState('Calendar View');
@@ -104,11 +118,20 @@ export default function WorkflowStep3Appointments({
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState('');
 
-  // Cancel Modal State
+  // Cancel / Outcome Modal State
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelType, setCancelType] = useState('student');
   const [cancelAppointmentId, setCancelAppointmentId] = useState(null);
+  const [showOutcomeModal, setShowOutcomeModal] = useState(false);
+  const [appointmentOutcome, setAppointmentOutcome] = useState('successful');
+  const [commencementDate, setCommencementDate] = useState('');
+  const [expectedCompletionDate, setExpectedCompletionDate] = useState('');
+  const [outcomeNotes, setOutcomeNotes] = useState('');
+
+  // ─── Delete Confirm Modal ─────────────────────────────────────────────────
+  const [deleteConfirmAppt, setDeleteConfirmAppt] = useState(null);
+  const [isDeletingAppt, setIsDeletingAppt] = useState(false);
 
   // Filtering State
   const [searchTerm, setSearchTerm] = useState('');
@@ -394,12 +417,12 @@ export default function WorkflowStep3Appointments({
       return;
     }
 
-    const selectedStu = students.find(s => (s.id || s._id) === newApptStudentId);
-    const studentName = selectedStu ? selectedStu.name : 'Student';
-    const studentIdCode = selectedStu ? (selectedStu.studentId || selectedStu.id) : newApptStudentId;
-    const rto = selectedStu ? (selectedStu.rto || 'N/A') : 'N/A';
-    const email = selectedStu ? (selectedStu.email || '') : '';
-    const phone = selectedStu ? (selectedStu.phone || '') : '';
+    const selectedStu = students.find(s => (s.id || s._id) === newApptStudentId || s.studentId === newApptStudentId || s.name === newApptStudentId);
+    const studentName = selectedStu ? selectedStu.name : (prefilledAppointmentData?.student || prefilledAppointmentData?.studentName || 'Student');
+    const studentIdCode = selectedStu ? (selectedStu.studentId || selectedStu.id) : (prefilledAppointmentData?.studentId || newApptStudentId);
+    const rto = selectedStu ? (selectedStu.rto || 'N/A') : (prefilledAppointmentData?.rto || 'N/A');
+    const email = selectedStu ? (selectedStu.email || '') : (prefilledAppointmentData?.email || '');
+    const phone = selectedStu ? (selectedStu.phone || '') : (prefilledAppointmentData?.phone || '');
 
     const payload = {
       student: studentName,
@@ -437,6 +460,9 @@ export default function WorkflowStep3Appointments({
         if (preSelectedStudent) {
           window.history.replaceState({}, document.title);
         }
+        if (onClearPrefilledData) {
+          onClearPrefilledData();
+        }
       } catch (err) {
         console.error(err);
         showToast(err.message || 'Failed to create appointment');
@@ -444,18 +470,104 @@ export default function WorkflowStep3Appointments({
     }
   };
 
-  // Handle Mark Completed in Drawer
-  const handleMarkCompleted = async () => {
+  const handleOpenOutcomeModal = () => {
+    if (!selectedAppointment) return;
+    setAppointmentOutcome('successful');
+    setCommencementDate(selectedAppointment.date || new Date().toISOString().split('T')[0]);
+    setExpectedCompletionDate('');
+    setOutcomeNotes(selectedAppointment.notes || '');
+    setShowOutcomeModal(true);
+  };
+
+  const handleConfirmOutcome = async () => {
     if (!selectedAppointment) return;
     const dbId = selectedAppointment.id || selectedAppointment._id;
-    if (onUpdateAppointment && dbId) {
-      try {
-        await onUpdateAppointment(dbId, { status: 'Completed' });
-        setSelectedAppointment(prev => ({ ...prev, status: 'Completed' }));
-        showToast('Appointment marked as completed');
-      } catch (err) {
-        showToast('Failed to update status');
+    if (!dbId || !onUpdateAppointment) return;
+
+    try {
+      let payload = { notes: outcomeNotes || selectedAppointment.notes || '' };
+      let status = 'Completed';
+      let cancellationReason = '';
+      let cancellationType = '';
+
+      if (appointmentOutcome === 'successful') {
+        if (!commencementDate) {
+          showToast('Please select commencement date');
+          return;
+        }
+        payload = {
+          ...payload,
+          status: 'Completed',
+          appointmentOutcome: 'successful',
+          commencementDate,
+          expectedCompletionDate: expectedCompletionDate || '',
+          cancellationReason: '',
+          cancellationType: '',
+        };
+      } else if (appointmentOutcome === 'industry_rejected') {
+        status = 'Declined';
+        cancellationType = 'industry';
+        cancellationReason = outcomeNotes || 'Industry rejected the student';
+        payload = {
+          ...payload,
+          status,
+          cancellationReason,
+          cancellationType,
+          cancellationTypeLabel: 'Industry Rejected',
+          appointmentOutcome: 'industry_rejected',
+          commencementDate: '',
+          expectedCompletionDate: '',
+        };
+      } else if (appointmentOutcome === 'student_withdrawal') {
+        status = 'Withdrawn';
+        cancellationType = 'withdrawn';
+        cancellationReason = outcomeNotes || 'Student withdrew from placement';
+        payload = {
+          ...payload,
+          status,
+          cancellationReason,
+          cancellationType,
+          cancellationTypeLabel: 'Student Withdrew',
+          appointmentOutcome: 'student_withdrawal',
+          commencementDate: '',
+          expectedCompletionDate: '',
+        };
+      } else if (appointmentOutcome === 'not_suitable_site') {
+        status = 'Declined';
+        cancellationType = 'student';
+        cancellationReason = outcomeNotes || 'Placement site was not suitable for the student';
+        payload = {
+          ...payload,
+          status,
+          cancellationReason,
+          cancellationType,
+          cancellationTypeLabel: 'Not Suitable Site',
+          appointmentOutcome: 'not_suitable_site',
+          commencementDate: '',
+          expectedCompletionDate: '',
+        };
       }
+
+      await onUpdateAppointment(dbId, payload);
+      setSelectedAppointment(prev => ({
+        ...prev,
+        status,
+        notes: payload.notes,
+        appointmentOutcome: payload.appointmentOutcome,
+        commencementDate: payload.commencementDate || prev.commencementDate || '',
+        expectedCompletionDate: payload.expectedCompletionDate || prev.expectedCompletionDate || '',
+        cancellationReason,
+        cancellationType,
+      }));
+      setShowOutcomeModal(false);
+      showToast(
+        appointmentOutcome === 'successful'
+          ? 'Appointment recorded as successful'
+          : 'Outcome saved and student returned to workflow'
+      );
+    } catch (err) {
+      console.error('Failed to update appointment outcome:', err);
+      showToast('Failed to save appointment outcome');
     }
   };
 
@@ -556,19 +668,27 @@ export default function WorkflowStep3Appointments({
     }
   };
 
-  // Handle Delete Appointment
-  const handleDelete = async (apptId) => {
-    if (onDeleteAppointment && apptId) {
-      try {
+  // Handle Delete Appointment — opens confirmation modal
+  const handleDelete = (apptId, appt) => {
+    setDeleteConfirmAppt(appt || { id: apptId });
+  };
+
+  const handleConfirmedDeleteAppt = async () => {
+    const apptId = deleteConfirmAppt?.id || deleteConfirmAppt?._id || deleteConfirmAppt?.apptId;
+    if (!apptId) return;
+    setIsDeletingAppt(true);
+    try {
+      if (onDeleteAppointment) {
         await onDeleteAppointment(apptId);
-        showToast('Appointment deleted successfully');
-        if (selectedAppointment && (selectedAppointment.id === apptId || selectedAppointment._id === apptId)) {
-          setShowDrawer(false);
-          setSelectedAppointment(null);
-        }
-      } catch (err) {
-        showToast('Failed to delete appointment');
       }
+      showToast('Appointment deleted successfully');
+      setShowDrawer(false);
+      setSelectedAppointment(null);
+    } catch (err) {
+      showToast('Failed to delete appointment');
+    } finally {
+      setIsDeletingAppt(false);
+      setDeleteConfirmAppt(null);
     }
   };
 
@@ -1107,7 +1227,7 @@ export default function WorkflowStep3Appointments({
                           </td>
                           <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <button
-                              onClick={() => handleDelete(appt.id || appt._id)}
+                              onClick={() => handleDelete(appt.id || appt._id, appt)}
                               className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg inline-flex"
                               title="Delete Appointment"
                             >
@@ -1467,11 +1587,11 @@ export default function WorkflowStep3Appointments({
                   </div>
 
                   <button
-                    onClick={handleMarkCompleted}
+                    onClick={handleOpenOutcomeModal}
                     className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>Mark as Completed</span>
+                    <span>Set Appointment Outcome</span>
                   </button>
                 </div>
               </>
@@ -1530,7 +1650,7 @@ export default function WorkflowStep3Appointments({
 
                 <div className="pt-2">
                   <button
-                    onClick={() => handleDelete(selectedAppointment.id || selectedAppointment._id)}
+                    onClick={() => handleDelete(selectedAppointment.id || selectedAppointment._id, selectedAppointment)}
                     className="w-full py-2 bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl flex items-center justify-center space-x-2 hover:bg-rose-100 transition"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1588,6 +1708,102 @@ export default function WorkflowStep3Appointments({
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── APPOINTMENT OUTCOME MODAL ───────────────────────────────────── */}
+      {showOutcomeModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Appointment Outcome</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Choose the final result after the interview</p>
+              </div>
+              <button onClick={() => setShowOutcomeModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Outcome *</label>
+                <select
+                  value={appointmentOutcome}
+                  onChange={(e) => setAppointmentOutcome(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
+                >
+                  <option value="successful">1) Appointment Successful</option>
+                  <option value="industry_rejected">2) Industry Rejected</option>
+                  <option value="student_withdrawal">3) Student Withdrawal</option>
+                  <option value="not_suitable_site">4) Not Suitable Site</option>
+                </select>
+              </div>
+
+              {appointmentOutcome === 'successful' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Commencement Date *</label>
+                    <input
+                      type="date"
+                      value={commencementDate}
+                      onChange={(e) => setCommencementDate(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Expected Completion Date</label>
+                    <input
+                      type="date"
+                      value={expectedCompletionDate}
+                      onChange={(e) => setExpectedCompletionDate(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Short Notes</label>
+                <textarea
+                  rows={4}
+                  value={outcomeNotes}
+                  onChange={(e) => setOutcomeNotes(e.target.value)}
+                  placeholder={
+                    appointmentOutcome === 'successful'
+                      ? 'Add placement notes, start details, and summary.'
+                      : appointmentOutcome === 'industry_rejected'
+                        ? 'Reason the industry rejected the student.'
+                        : appointmentOutcome === 'student_withdrawal'
+                          ? 'Reason student withdrew or delayed placement.'
+                          : 'Reason the site was not suitable and the student should return to workflow.'
+                  }
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              {(appointmentOutcome === 'industry_rejected' || appointmentOutcome === 'student_withdrawal' || appointmentOutcome === 'not_suitable_site') && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-800 font-medium">
+                  This will return the student to the main student list so the placement can be recreated from the start.
+                </div>
+              )}
+            </div>
+
+            <div className="flex space-x-2 pt-2">
+              <button
+                onClick={handleConfirmOutcome}
+                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-xl transition-all duration-500 cursor-pointer"
+              >
+                Save Outcome
+              </button>
+              <button
+                onClick={() => setShowOutcomeModal(false)}
+                className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1677,6 +1893,44 @@ export default function WorkflowStep3Appointments({
                 className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── DELETE CONFIRM MODAL ─────────────────────────────────────────── */}
+      {deleteConfirmAppt && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Appointment</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Delete appointment for <span className="font-semibold text-slate-800">{deleteConfirmAppt.student}</span>
+                  {deleteConfirmAppt.company ? <> at <span className="font-semibold">{deleteConfirmAppt.company}</span></> : ''}? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex space-x-2 pt-1">
+              <button
+                onClick={() => setDeleteConfirmAppt(null)}
+                disabled={isDeletingAppt}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isDeletingAppt}
+                onClick={handleConfirmedDeleteAppt}
+                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {isDeletingAppt
+                  ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Deleting...</span></>
+                  : <><Trash2 className="w-3.5 h-3.5"/><span>Delete Appointment</span></>}
               </button>
             </div>
           </div>
