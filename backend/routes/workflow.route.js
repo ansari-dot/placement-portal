@@ -20,6 +20,7 @@ import {
   getWorkflowDashboardDataController,
   getWorkflowStudentsController,
 } from "../controller/workflow.controller.js";
+import { softAuth } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ const router = express.Router();
 router.post("/", createWorkflowController);
 router.get("/", getAllWorkflowsController);
 router.get("/dashboard", getWorkflowDashboardDataController);
-router.get("/students", getWorkflowStudentsController);
+router.get("/students", softAuth, getWorkflowStudentsController);
 router.get("/:id", getWorkflowByIdController);
 router.put("/:id", updateWorkflowController);
 router.delete("/:id", deleteWorkflowController);

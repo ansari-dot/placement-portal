@@ -12,6 +12,11 @@ const renderCell = (student, colKey) => {
           <div>
             <p className="font-bold text-slate-900">{student.name}</p>
             <p className="text-[11px] text-slate-400 font-medium">{student.age}</p>
+            {student.assignedCoordinatorName && (
+              <span className="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-200">
+                👤 {student.assignedCoordinatorName}
+              </span>
+            )}
           </div>
         </div>
       );
@@ -71,6 +76,7 @@ export default function StudentTableRow({
   onToggleActions,
   onRowAction,
   hiddenColumns,
+  canAssign = true,
 }) {
   return (
     <tr 
@@ -100,7 +106,12 @@ export default function StudentTableRow({
           <MoreVertical size={16} />
         </button>
         {isActionsOpen && (
-          <StudentActionsMenu student={student} onClose={onToggleActions} onAction={onRowAction} />
+          <StudentActionsMenu
+            student={student}
+            onClose={onToggleActions}
+            onAction={onRowAction}
+            canAssign={canAssign}
+          />
         )}
       </td>
     </tr>

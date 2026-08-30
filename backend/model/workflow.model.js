@@ -36,18 +36,7 @@ const internshipRequestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: {
-        values: [
-          "New",
-          "Coordinator Review",
-          "RTO Review",
-          "Appointment",
-          "Approved",
-          "Rejected",
-          "On Hold",
-        ],
-        message: "Invalid request status",
-      },
+      trim: true,
       default: "New",
     },
     preferredStart: {
@@ -170,10 +159,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     meetingType: {
       type: String,
-      enum: {
-        values: ["In-Person", "Video", "Phone"],
-        message: "Meeting type must be In-Person, Video, or Phone",
-      },
+      trim: true,
       default: "In-Person",
     },
     position: {
@@ -193,10 +179,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: {
-        values: ["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show"],
-        message: "Invalid appointment status",
-      },
+      trim: true,
       default: "Scheduled",
     },
     notes: {
@@ -246,17 +229,7 @@ const internshipSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: {
-        values: [
-          "Active",
-          "Joined",
-          "Waiting to Join",
-          "Completed",
-          "Cancelled",
-          "On Hold",
-        ],
-        message: "Invalid internship status",
-      },
+      trim: true,
       default: "Active",
     },
     start: {

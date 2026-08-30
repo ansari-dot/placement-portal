@@ -8,6 +8,7 @@ import { checkAuthThunk } from "./redux/authSlice";
 import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import DashboardPage from "./pages/DashboardPage";
+import StudentsPage from "./pages/StudentsPage";
 import MyStudentsPage from "./pages/MyStudentsPage";
 import AddNewStudentPage from "./pages/AddNewStudentPage";
 import StudentViewEditPage from "./pages/StudentViewEditPage";
@@ -34,6 +35,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/students"
+        element={
+          <ProtectedRoute>
+            <StudentsPage />
           </ProtectedRoute>
         }
       />

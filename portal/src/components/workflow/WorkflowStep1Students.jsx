@@ -3,9 +3,11 @@ import React, { useState } from 'react';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
-  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon
+  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { deleteStudent } from '../../api/studentsApi';
+import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 
 export default function WorkflowStep1Students({ 
   students = [], 
@@ -60,6 +62,17 @@ export default function WorkflowStep1Students({
     phone: ''
   });
   const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
+
+  // Close the row action menu when clicking anywhere outside
+  React.useEffect(() => {
+    if (!showRowMenu) return;
+    const handleClickOutside = (e) => {
+      if (e.target.closest('[data-row-menu]')) return;
+      setShowRowMenu(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showRowMenu]);
 
   const studentList = students;
 
@@ -153,12 +166,41 @@ export default function WorkflowStep1Students({
         contactedIndustries: stu.contactedIndustries || []
       });
       setShowDrawer(true);
-      // Reset appointment form when opening drawer
       setShowAppointmentForm(false);
     } else if (action === 'edit') {
-      showToast(`Editing ${stu.name}`);
+      // Navigate to the student edit page using the MongoDB _id (stu.id is the dbId from mapStudentsForStep1)
+      navigate(`/students/${stu.id}/edit`);
+    } else if (action === 'assignCoordinator') {
+      setAssignCoordinatorTarget(stu);
     } else if (action === 'delete') {
-      showToast(`Delete action for ${stu.name}`);
+      // Open confirmation modal — do NOT delete yet
+      setDeleteConfirm(stu);
+    }
+  };
+
+  // ─── Confirmed delete — calls real API ──────────────────────────────────
+  const handleConfirmedDelete = async () => {
+    if (!deleteConfirm) return;
+    setIsDeleting(true);
+    try {
+      await deleteStudent(deleteConfirm.id);
+      showToast(`${deleteConfirm.name} deleted successfully`);
+      setDeleteConfirm(null);
+      // Close drawer if the deleted student was open
+      if (selectedStudent?.id === deleteConfirm.id) {
+        setShowDrawer(false);
+        setSelectedStudent(null);
+      }
+      // Remove from local selectedRows
+      setSelectedRows(prev => prev.filter(id => id !== deleteConfirm.id));
+      // Force a page reload of the student list via navigation refresh
+      navigate(0);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      showToast(err?.response?.data?.message || `Could not delete ${deleteConfirm.name}. Please try again.`);
+      setDeleteConfirm(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -277,6 +319,13 @@ export default function WorkflowStep1Students({
   const [showGenRequestModal, setShowGenRequestModal] = useState(false);
   const [genPriority, setGenPriority] = useState('Normal');
   const [genTargetStudent, setGenTargetStudent] = useState(null);
+
+  // ─── Delete confirmation modal ───────────────────────────────────────────
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // holds the student to delete
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // ─── Assign Coordinator modal ─────────────────────────────────────────────
+  const [assignCoordinatorTarget, setAssignCoordinatorTarget] = useState(null);
 
   const handleOpenGenRequest = (stu) => {
     const target = stu || selectedStudent || (paginatedStudents.length > 0 ? paginatedStudents[0] : null);
@@ -589,7 +638,7 @@ export default function WorkflowStep1Students({
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-visible">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
@@ -612,13 +661,15 @@ export default function WorkflowStep1Students({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
-              {paginatedStudents.map((stu, i) => {
+              {paginatedStudents.map((stu, rowIdx) => {
                 const isSelected = selectedStudent?.id === stu.id;
                 const isRowSelected = selectedRows.includes(stu.id);
                 const reqValue = internshipRequestMap[stu.id] || (stu.studentId && internshipRequestMap[stu.studentId]) || (stu.name && internshipRequestMap[stu.name]);
+                // Open menu upward for the last 3 rows to avoid viewport clipping
+                const openUpward = rowIdx >= paginatedStudents.length - 3;
                 return (
                   <tr 
-                    key={i} 
+                    key={rowIdx} 
                     onClick={() => {
                       setSelectedStudent({
                         ...selectedStudent,
@@ -653,7 +704,7 @@ export default function WorkflowStep1Students({
                         <p className="text-[11px] text-slate-400">{stu.email}</p>
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-slate-700">{stu.studentId || stu.id}</td>
+                    <td className="p-4 font-medium text-slate-700">ST{paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}</td>
                     <td className="p-4 text-slate-600">{stu.rto}</td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -688,7 +739,7 @@ export default function WorkflowStep1Students({
                       )}
                     </td>
                     <td className="p-4 text-slate-500">{stu.addedOn}</td>
-                    <td className="p-4 text-right relative" onClick={(e) => e.stopPropagation()}>
+                    <td className="p-4 text-right relative" data-row-menu onClick={(e) => e.stopPropagation()}>
                       <button 
                         onClick={() => setShowRowMenu(showRowMenu === stu.id ? null : stu.id)}
                         className="p-1 hover:bg-slate-100 rounded-lg inline-flex"
@@ -696,15 +747,12 @@ export default function WorkflowStep1Students({
                         <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
                       </button>
                       {showRowMenu === stu.id && (
-                        <div className="absolute right-4 top-10 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
+                        <div className={`absolute right-0 w-56 bg-white rounded-xl border border-slate-200 shadow-xl z-50 p-1.5 space-y-0.5 overflow-y-auto max-h-80 ${openUpward ? 'bottom-10' : 'top-10'}`}>
                           <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu); }} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
                             <Plus className="w-3.5 h-3.5 text-blue-600" />
                             <span>Generate Request</span>
                           </button>
-                          <button onClick={() => { setShowRowMenu(null); handleOpenAppointmentForm(stu); }} className="w-full text-left px-3 py-2 text-xs text-emerald-600 font-semibold hover:bg-emerald-50 rounded-lg flex items-center space-x-2">
-                            <CalendarIcon className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Schedule Appointment</span>
-                          </button>
+
                           <button onClick={() => handleRowAction('view', stu)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                             <Eye className="w-3.5 h-3.5 text-slate-400" />
                             <span>View Profile</span>
@@ -713,6 +761,11 @@ export default function WorkflowStep1Students({
                             <Edit className="w-3.5 h-3.5 text-slate-400" />
                             <span>Edit</span>
                           </button>
+                          <button onClick={() => handleRowAction('assignCoordinator', stu)} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
+                            <UserCheck className="w-3.5 h-3.5 text-blue-500" />
+                            <span>Assign Coordinator</span>
+                          </button>
+                          <div className="my-0.5 border-t border-slate-100" />
                           <button onClick={() => handleRowAction('delete', stu)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Delete</span>
@@ -1329,6 +1382,78 @@ export default function WorkflowStep1Students({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─── Delete Confirmation Modal ──────────────────────────────────── */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-5">
+            <div className="flex items-start space-x-4">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Student</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Are you sure you want to permanently delete{' '}
+                  <span className="font-semibold text-slate-800">{deleteConfirm.name}</span>?
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-700 font-medium">
+              Student ID: <span className="font-bold">{deleteConfirm.studentId || deleteConfirm.id}</span> will be permanently removed from the database.
+            </div>
+
+            <div className="flex space-x-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                disabled={isDeleting}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmedDelete}
+                disabled={isDeleting}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Student</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ─── Assign Coordinator Modal ───────────────────────────────────── */}
+      {assignCoordinatorTarget && (
+        <AssignCoordinatorModal
+          student={{
+            ...assignCoordinatorTarget,
+            dbId: assignCoordinatorTarget.id,
+          }}
+          onClose={() => setAssignCoordinatorTarget(null)}
+          onAssigned={({ coordinatorId, coordinatorName }) => {
+            showToast(
+              coordinatorId
+                ? `${assignCoordinatorTarget.name} assigned to ${coordinatorName}`
+                : `Coordinator removed from ${assignCoordinatorTarget.name}`
+            );
+            setAssignCoordinatorTarget(null);
+          }}
+        />
       )}
     </div>
   );

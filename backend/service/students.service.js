@@ -44,20 +44,37 @@ export const createStudent = async (studentData) => {
     return student;
 };
 
-export const getAllStudents = async () => {
-    return await StudentModel.find().sort({ createdAt: -1 });
+export const getAllStudents = async (filter = {}) => {
+    return await StudentModel.find(filter).sort({ createdAt: -1 });
 };
 
+import mongoose from "mongoose";
+
 export const getStudentById = async (id) => {
-    return await StudentModel.findById(id);
+    if (mongoose.Types.ObjectId.isValid(id)) {
+        const student = await StudentModel.findById(id);
+        if (student) return student;
+    }
+    return await StudentModel.findOne({ studentId: id });
 };
 
 export const updateStudent = async (id, studentData) => {
-    return await StudentModel.findByIdAndUpdate(id, studentData, {
+    if (mongoose.Types.ObjectId.isValid(id)) {
+        const student = await StudentModel.findByIdAndUpdate(id, studentData, {
+            returnDocument: "after",
+            runValidators: true,
+        });
+        if (student) return student;
+    }
+    return await StudentModel.findOneAndUpdate({ studentId: id }, studentData, {
         returnDocument: "after",
         runValidators: true,
     });
 };
 export const deleteStudent = async (id) => {
-    return await StudentModel.findByIdAndDelete(id);
+    if (mongoose.Types.ObjectId.isValid(id)) {
+        const student = await StudentModel.findByIdAndDelete(id);
+        if (student) return student;
+    }
+    return await StudentModel.findOneAndDelete({ studentId: id });
 };

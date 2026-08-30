@@ -137,7 +137,8 @@ export const studentSchema = z.object({
   studyMode: z
     .string()
     .trim()
-    .min(1, "Study mode is required"),
+    .optional()
+    .default(""),
 
 
   enrollmentId: z
@@ -305,6 +306,13 @@ export const studentSchema = z.object({
     .optional()
     .default(""),
 
+  placementHours: z
+    .coerce
+    .number()
+    .nullable()
+    .optional()
+    .default(null),
+
   // ===== Additional Information =====
   visaStatus: z
     .string()
@@ -379,6 +387,19 @@ export const studentSchema = z.object({
     .max(2000, "Additional notes cannot exceed 2000 characters")
     .optional()
     .default(""),
+
+  // ===== Coordinator Assignment =====
+  assignedCoordinator: z
+    .string()
+    .nullable()
+    .optional()
+    .default(null),
+
+  assignedCoordinatorName: z
+    .string()
+    .trim()
+    .optional()
+    .default(''),
 
   // ===== System / Display Fields =====
   studentId: z

@@ -1,11 +1,15 @@
 // src/pages/WorkflowPage.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { Users, UserCheck, Filter } from 'lucide-react';
 import WorkFlowLayout from '../components/layout/WorkFlowLayout';
 import WorkflowStep1Students from '../components/workflow/WorkflowStep1Students';
 import WorkflowStep2Requests from '../components/workflow/WorkflowStep2Requests';
 import WorkflowStep3Appointments from '../components/workflow/WorkflowStep3Appointments';
 import WorkflowStep4Internships from '../components/workflow/WorkflowStep4Internships';
+import WorkflowStep5PlacementHours from '../components/workflow/WorkflowStep5PlacementHours';
+import { fetchUsers } from '../api/userApi';
 import {
   fetchWorkflows,
   createWorkflow,
@@ -25,7 +29,7 @@ import {
   deleteInternship,
 } from '../api/workflowApi';
 
-const STEP_LABELS = ['Students', 'Internship Requests', 'Appointments', 'Internships'];
+const STEP_LABELS = ['Students', 'Internship Requests', 'Appointments', 'Internships', 'Placement Hours'];
 
 export const getResponseStyle = (response) => {
   if (!response) return 'text-slate-600 bg-slate-50';
@@ -45,8 +49,11 @@ export default function WorkflowPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const stepParam = parseInt(searchParams.get('step') || '1', 10);
   const [activeStep, setActiveStep] = useState(
-    stepParam >= 1 && stepParam <= 4 ? stepParam : 1
+    stepParam >= 1 && stepParam <= 5 ? stepParam : 1
   );
+
+  const authUser = useSelector((state) => state.auth.user);
+  const isAdmin = authUser?.role === 'Administrator';
 
   const [workflow, setWorkflow] = useState(null);
   const [workflowId, setWorkflowId] = useState(null);
@@ -54,9 +61,22 @@ export default function WorkflowPage() {
   const [error, setError] = useState(null);
   const [workflowStudents, setWorkflowStudents] = useState([]);
 
+  // Coordinators list & selection for Admins
+  const [coordinators, setCoordinators] = useState([]);
+  const [selectedCoordinator, setSelectedCoordinator] = useState('All');
+
   const [activeWorkflowStudent, setActiveWorkflowStudent] = useState(null);
   const [activeWorkflowRequest, setActiveWorkflowRequest] = useState(null);
   const [activeWorkflowCompany, setActiveWorkflowCompany] = useState(null);
+  const [prefilledAppointmentData, setPrefilledAppointmentData] = useState(null);
+
+  useEffect(() => {
+    fetchUsers({ status: 'Active' })
+      .then((res) => {
+        setCoordinators(res?.data ?? []);
+      })
+      .catch(() => {});
+  }, []);
 
   // ─── Refresh workflow data ────────────────────────────────────────────────
   const refreshWorkflowData = useCallback(async () => {
@@ -87,7 +107,7 @@ export default function WorkflowPage() {
           setWorkflowId(existing.id || existing._id);
           setWorkflow(existing);
           const stepFromUrl = parseInt(searchParams.get('step') || '', 10);
-          if (stepFromUrl >= 1 && stepFromUrl <= 4) {
+          if (stepFromUrl >= 1 && stepFromUrl <= 5) {
             setActiveStep(stepFromUrl);
           } else {
             setActiveStep(existing.currentStep || 1);
@@ -119,7 +139,7 @@ export default function WorkflowPage() {
   }, []);
 
   useEffect(() => {
-    if (stepParam >= 1 && stepParam <= 4) {
+    if (stepParam >= 1 && stepParam <= 5) {
       setActiveStep(stepParam);
     }
   }, [stepParam]);
@@ -165,9 +185,10 @@ export default function WorkflowPage() {
     goToStep(2);
   }, [workflowId, goToStep, refreshWorkflowData]);
 
-  const handleStep2Next = useCallback((request, company) => {
+  const handleStep2Next = useCallback((request, company, prefillData) => {
     if (request) setActiveWorkflowRequest(request);
     if (company) setActiveWorkflowCompany(company);
+    if (prefillData) setPrefilledAppointmentData(prefillData);
     goToStep(3);
   }, [goToStep]);
 
@@ -187,6 +208,49 @@ export default function WorkflowPage() {
       throw err;
     }
   }, [workflowId, refreshWorkflowData]);
+
+  // ─── Filter students based on coordinator role / selected coordinator ────
+  const visibleWorkflowStudents = useMemo(() => {
+    if (!workflowStudents || workflowStudents.length === 0) return [];
+    const currentUserId = authUser?._id || authUser?.id;
+    const currentUserName = authUser?.name;
+
+    return workflowStudents.filter((stu) => {
+      if (!isAdmin) {
+        // Coordinator sees ONLY their assigned students
+        const isAssignedToMe =
+          (stu.assignedCoordinator && currentUserId && norm(stu.assignedCoordinator) === norm(currentUserId)) ||
+          (stu.assignedCoordinatorName && currentUserName && norm(stu.assignedCoordinatorName) === norm(currentUserName));
+        return isAssignedToMe;
+      } else {
+        // Admin filter
+        if (selectedCoordinator === 'All') return true;
+        if (selectedCoordinator === 'unassigned') {
+          return !stu.assignedCoordinator && !stu.assignedCoordinatorName;
+        }
+        const selectedCoord = coordinators.find((c) => (c._id || c.id) === selectedCoordinator);
+        const coordId = selectedCoord?._id || selectedCoord?.id || selectedCoordinator;
+        const coordName = selectedCoord?.name;
+        return (
+          (stu.assignedCoordinator && norm(stu.assignedCoordinator) === norm(coordId)) ||
+          (stu.assignedCoordinatorName && coordName && norm(stu.assignedCoordinatorName) === norm(coordName))
+        );
+      }
+    });
+  }, [workflowStudents, isAdmin, authUser, selectedCoordinator, coordinators]);
+
+  // Student identifiers set for filtering requests, appointments, internships
+  const visibleStudentKeySet = useMemo(() => {
+    const set = new Set();
+    visibleWorkflowStudents.forEach((stu) => {
+      if (stu.id || stu._id) set.add(norm(stu.id || stu._id));
+      if (stu.studentId) set.add(norm(stu.studentId));
+      const fullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
+      const name = stu.name || fullName;
+      if (name) set.add(norm(name));
+    });
+    return set;
+  }, [visibleWorkflowStudents]);
 
   // ─── Mapping helpers ───────────────────────────────────────────────────────
 
@@ -208,9 +272,9 @@ export default function WorkflowPage() {
   }, [workflow]);
 
   const mapStudentsForStep1 = useCallback(() => {
-    if (!workflowStudents || workflowStudents.length === 0) return [];
+    if (!visibleWorkflowStudents || visibleWorkflowStudents.length === 0) return [];
 
-    return workflowStudents.map((stu) => {
+    return visibleWorkflowStudents.map((stu) => {
       const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
       const matchingRequests = findRequestsForStudent(stu);
 
@@ -222,87 +286,107 @@ export default function WorkflowPage() {
         rto: stu.assignedRto || stu.rto || '',
         status: stu.status || 'Active',
         placementStatus: stu.placementStatus || 'Ready',
+        placementHours: stu.placementHours ?? null,
+        assignedCoordinator: stu.assignedCoordinator || null,
+        assignedCoordinatorName: stu.assignedCoordinatorName || '',
         addedOn: stu.createdAt
           ? new Date(stu.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
           : '',
         contactedIndustries: matchingRequests.flatMap((r) => r.contactedIndustries || []),
       };
     });
-  }, [workflowStudents, findRequestsForStudent]);
+  }, [visibleWorkflowStudents, findRequestsForStudent]);
 
   const mapRequestsForStep2 = useCallback(() => {
     if (!workflow?.requests || workflow.requests.length === 0) return [];
 
-    return workflow.requests.map((req) => ({
-      id: req.id || req._id || '',
-      reqId: req.reqId || '',
-      title: req.title || '',
-      student: req.student || '',
-      studentId: req.studentId || '',
-      company: req.company || '',
-      rto: req.rto || '',
-      priority: req.priority || 'Normal',
-      status: req.status || 'New',
-      contactedIndustries: (req.contactedIndustries || []).map(ind => ({
-        ...ind,
-        appointmentDate: ind.appointmentDate || '',
-        appointmentTime: ind.appointmentTime || '',
-      })),
-      date:
-        req.date ||
-        (req.createdAt
-          ? new Date(req.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-          : ''),
-    }));
-  }, [workflow]);
+    return workflow.requests
+      .filter((req) => {
+        if (!isAdmin || selectedCoordinator !== 'All') {
+          const reqStuId = norm(req.studentId);
+          const reqStuName = norm(req.student);
+          return visibleStudentKeySet.has(reqStuId) || visibleStudentKeySet.has(reqStuName);
+        }
+        return true;
+      })
+      .map((req) => ({
+        id: req.id || req._id || '',
+        reqId: req.reqId || '',
+        title: req.title || '',
+        student: req.student || '',
+        studentId: req.studentId || '',
+        company: req.company || '',
+        rto: req.rto || '',
+        priority: req.priority || 'Normal',
+        status: req.status || 'New',
+        contactedIndustries: (req.contactedIndustries || []).map(ind => ({
+          ...ind,
+          appointmentDate: ind.appointmentDate || '',
+          appointmentTime: ind.appointmentTime || '',
+        })),
+        date:
+          req.date ||
+          (req.createdAt
+            ? new Date(req.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+            : ''),
+      }));
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet]);
 
   const mapAppointmentsForStep3 = useCallback(() => {
-    console.log('📋 mapAppointmentsForStep3 - appointments:', workflow?.appointments);
     if (!workflow?.appointments || workflow.appointments.length === 0) {
       return [];
     }
 
-    return workflow.appointments.map((appt) => ({
-      id: appt.id || appt._id || '',
-      apptId: appt.apptId || '',
-      student: appt.student || '',
-      studentId: appt.studentId || '',
-      rto: appt.rto || '',
-      email: appt.email || '',
-      phone: appt.phone || '',
-      date: appt.date || '',
-      time: appt.time || '',
-      company: appt.company || '',
-      interviewer: appt.interviewer || '',
-      location: appt.location || '',
-      meetingType: appt.meetingType || 'In-Person',
-      position: appt.position || '',
-      linkedReq: appt.linkedReq || '',
-      linkedReqStatus: appt.linkedReqStatus || '',
-      industryContactId: appt.industryContactId || '',
-      status: appt.status || 'Scheduled',
-      notes: appt.notes || '',
-      cancellationReason: appt.cancellationReason || '',
-      cancellationType: appt.cancellationType || '',
-      cancelledAt: appt.cancelledAt || '',
-    }));
-  }, [workflow]);
+    return workflow.appointments
+      .filter((appt) => {
+        if (!isAdmin || selectedCoordinator !== 'All') {
+          const apptStuId = norm(appt.studentId);
+          const apptStuName = norm(appt.student);
+          return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
+        }
+        return true;
+      })
+      .map((appt) => ({
+        id: appt.id || appt._id || '',
+        apptId: appt.apptId || '',
+        student: appt.student || '',
+        studentId: appt.studentId || '',
+        rto: appt.rto || '',
+        email: appt.email || '',
+        phone: appt.phone || '',
+        date: appt.date || '',
+        time: appt.time || '',
+        company: appt.company || '',
+        interviewer: appt.interviewer || '',
+        location: appt.location || '',
+        meetingType: appt.meetingType || 'In-Person',
+        position: appt.position || '',
+        linkedReq: appt.linkedReq || '',
+        linkedReqStatus: appt.linkedReqStatus || '',
+        industryContactId: appt.industryContactId || '',
+        status: appt.status || 'Scheduled',
+        notes: appt.notes || '',
+        cancellationReason: appt.cancellationReason || '',
+        cancellationType: appt.cancellationType || '',
+        cancelledAt: appt.cancelledAt || '',
+      }));
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet]);
 
   // ─── ✅ Map ALL appointments to internships ──────────────────────────────
   const mapInternshipsForStep4 = useCallback(() => {
     const result = [];
-    const existingStudentIds = new Set();
-    
-    console.log('📋 ========== MAP INTERNSHIPS START ==========');
-    console.log('📋 Workflow appointments count:', workflow?.appointments?.length || 0);
-    
-    // ✅ Process ALL appointments to create internships
     const allAppointments = workflow?.appointments || [];
-    console.log('📋 Processing ALL appointments:', allAppointments.length);
 
-    allAppointments.forEach((appt, index) => {
-      console.log(`📋 Appointment ${index + 1}:`, appt);
-      
+    const filteredAppointments = allAppointments.filter((appt) => {
+      if (!isAdmin || selectedCoordinator !== 'All') {
+        const apptStuId = norm(appt.studentId);
+        const apptStuName = norm(appt.student);
+        return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
+      }
+      return true;
+    });
+
+    filteredAppointments.forEach((appt, index) => {
       const studentName = appt.student || 'Unknown Student';
       const studentId = appt.studentId || '';
       
@@ -313,8 +397,6 @@ export default function WorkflowPage() {
       );
       
       if (existingForStudent) {
-        console.log(`⏭️ Student ${studentName} already has internship, updating status...`);
-        
         // ✅ Update status based on appointment
         if (appt.status === 'Completed') {
           existingForStudent.status = 'Completed';
@@ -385,8 +467,6 @@ export default function WorkflowPage() {
         cancellationType = 'student';
       }
 
-      console.log(`✅ CREATING NEW internship from appointment: ${studentName} → ${status}`);
-
       const newItem = {
         id: appt.id || appt._id || `INT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         intId: appt.apptId ? `INT-${appt.apptId.substring(4)}` : `INT-${String(result.length + 1).padStart(6, '0')}`,
@@ -419,52 +499,66 @@ export default function WorkflowPage() {
       result.push(newItem);
     });
 
-    console.log('📋 FINAL internships count:', result.length);
     return result;
-  }, [workflow]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet]);
 
   // ─── Request handlers ──────────────────────────────────────────────────────
 
   const handleCreateRequest = useCallback(async (requestData) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
     try {
-      const result = await createInternshipRequest(workflowId, requestData);
+      const result = await createInternshipRequest(wfId, requestData);
       await refreshWorkflowData();
       return result.data;
     } catch (err) {
       console.error('Failed to create request:', err);
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleUpdateRequest = useCallback(async (requestId, requestData) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
     try {
-      const result = await updateInternshipRequest(workflowId, requestId, requestData);
+      const result = await updateInternshipRequest(wfId, requestId, requestData);
       await refreshWorkflowData();
       return result.data;
     } catch (err) {
       console.error('Failed to update request:', err);
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleDeleteRequest = useCallback(async (requestId) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+    // Optimistic UI update
+    setWorkflow((prev) =>
+      prev
+        ? {
+            ...prev,
+            requests: (prev.requests || []).filter(
+              (r) =>
+                String(r._id) !== String(requestId) &&
+                r.reqId !== String(requestId) &&
+                r.id !== String(requestId)
+            ),
+          }
+        : prev
+    );
     try {
-      await deleteInternshipRequest(workflowId, requestId);
+      await deleteInternshipRequest(wfId, requestId);
       await refreshWorkflowData();
     } catch (err) {
       console.error('Failed to delete request:', err);
+      await refreshWorkflowData();
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleCreateAppointment = useCallback(async (appointmentData) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
     try {
       console.log('📤 Creating appointment with data:', appointmentData);
-      const result = await createAppointment(workflowId, appointmentData);
+      const result = await createAppointment(wfId, appointmentData);
       console.log('✅ Appointment created:', result);
       await refreshWorkflowData();
       return result.data;
@@ -472,13 +566,13 @@ export default function WorkflowPage() {
       console.error('Failed to create appointment:', err);
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleUpdateAppointment = useCallback(async (appointmentId, appointmentData) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
     try {
       console.log('📤 Updating appointment:', appointmentId, appointmentData);
-      const result = await updateAppointment(workflowId, appointmentId, appointmentData);
+      const result = await updateAppointment(wfId, appointmentId, appointmentData);
       console.log('✅ Appointment updated:', result);
       await refreshWorkflowData();
       return result.data;
@@ -486,57 +580,92 @@ export default function WorkflowPage() {
       console.error('Failed to update appointment:', err);
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
-  // ✅ DELETE APPOINTMENT - Step 4 se delete kar sakte hain
   const handleDeleteAppointment = useCallback(async (appointmentId) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+    // Optimistic UI update
+    setWorkflow((prev) =>
+      prev
+        ? {
+            ...prev,
+            appointments: (prev.appointments || []).filter(
+              (a) =>
+                String(a._id) !== String(appointmentId) &&
+                a.apptId !== String(appointmentId) &&
+                a.id !== String(appointmentId)
+            ),
+          }
+        : prev
+    );
     try {
       console.log('🗑️ Deleting appointment:', appointmentId);
-      const result = await deleteAppointment(workflowId, appointmentId);
+      const result = await deleteAppointment(wfId, appointmentId);
       console.log('✅ Appointment deleted:', result);
       await refreshWorkflowData();
       return result;
     } catch (err) {
       console.error('Failed to delete appointment:', err);
+      await refreshWorkflowData();
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleCreateInternship = useCallback(async (internshipData) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
     try {
-      const result = await createInternship(workflowId, internshipData);
+      const result = await createInternship(wfId, internshipData);
       await refreshWorkflowData();
       return result.data;
     } catch (err) {
       console.error('Failed to create internship:', err);
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleUpdateInternship = useCallback(async (internshipId, internshipData) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
     try {
-      const result = await updateInternship(workflowId, internshipId, internshipData);
+      const result = await updateInternship(wfId, internshipId, internshipData);
       await refreshWorkflowData();
       return result.data;
     } catch (err) {
       console.error('Failed to update internship:', err);
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleDeleteInternship = useCallback(async (internshipId) => {
-    if (!workflowId) return;
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+    // Optimistic UI update
+    setWorkflow((prev) =>
+      prev
+        ? {
+            ...prev,
+            internships: (prev.internships || []).filter(
+              (i) =>
+                String(i._id) !== String(internshipId) &&
+                i.intId !== String(internshipId) &&
+                i.id !== String(internshipId)
+            ),
+            appointments: (prev.appointments || []).filter(
+              (a) =>
+                String(a._id) !== String(internshipId) &&
+                a.apptId !== String(internshipId) &&
+                a.id !== String(internshipId)
+            ),
+          }
+        : prev
+    );
     try {
-      await deleteInternship(workflowId, internshipId);
+      await deleteInternship(wfId, internshipId);
       await refreshWorkflowData();
     } catch (err) {
       console.error('Failed to delete internship:', err);
+      await refreshWorkflowData();
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   const handleToggleStudent = useCallback(async (studentId, isSelected) => {
     if (!workflowId) return;
@@ -638,6 +767,8 @@ export default function WorkflowPage() {
             activeStudent={activeWorkflowStudent}
             activeRequest={activeWorkflowRequest}
             activeCompany={activeWorkflowCompany}
+            prefilledAppointmentData={prefilledAppointmentData}
+            onClearPrefilledData={() => setPrefilledAppointmentData(null)}
           />
         );
       case 4:
@@ -647,11 +778,19 @@ export default function WorkflowPage() {
             appointments={mapAppointmentsForStep3()}
             requests={mapRequestsForStep2()}
             onBack={() => goToStep(3)}
+            onNext={() => goToStep(5)}
             onCreateInternship={handleCreateInternship}
             onUpdateInternship={handleUpdateInternship}
             onDeleteInternship={handleDeleteInternship}
             onDeleteAppointment={handleDeleteAppointment}
             students={mapStudentsForStep1()}
+          />
+        );
+      case 5:
+        return (
+          <WorkflowStep5PlacementHours
+            students={mapStudentsForStep1()}
+            onBack={() => goToStep(4)}
           />
         );
       default:
@@ -677,6 +816,58 @@ export default function WorkflowPage() {
       activeStep={activeStep}
       onStepChange={goToStep}
     >
+      {/* Coordinator view switcher / banner */}
+      <div className="mb-5">
+        {isAdmin ? (
+          <div className="bg-white p-3.5 px-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                <Users className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Coordinator View & Progress Filter</h4>
+                <p className="text-[10px] text-slate-400">Select any coordinator to filter students, requests, appointments, internships & placement hours</p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Filter Coordinator:</label>
+              <select
+                value={selectedCoordinator}
+                onChange={(e) => setSelectedCoordinator(e.target.value)}
+                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-600 bg-white"
+              >
+                <option value="All">All Coordinators ({workflowStudents.length} students)</option>
+                {coordinators.map((c) => {
+                  const count = workflowStudents.filter(s =>
+                    (s.assignedCoordinator && String(s.assignedCoordinator) === String(c._id || c.id)) ||
+                    (s.assignedCoordinatorName && s.assignedCoordinatorName.toLowerCase() === (c.name || '').toLowerCase())
+                  ).length;
+                  return (
+                    <option key={c._id || c.id} value={c._id || c.id}>
+                      {c.name} ({c.role || 'Coordinator'}) — {count} student(s)
+                    </option>
+                  );
+                })}
+                <option value="unassigned">Unassigned ({workflowStudents.filter(s => !s.assignedCoordinator && !s.assignedCoordinatorName).length})</option>
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3 px-4 flex items-center justify-between shadow-2xs">
+            <div className="flex items-center space-x-2.5">
+              <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+              <p className="text-xs text-blue-900 font-semibold">
+                Viewing assigned workflow for <span className="font-bold">{authUser?.name || 'your students'}</span> ({visibleWorkflowStudents.length} student(s))
+              </p>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+              Coordinator Scope
+            </span>
+          </div>
+        )}
+      </div>
+
       {renderStepContent()}
     </WorkFlowLayout>
   );

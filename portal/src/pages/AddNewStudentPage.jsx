@@ -132,6 +132,7 @@ export default function AddNewStudentPage() {
       if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
     } else if (step === 2) {
       if (!formData.courseQualification) newErrors.courseQualification = 'Course is required';
+      if (!formData.courseLevel) newErrors.courseLevel = 'Certificate level is required';
     } else if (step === 3) {
       if (formData.transport === 'Yes' && (!formData.licenceNumber || !formData.licenceNumber.trim())) {
         newErrors.licenceNumber = 'Licence number is required';

@@ -128,21 +128,20 @@ export default function ReviewSubmitForm({ formData, onEdit, confirmed, setConfi
                   <span className="font-bold text-slate-800">{formatValue(formData.courseQualification)}</span>
                 </div>
                 <div>
-                  <span className="block text-slate-400 mb-0.5">Institute / College</span>
-                  <span className="font-semibold text-slate-800">{formatValue(formData.institute)}</span>
-                </div>
-                <div>
-                  <span className="block text-slate-400 mb-0.5">Course Level</span>
+                  <span className="block text-slate-400 mb-0.5">Certificate Level</span>
                   <span className="font-semibold text-slate-800">{formatValue(formData.courseLevel)}</span>
                 </div>
                 <div>
-                  <span className="block text-slate-400 mb-0.5">Current Year / Semester</span>
-                  <span className="font-semibold text-slate-800">{formatValue(formData.currentYearSemester)}</span>
+                  <span className="block text-slate-400 mb-0.5">College / RTO</span>
+                  <span className="font-semibold text-slate-800">{formatValue(formData.institute || formData.assignedRto)}</span>
                 </div>
                 <div>
-                  <span className="block text-slate-400 mb-0.5">GPA / Percentage</span>
-                  <span className="font-bold text-slate-800">{formatValue(formData.gpa)}</span>
-                  {formData.yearOfCompletion && <span className="block text-[10px] text-slate-400 mt-0.5">{formData.yearOfCompletion}</span>}
+                  <span className="block text-slate-400 mb-0.5">Enrollment / Student ID</span>
+                  <span className="font-semibold text-slate-800">{formatValue(formData.enrollmentId)}</span>
+                </div>
+                <div>
+                  <span className="block text-slate-400 mb-0.5">Student Source</span>
+                  <span className="font-semibold text-slate-800">{formatValue(formData.studentSource)}</span>
                 </div>
               </div>
             </div>

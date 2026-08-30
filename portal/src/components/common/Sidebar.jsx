@@ -256,12 +256,12 @@ export default function Sidebar() {
             {/* Student Search */}
 
             <Link
-              to="/my-students"
-              className={navLinkClass('/my-students')}
+              to="/students"
+              className={navLinkClass('/students')}
             >
 
               <Search
-                className={iconClass('/my-students')}
+                className={iconClass('/students')}
               />
 
               <span className="truncate">
