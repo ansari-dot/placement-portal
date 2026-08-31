@@ -10,8 +10,18 @@ const studentSources = [
   'Other',
 ];
 
-// Keep only course options in this education section; certificate-level values are no longer listed here.
-const courseLevels = ['Other'];
+// Certificate-level dropdown options (used for the "Certificate Level" select).
+const courseLevels = [
+  'Certificate III',
+  'Certificate IV',
+  'Diploma',
+  'Advanced Diploma',
+  'Bachelor',
+  'Graduate Certificate',
+  'Graduate Diploma',
+  'Master',
+  'Other',
+];
 
 const courses = [
   'Individual Support',
@@ -111,8 +121,8 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
 
         {/* Form Body */}
         <div className="p-6 space-y-6">
-          {/* Row 1: Course/Qualification (Mandatory), Study Mode (Mandatory) */}
-          <div className="grid grid-cols-2 gap-5">
+          {/* Row 1: Course/Qualification (Mandatory), Certificate Level (Mandatory), Placement Hours */}
+          <div className="grid grid-cols-3 gap-5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course / Qualification <span className="text-rose-500">*</span></label>
               <div className="relative">
@@ -151,6 +161,19 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                 </span>
               </div>
               {errors?.courseLevel && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.courseLevel}</p>}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Placement Hours</label>
+              <input
+                type="number"
+                min="0"
+                placeholder="e.g. 120"
+                value={formData.placementHours || ''}
+                onChange={(e) => updateField('placementHours', e.target.value)}
+                className={inputClass(errors?.placementHours)}
+              />
+              {errors?.placementHours && <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.placementHours}</p>}
             </div>
           </div>
 
