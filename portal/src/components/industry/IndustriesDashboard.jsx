@@ -6,11 +6,94 @@ import {
   MapPin, ArrowUpRight, Trash2, X
 } from 'lucide-react';
 
-export default function IndustriesDashboard({ onAddNewIndustry, industries = [], stats = {}, onFilterChange, onDeleteIndustry }) {
+export default function IndustriesDashboard({ 
+  onAddNewIndustry, 
+  industries = [], 
+  stats = {}, 
+  onFilterChange, 
+  onDeleteIndustry,
+  onUpdateIndustry 
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sectorFilter, setSectorFilter] = useState('All');
   const [viewingIndustry, setViewingIndustry] = useState(null);
+
+  // Edit Industry state
+  const [editingIndustry, setEditingIndustry] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    sector: 'Aged Care',
+    abn: '',
+    status: 'Active',
+    contactPersonName: '',
+    contactJobTitle: '',
+    contactEmail: '',
+    contactPhone: '',
+    address: '',
+    suburb: '',
+    state: '',
+    postCode: '',
+    website: '',
+    shortDescription: '',
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Delete Industry state
+  const [deletingIndustry, setDeletingIndustry] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleOpenEdit = (item) => {
+    setEditingIndustry(item);
+    setEditFormData({
+      name: item.name || '',
+      sector: item.sector || 'Aged Care',
+      abn: item.abn || '',
+      status: item.status || 'Active',
+      contactPersonName: item.contactPersonName || '',
+      contactJobTitle: item.contactJobTitle || '',
+      contactEmail: item.contactEmail || '',
+      contactPhone: item.contactPhone || '',
+      address: item.address || '',
+      suburb: item.suburb || '',
+      state: item.state || '',
+      postCode: item.postCode || '',
+      website: item.website || '',
+      shortDescription: item.shortDescription || '',
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e?.preventDefault();
+    if (!editFormData.name?.trim()) {
+      alert('Industry / Company Name is required');
+      return;
+    }
+    if (!onUpdateIndustry || !editingIndustry) return;
+    try {
+      setIsSavingEdit(true);
+      await onUpdateIndustry(editingIndustry._id || editingIndustry.id, editFormData);
+      setEditingIndustry(null);
+    } catch (err) {
+      console.error('Save edit error:', err);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!onDeleteIndustry || !deletingIndustry) return;
+    try {
+      setIsDeleting(true);
+      await onDeleteIndustry(deletingIndustry._id || deletingIndustry.id, deletingIndustry.name);
+      setDeletingIndustry(null);
+    } catch (err) {
+      console.error('Delete industry error:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
@@ -319,18 +402,14 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => alert('Edit Industry Wizard coming soon!')}
+                            onClick={() => handleOpenEdit(item)}
                             title="Edit Industry"
                             className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (window.confirm(`Are you sure you want to delete ${item.name}?`)) {
-                                onDeleteIndustry(item._id || item.id);
-                              }
-                            }}
+                            onClick={() => setDeletingIndustry(item)}
                             title="Delete Industry"
                             className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           >
@@ -680,6 +759,289 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
         </div>
       )}
 
+      {/* ─── Edit Industry Modal ─────────────────────────────────────────── */}
+      {editingIndustry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Edit Industry</h3>
+                  <p className="text-xs text-slate-500">Update company profile, contact details, and partnership status</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingIndustry(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleSaveEdit} className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+              
+              {/* Company Info */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1">
+                  Company Information
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Company Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.name}
+                      onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                      placeholder="e.g. HealthCare Australia"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Sector / Industry Type</label>
+                    <select
+                      value={editFormData.sector}
+                      onChange={(e) => setEditFormData({ ...editFormData, sector: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600 cursor-pointer"
+                    >
+                      <option value="Aged Care">Aged Care</option>
+                      <option value="Disability Centre">Disability Centre</option>
+                      <option value="Healthcare">Healthcare</option>
+                      <option value="Education">Education</option>
+                      <option value="Information Technology">Information Technology</option>
+                      <option value="Hospitality & Tourism">Hospitality & Tourism</option>
+                      <option value="Finance & Banking">Finance & Banking</option>
+                      <option value="Construction">Construction</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">ABN</label>
+                    <input
+                      type="text"
+                      value={editFormData.abn}
+                      onChange={(e) => setEditFormData({ ...editFormData, abn: e.target.value })}
+                      placeholder="e.g. 51 824 753 556"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Status</label>
+                    <select
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600 cursor-pointer"
+                    >
+                      <option value="Active">Active (Partnership ongoing)</option>
+                      <option value="Inactive">Inactive (Paused / Suspended)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Person */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1">
+                  Contact Person
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Contact Person Name</label>
+                    <input
+                      type="text"
+                      value={editFormData.contactPersonName}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactPersonName: e.target.value })}
+                      placeholder="e.g. Sarah Jenkins"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Job Title / Designation</label>
+                    <input
+                      type="text"
+                      value={editFormData.contactJobTitle}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactJobTitle: e.target.value })}
+                      placeholder="e.g. HR Placement Director"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Contact Email</label>
+                    <input
+                      type="email"
+                      value={editFormData.contactEmail}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactEmail: e.target.value })}
+                      placeholder="e.g. info@company.com"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Contact Phone</label>
+                    <input
+                      type="text"
+                      value={editFormData.contactPhone}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactPhone: e.target.value })}
+                      placeholder="e.g. +61 412 345 678"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Location & Details */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1">
+                  Location &amp; Online Presence
+                </h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-3 space-y-1">
+                    <label className="font-bold text-slate-700">Street Address</label>
+                    <input
+                      type="text"
+                      value={editFormData.address}
+                      onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                      placeholder="e.g. 123 Collins Street"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">City / Suburb</label>
+                    <input
+                      type="text"
+                      value={editFormData.suburb}
+                      onChange={(e) => setEditFormData({ ...editFormData, suburb: e.target.value })}
+                      placeholder="e.g. Melbourne"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">State</label>
+                    <input
+                      type="text"
+                      value={editFormData.state}
+                      onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value })}
+                      placeholder="e.g. VIC"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Postal Code</label>
+                    <input
+                      type="text"
+                      value={editFormData.postCode}
+                      onChange={(e) => setEditFormData({ ...editFormData, postCode: e.target.value })}
+                      placeholder="e.g. 3000"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="col-span-3 space-y-1">
+                    <label className="font-bold text-slate-700">Website</label>
+                    <input
+                      type="text"
+                      value={editFormData.website}
+                      onChange={(e) => setEditFormData({ ...editFormData, website: e.target.value })}
+                      placeholder="e.g. https://www.company.com"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="col-span-3 space-y-1">
+                    <label className="font-bold text-slate-700">Description / Notes</label>
+                    <textarea
+                      rows={2}
+                      value={editFormData.shortDescription}
+                      onChange={(e) => setEditFormData({ ...editFormData, shortDescription: e.target.value })}
+                      placeholder="Brief details about this industry partner..."
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingIndustry(null)}
+                  className="px-4 py-2 bg-white border border-slate-200 rounded-xl font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Confirmation Modal ───────────────────────────────────── */}
+      {deletingIndustry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Industry Partner</h3>
+                <p className="text-xs text-slate-500">Cascade delete and unlink from students</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-1">
+              <p className="font-bold">Are you sure you want to delete {deletingIndustry.name}?</p>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                This action is permanent. It will delete this industry record and <strong>automatically remove it from all student placement requests, appointments, and active placements</strong> linked to this company.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingIndustry(null)}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete Industry</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
-}
+}

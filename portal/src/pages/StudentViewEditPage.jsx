@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import { fetchStudentById, updateStudent } from '../api/studentsApi';
-import { fetchWorkflows } from '../api/workflowApi';
+import { fetchWorkflows, fetchWorkflowById } from '../api/workflowApi';
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
 
@@ -21,6 +21,8 @@ export default function StudentViewEditPage() {
   const [loadError, setLoadError] = useState(null);
   const [activeTab, setActiveTab] = useState('personal');
   const [contactedIndustries, setContactedIndustries] = useState([]);
+  // ✅ Dynamic internship ending soon info for this student
+  const [internshipEndingInfo, setInternshipEndingInfo] = useState(null);
 
   const loadStudent = useCallback(async () => {
     setLoading(true);
@@ -59,19 +61,31 @@ export default function StudentViewEditPage() {
       }
       setFormData(populated);
 
-      // Fetch workflow to get internship requests and contacted industries for this student
+      // Fetch workflow to get internship requests, contacted industries & appointments for this student
       try {
         const wfResult = await fetchWorkflows();
         const workflows = wfResult.data || [];
         const studentContacts = [];
         const studentName = `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.name;
+        const dbId = data.id || data._id;
+        const bizId = data.studentId;
+
+        // ── Get full populated workflow (with appointments) ──
+        let fullAppointments = [];
+        if (workflows.length > 0) {
+          const wfId = workflows[0].id || workflows[0]._id;
+          try {
+            const detailed = await fetchWorkflowById(wfId);
+            fullAppointments = detailed?.data?.appointments || [];
+          } catch (_) {}
+        }
+
         workflows.forEach(wf => {
           (wf.requests || []).forEach(req => {
             const isMatch =
               req.studentId === id ||
-              req.studentId === data.studentId ||
-              req.studentId === data.id ||
-              req.studentId === data._id ||
+              req.studentId === bizId ||
+              req.studentId === dbId ||
               (studentName && req.student === studentName);
             if (isMatch && Array.isArray(req.contactedIndustries)) {
               studentContacts.push(...req.contactedIndustries);
@@ -79,6 +93,42 @@ export default function StudentViewEditPage() {
           });
         });
         setContactedIndustries(studentContacts);
+
+        // ✅ Check appointments for this student — detect ending within 7 weeks
+        const studentAppts = fullAppointments.filter(appt => {
+          const norm = v => String(v || '').trim().toLowerCase();
+          return (
+            (appt.studentId && (appt.studentId === id || appt.studentId === bizId || appt.studentId === dbId)) ||
+            (appt.student && studentName && norm(appt.student) === norm(studentName))
+          );
+        });
+
+        // Find the most relevant active/scheduled appointment
+        const activeAppt = studentAppts.find(a =>
+          a.status === 'Scheduled' || a.status === 'Confirmed' || a.status === 'Active'
+        ) || studentAppts[0];
+
+        if (activeAppt?.date) {
+          const startDate = new Date(activeAppt.date);
+          const endDate = new Date(startDate);
+          endDate.setDate(endDate.getDate() + 12 * 7); // 12 weeks internship
+          const now = new Date();
+          const diffMs = endDate.getTime() - now.getTime();
+          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+          if (diffDays <= 0) {
+            setInternshipEndingInfo({ type: 'ended', diffDays: 0, label: 'Concluded', company: activeAppt.company });
+          } else if (diffDays <= 49) { // 7 weeks
+            const weeksLeft = Math.ceil(diffDays / 7);
+            const label = diffDays <= 7
+              ? `${diffDays} day${diffDays === 1 ? '' : 's'}`
+              : `${weeksLeft} week${weeksLeft === 1 ? '' : 's'}`;
+            setInternshipEndingInfo({ type: 'ending_soon', diffDays, weeksLeft, label, company: activeAppt.company });
+          } else {
+            setInternshipEndingInfo(null);
+          }
+        }
+
       } catch (wfErr) {
         console.error('Could not load workflow data:', wfErr);
       }
@@ -265,6 +315,37 @@ export default function StudentViewEditPage() {
               </div>
             </div>
           </div>
+
+          {/* Dynamic Placement Ending Soon Banner on Student Profile */}
+          {internshipEndingInfo && (
+            <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs mb-4 animate-in fade-in duration-200">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-amber-950">
+                    {internshipEndingInfo.type === 'ended' ? 'Placement Concluded' : `Placement Ending Soon (${internshipEndingInfo.label} left)`}
+                  </p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Notice: Placement period is near completion. Verify student hours, logbooks, and completion assessments.
+                    {internshipEndingInfo.company ? ` • Placed at ${internshipEndingInfo.company}` : ''}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 shrink-0">
+                <span className="px-3 py-1.5 bg-amber-200/90 text-amber-900 rounded-xl text-xs font-bold">
+                  ⏳ {internshipEndingInfo.label} left
+                </span>
+                <Link
+                  to="/workflow?step=4"
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-2xs"
+                >
+                  View in Placements
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex items-center space-x-1 mb-4 bg-white rounded-xl border border-slate-200 shadow-sm p-1.5 w-fit">

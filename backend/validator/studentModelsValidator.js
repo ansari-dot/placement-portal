@@ -415,6 +415,12 @@ export const studentSchema = z.object({
     .optional()
     .default(''),
 
+  assignedCoordinatorAt: z
+    .union([z.string(), z.date()])
+    .nullable()
+    .optional()
+    .default(null),
+
   // ===== System / Display Fields =====
   studentId: z
     .string()

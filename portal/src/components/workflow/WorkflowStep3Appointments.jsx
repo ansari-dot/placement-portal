@@ -1,6 +1,5 @@
-// src/components/workflow/WorkflowStep3Appointments.jsx
 import React, { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
   FileText, CheckCircle2, UserX, Clock, Plus, Filter,
@@ -24,8 +23,9 @@ export default function WorkflowStep3Appointments({
   prefilledAppointmentData = null,
   onClearPrefilledData = null
 }) {
-  // ─── Get pre-selected student from navigation state ─────────────────────
+  // ─── Get pre-selected student from navigation state or URL ──────────────
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const preSelectedStudent = location.state?.preSelectedStudent || null;
 
   // Modal State
@@ -44,7 +44,11 @@ export default function WorkflowStep3Appointments({
 
   // ─── Auto-fill form when pre-selected student data is available ─────────
   useEffect(() => {
-    const data = prefilledAppointmentData || preSelectedStudent || null;
+    const studentIdParam = searchParams.get('studentId');
+    const studentNameParam = searchParams.get('studentName');
+    const urlData = (studentIdParam || studentNameParam) ? { studentId: studentIdParam, studentName: studentNameParam } : null;
+    const data = prefilledAppointmentData || preSelectedStudent || urlData || null;
+
     if (data) {
       console.log('📋 Pre-selected / prefilled appointment data:', data);
 
@@ -61,6 +65,10 @@ export default function WorkflowStep3Appointments({
         setNewApptStudentId(matchedStu.id || matchedStu._id || matchedStu.studentId);
       } else if (data.studentId) {
         setNewApptStudentId(data.studentId);
+      }
+
+      if (urlData) {
+        setShowNewAppointment(true);
       }
 
       if (data.reqId) {

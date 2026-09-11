@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import IndustryLayout from '../components/layout/IndustryLayout';
 import IndustriesDashboard from '../components/industry/IndustriesDashboard';
 import AddNewIndustryWizard from '../components/industry/AddNewIndustryWizard';
-import { fetchIndustries, createIndustry, fetchIndustryStats, deleteIndustry } from '../api/industryApi';
+import { fetchIndustries, createIndustry, updateIndustry, fetchIndustryStats, deleteIndustry } from '../api/industryApi';
+import { toast } from 'react-toastify';
 
 export default function IndustryPage() {
   // View states: 'dashboard' | 'add-wizard'
@@ -40,19 +41,35 @@ export default function IndustryPage() {
   const handleCreateIndustry = useCallback(async (formData) => {
     try {
       await createIndustry(formData);
+      toast.success('Industry created successfully');
       await loadData();
     } catch (err) {
       console.error('Failed to create Industry:', err);
+      toast.error(err?.response?.data?.message || 'Failed to create Industry');
       throw err;
     }
   }, [loadData]);
 
-  const handleDeleteIndustry = useCallback(async (id) => {
+  const handleUpdateIndustry = useCallback(async (id, updateData) => {
     try {
-      await deleteIndustry(id);
+      const res = await updateIndustry(id, updateData);
+      toast.success(res?.message || 'Industry updated successfully');
+      await loadData();
+    } catch (err) {
+      console.error('Failed to update Industry:', err);
+      toast.error(err?.response?.data?.message || 'Failed to update Industry');
+      throw err;
+    }
+  }, [loadData]);
+
+  const handleDeleteIndustry = useCallback(async (id, name) => {
+    try {
+      const res = await deleteIndustry(id);
+      toast.success(res?.message || `${name || 'Industry'} deleted successfully`);
       await loadData();
     } catch (err) {
       console.error('Failed to delete Industry:', err);
+      toast.error(err?.response?.data?.message || 'Failed to delete Industry');
     }
   }, [loadData]);
 
@@ -72,6 +89,7 @@ export default function IndustryPage() {
           stats={stats} 
           onFilterChange={loadData}
           onDeleteIndustry={handleDeleteIndustry}
+          onUpdateIndustry={handleUpdateIndustry}
         />
       ) : (
         <div className="relative">

@@ -208,6 +208,7 @@ export const assignCoordinatorController = async (req, res) => {
         const student = await updateStudent(id, {
             assignedCoordinator: coordinatorId || null,
             assignedCoordinatorName: coordinatorName || '',
+            assignedCoordinatorAt: coordinatorId ? new Date() : null,
         });
 
         if (!student) {

@@ -103,13 +103,24 @@ export default function WorkflowPage() {
 
         if (workflows.length > 0) {
           const existing = workflows[0];
-          setWorkflowId(existing.id || existing._id);
+          const wfId = existing.id || existing._id;
+          setWorkflowId(wfId);
           setWorkflow(existing);
           const stepFromUrl = parseInt(searchParams.get('step') || '', 10);
           if (stepFromUrl >= 1 && stepFromUrl <= 4) {
             setActiveStep(stepFromUrl);
           } else {
             setActiveStep(existing.currentStep || 1);
+          }
+
+          // ✅ Also fetch full populated data (requests, appointments, internships)
+          try {
+            const detailed = await fetchWorkflowById(wfId);
+            if (detailed?.data) {
+              setWorkflow(detailed.data);
+            }
+          } catch (detailErr) {
+            console.warn('Could not fetch full workflow detail, using list data:', detailErr);
           }
         } else {
           const created = await createWorkflow({
@@ -265,7 +276,7 @@ export default function WorkflowPage() {
       return (
         (reqStudentId && stuDbId && reqStudentId === stuDbId) ||
         (reqStudentId && stuBizId && reqStudentId === stuBizId) ||
-        (reqStudentName && stuName && reqStudentName === stuName)
+        (reqStudentName && stuName && (reqStudentName === stuName || reqStudentName.includes(stuName) || stuName.includes(reqStudentName)))
       );
     });
   }, [workflow]);
@@ -277,6 +288,18 @@ export default function WorkflowPage() {
       const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
       const matchingRequests = findRequestsForStudent(stu);
 
+      // Check if student has an internship request (from workflow requests or localStorage)
+      let storedPriority = null;
+      try {
+        const stored = JSON.parse(localStorage.getItem('portal_workflow_requests') || '{}');
+        const stuKey = norm(stu.id || stu._id);
+        const bizKey = norm(stu.studentId);
+        const nameKey = norm(stu.name || stuFullName);
+        storedPriority = stored[stuKey] || stored[bizKey] || stored[nameKey] || stored[stu.id] || stored[stu.studentId] || stored[stu.name];
+      } catch (_) {}
+
+      const hasRequest = matchingRequests.length > 0 || Boolean(storedPriority);
+
       return {
         ...stu,
         name: stu.name || stuFullName,
@@ -285,7 +308,8 @@ export default function WorkflowPage() {
         studentId: stu.studentId || '',
         rto: stu.assignedRto || stu.rto || '',
         status: stu.status || 'Active',
-        placementStatus: stu.placementStatus || 'Ready',
+        // ✅ DYNAMIC PLACEMENT STATUS: Automatically changes to 'In Progress' when request is generated!
+        placementStatus: hasRequest ? 'In Progress' : (stu.placementStatus || 'Ready'),
         placementHours: stu.placementHours ?? null,
         assignedCoordinator: stu.assignedCoordinator || null,
         assignedCoordinatorName: stu.assignedCoordinatorName || '',
@@ -732,11 +756,28 @@ export default function WorkflowPage() {
 
   const internshipRequestMap = React.useMemo(() => {
     const map = {};
+
+    // 1. Check localStorage first so any requests generated from My Students reflect immediately
+    try {
+      const stored = JSON.parse(localStorage.getItem('portal_workflow_requests') || '{}');
+      Object.entries(stored).forEach(([k, v]) => {
+        map[k] = v;
+        map[norm(k)] = v;
+      });
+    } catch (_) {}
+
+    // 2. Check workflow requests from database
     if (workflow?.requests && Array.isArray(workflow.requests)) {
       workflow.requests.forEach((req) => {
         const priorityVal = req.priority || 'Normal';
-        if (req.studentId) map[req.studentId] = priorityVal;
-        if (req.student)   map[req.student]   = priorityVal;
+        if (req.studentId) {
+          map[req.studentId] = priorityVal;
+          map[norm(req.studentId)] = priorityVal;
+        }
+        if (req.student) {
+          map[req.student] = priorityVal;
+          map[norm(req.student)] = priorityVal;
+        }
         if (req.id)        map[req.id]         = priorityVal;
         if (req._id)       map[String(req._id)] = priorityVal;
       });

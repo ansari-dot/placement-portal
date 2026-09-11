@@ -1,6 +1,6 @@
 // src/components/workflow/WorkflowStep2Requests.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, Download, Plus, MoreVertical,
   ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List,
@@ -23,6 +23,7 @@ export default function WorkflowStep2Requests({
   activeStudent = null
 }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [newRequestStudentId, setNewRequestStudentId] = useState('');
   const [newRequestCompany, setNewRequestCompany] = useState('');
   const [newRequestTitle, setNewRequestTitle] = useState('');
@@ -30,6 +31,27 @@ export default function WorkflowStep2Requests({
   const [newRequestRto, setNewRequestRto] = useState('');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [availableJobs, setAvailableJobs] = useState([]);
+
+  // Auto open Add Contact / Industry modal for student if navigated with openContact=true
+  useEffect(() => {
+    const studentId = searchParams.get('studentId') || searchParams.get('prefillStudentId');
+    const studentName = searchParams.get('studentName') || searchParams.get('prefillStudentName');
+    const openContact = searchParams.get('openContact') === 'true';
+
+    if (openContact && (studentId || studentName) && requests && requests.length > 0) {
+      const norm = (v) => String(v || '').trim().toLowerCase();
+      const matchedReq = requests.find((r) =>
+        (studentId && (norm(r.studentId) === norm(studentId) || norm(r.id) === norm(studentId))) ||
+        (studentName && norm(r.student) === norm(studentName))
+      );
+      if (matchedReq) {
+        setSelectedRequest(matchedReq);
+        setShowDrawer(true);
+        setActiveTab('Contact History');
+        setShowAddOrgModal(true);
+      }
+    }
+  }, [searchParams, requests]);
 
   useEffect(() => {
     fetchJobs({ status: 'Open' })
@@ -600,147 +622,6 @@ export default function WorkflowStep2Requests({
                 <button onClick={() => handleExport('excel')} className="w-full text-left px-3 py-2 text-[11px] text-slate-700 hover:bg-slate-50 rounded-lg">
                   Excel
                 </button>
-              </div>
-            )}
-          </div>
-
-          <div className="relative shrink-0">
-            <button
-              onClick={() => setShowNewRequest(!showNewRequest)}
-              className="px-3 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-[11px] font-semibold text-white rounded-xl flex items-center space-x-1.5 shadow-xs transition-all duration-500 cursor-pointer whitespace-nowrap"
-            >
-              <Plus className="w-3 h-3" />
-              <span>New Request</span>
-            </button>
-            {showNewRequest && (
-              <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-4">
-                <h4 className="text-sm font-bold text-slate-900 mb-3">Create New Request</h4>
-                <div className="space-y-2">
-                  <select
-                    value={newRequestStudentId}
-                    onChange={(e) => {
-                      setNewRequestStudentId(e.target.value);
-                      const stu = students.find(s => s.id === e.target.value);
-                      if (stu?.rto) setNewRequestRto(stu.rto);
-                    }}
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="">Select Student</option>
-                    {students.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
-                    ))}
-                  </select>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Pick from Jobs</label>
-                    <select
-                      value={selectedJobId}
-                      onChange={(e) => {
-                        const jobId = e.target.value;
-                        setSelectedJobId(jobId);
-                        if (jobId) {
-                          const job = availableJobs.find(j => (j._id || j.id) === jobId);
-                          if (job) {
-                            setNewRequestTitle(job.title || '');
-                            setNewRequestCompany(job.employer || '');
-                            if (job.rto) setNewRequestRto(job.rto);
-                          }
-                        } else {
-                          setNewRequestTitle('');
-                          setNewRequestCompany('');
-                        }
-                      }}
-                      className="w-full px-3 py-2 text-xs border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500 bg-blue-50/40 text-slate-700"
-                    >
-                      <option value="">â€” Select a Job (auto-fill) â€”</option>
-                      {availableJobs.map(j => (
-                        <option key={j._id || j.id} value={j._id || j.id}>
-                          {j.title} @ {j.employer}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Selects a job and auto-fills Title & Company below</p>
-                  </div>
-
-                  <input
-                    placeholder="Position Title"
-                    value={newRequestTitle}
-                    onChange={(e) => setNewRequestTitle(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-
-                  <input
-                    placeholder="Company / Employer"
-                    value={newRequestCompany}
-                    onChange={(e) => setNewRequestCompany(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-
-                  <input
-                    placeholder="RTO (auto-filled from student)"
-                    value={newRequestRto}
-                    onChange={(e) => setNewRequestRto(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-slate-50"
-                  />
-
-                  <select
-                    value={newRequestWorkType}
-                    onChange={(e) => setNewRequestWorkType(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="Remote">Remote</option>
-                    <option value="On-site">On-site</option>
-                    <option value="Hybrid">Hybrid</option>
-                  </select>
-                </div>
-                <div className="flex space-x-2 mt-3">
-                  <button
-                    onClick={async () => {
-                      if (!newRequestStudentId || !newRequestCompany || !newRequestTitle) {
-                        showToast('Please fill in all fields');
-                        return;
-                      }
-                      const selectedStu = students.find((s) => s.id === newRequestStudentId);
-                      if (!selectedStu) return;
-                      const requestData = {
-                        title: newRequestTitle,
-                        student: selectedStu.name,
-                        studentId: selectedStu.id,
-                        company: newRequestCompany,
-                        rto: newRequestRto || selectedStu.rto || 'N/A',
-                        workType: newRequestWorkType,
-                        status: 'New',
-                      };
-                      if (onCreateRequest) {
-                        try {
-                          await onCreateRequest(requestData);
-                          showToast('Request created successfully');
-                          setShowNewRequest(false);
-                          setNewRequestStudentId('');
-                          setNewRequestCompany('');
-                          setNewRequestTitle('');
-                          setNewRequestRto('');
-                          setSelectedJobId('');
-                        } catch (err) {
-                          console.error(err);
-                          showToast('Failed to create request');
-                        }
-                      } else {
-                        showToast('Mock request created');
-                        setShowNewRequest(false);
-                      }
-                    }}
-                    className="flex-1 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-lg transition-all duration-500 cursor-pointer"
-                  >
-                    Create
-                  </button>
-                  <button
-                    onClick={() => setShowNewRequest(false)}
-                    className="px-3 py-2 border border-slate-200 text-xs font-semibold text-slate-600 rounded-lg hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
               </div>
             )}
           </div>

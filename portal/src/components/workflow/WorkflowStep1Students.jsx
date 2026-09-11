@@ -361,6 +361,15 @@ export default function WorkflowStep1Students({
   const [showSnoozedModal, setShowSnoozedModal] = useState(false);
   const [snoozedSearchQuery, setSnoozedSearchQuery] = useState('');
 
+  // ✅ Local request map — immediately shows badge after generate (merges with prop & localStorage)
+  const [localRequestMap, setLocalRequestMap] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('portal_workflow_requests') || '{}');
+    } catch {
+      return {};
+    }
+  });
+
   // Persisted snoozed students dictionary
   const [snoozedStudentIds, setSnoozedStudentIds] = useState(() => {
     try {
@@ -371,26 +380,27 @@ export default function WorkflowStep1Students({
     }
   });
 
-  // Check if student is online
-  const isStudentOnline = (id, email, name) => {
-    if (authUser?.email && email && authUser.email.toLowerCase() === email.toLowerCase()) {
+  // Check if student is online (fully dynamic)
+  const isStudentOnline = (id, email, name, studentObj) => {
+    if (studentObj?.isOnline === true) return true;
+    if (authUser?.email && email && authUser.email.toLowerCase().trim() === email.toLowerCase().trim()) {
       return true;
     }
-    if (authUser?.name && name && authUser.name.toLowerCase() === name.toLowerCase()) {
+    if (authUser?.id && id && authUser.id === id) {
       return true;
     }
     try {
       const active = JSON.parse(localStorage.getItem('portal_online_users') || '{}');
-      if (email && active[email.toLowerCase()]) return true;
-      if (name && active[name.toLowerCase()]) return true;
-      if (id && active[id]) return true;
+      if (Array.isArray(active)) {
+        if (active.some(u => (u.id && u.id === id) || (u.email && email && u.email.toLowerCase().trim() === email.toLowerCase().trim()))) return true;
+      } else if (typeof active === 'object') {
+        if (email && active[email.toLowerCase().trim()]) return true;
+        if (id && active[id]) return true;
+      }
     } catch (e) {}
-    // If auth user is logged in and matches current student in test
-    if (authUser && (email === 'wardayousaf672@gmail.com' || name === 'Warda Yousaf')) {
-      return true;
-    }
     return false;
   };
+
 
   // ─── Delete confirmation modal ───────────────────────────────────────────
   const [deleteConfirm, setDeleteConfirm] = useState(null); // holds the student to delete
@@ -447,7 +457,17 @@ export default function WorkflowStep1Students({
       return;
     }
 
-    showToast(`Generated Placement Request with ${genPriority} priority for ${genTargetStudent.name}`);
+    // ✅ Immediately update local badge — no need to wait for backend refresh
+    const updatedLocal = { ...localRequestMap };
+    if (stuId) updatedLocal[stuId] = genPriority;
+    if (genTargetStudent.name) updatedLocal[genTargetStudent.name] = genPriority;
+    if (genTargetStudent.studentId) updatedLocal[genTargetStudent.studentId] = genPriority;
+    setLocalRequestMap(updatedLocal);
+    try {
+      localStorage.setItem('portal_workflow_requests', JSON.stringify(updatedLocal));
+    } catch (_) {}
+
+    showToast(`✅ Placement Request generated (${genPriority} priority) for ${genTargetStudent.name}`);
     setShowGenRequestModal(false);
     if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
   };
@@ -764,7 +784,11 @@ export default function WorkflowStep1Students({
               {paginatedStudents.map((stu, rowIdx) => {
                 const isSelected = selectedStudent?.id === stu.id;
                 const isRowSelected = selectedRows.includes(stu.id);
-                const reqValue = internshipRequestMap[stu.id] || (stu.studentId && internshipRequestMap[stu.studentId]) || (stu.name && internshipRequestMap[stu.name]);
+                const reqValue = 
+                  // ✅ Check localRequestMap first (immediate update after generate)
+                  localRequestMap[stu.id] || localRequestMap[stu.studentId] || (stu.name && localRequestMap[stu.name]) ||
+                  // Then check prop from backend
+                  internshipRequestMap[stu.id] || (stu.studentId && internshipRequestMap[stu.studentId]) || (stu.name && internshipRequestMap[stu.name]);
                 // Open menu upward for the last 3 rows to avoid viewport clipping
                 const openUpward = rowIdx >= paginatedStudents.length - 3;
                 return (
@@ -832,11 +856,12 @@ export default function WorkflowStep1Students({
                     </td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        stu.placementStatus === 'Ready' ? 'bg-emerald-50 text-emerald-600' : 
-                        stu.placementStatus === 'Pending Info' ? 'bg-amber-50 text-amber-600' : 
-                        'bg-blue-50 text-blue-600'
+                        reqValue || stu.placementStatus?.includes('Progress') ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                        stu.placementStatus === 'Ready' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 
+                        stu.placementStatus === 'Pending Info' ? 'bg-amber-50 text-amber-600 border border-amber-200' : 
+                        'bg-blue-50 text-blue-600 border border-blue-200'
                       }`}>
-                        {stu.placementStatus}
+                        {reqValue ? 'In Progress' : (stu.placementStatus || 'Ready')}
                       </span>
                     </td>
                     <td className="p-4">

@@ -249,25 +249,69 @@ export const updateIndustryController = async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
+    const oldIndustry = await IndustryModel.findById(id);
+    if (!oldIndustry) {
+      return res.status(404).json({ success: false, message: 'Industry not found' });
+    }
+    const oldName = (oldIndustry.name || '').trim();
+
     // Remap frontend field names to model field names if needed
     if (updateData.industryName) { updateData.name = updateData.industryName; delete updateData.industryName; }
     if (updateData.industryType) { updateData.sector = updateData.industryType; delete updateData.industryType; }
     if (updateData.industryCode) { updateData.code = updateData.industryCode; delete updateData.industryCode; }
 
     // Rebuild location string if address parts changed
-    if (updateData.suburb || updateData.state) {
-      const industryDoc = await IndustryModel.findById(id);
-      if (industryDoc) {
-        const suburb = updateData.suburb ?? industryDoc.suburb;
-        const state = updateData.state ?? industryDoc.state;
-        updateData.location = [suburb, state].filter(Boolean).join(', ');
-      }
+    if (updateData.suburb || updateData.state || updateData.address) {
+      const suburb = updateData.suburb ?? oldIndustry.suburb;
+      const state = updateData.state ?? oldIndustry.state;
+      const address = updateData.address ?? oldIndustry.address;
+      updateData.location = [address, suburb, state].filter(Boolean).join(', ') || oldIndustry.location || 'Australia';
     }
 
     const industry = await IndustryModel.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
 
-    if (!industry) {
-      return res.status(404).json({ success: false, message: 'Industry not found' });
+    const newName = (industry.name || '').trim();
+
+    // If name changed, cascade update across workflows and jobs
+    if (newName && oldName && newName.toLowerCase() !== oldName.toLowerCase()) {
+      const oldRegex = safeRegex(oldName);
+      const allWorkflows = await WorkflowModel.find();
+      for (const wf of allWorkflows) {
+        let modified = false;
+        // In requests -> contactedIndustries
+        for (const req of (wf.requests || [])) {
+          if ((req.company || '').trim().toLowerCase() === oldName.toLowerCase()) {
+            req.company = newName;
+            modified = true;
+          }
+          for (const c of (req.contactedIndustries || [])) {
+            if ((c.organizationName || '').trim().toLowerCase() === oldName.toLowerCase()) {
+              c.organizationName = newName;
+              if (industry.sector) c.industryType = industry.sector;
+              modified = true;
+            }
+          }
+        }
+        // In appointments
+        for (const a of (wf.appointments || [])) {
+          if ((a.company || '').trim().toLowerCase() === oldName.toLowerCase()) {
+            a.company = newName;
+            modified = true;
+          }
+        }
+        // In internships
+        for (const i of (wf.internships || [])) {
+          if ((i.company || '').trim().toLowerCase() === oldName.toLowerCase()) {
+            i.company = newName;
+            modified = true;
+          }
+        }
+        if (modified) {
+          await wf.save();
+        }
+      }
+
+      await JobModel.updateMany({ employer: oldRegex }, { $set: { employer: newName } });
     }
 
     res.status(200).json({ success: true, message: 'Industry updated successfully', data: industry });
@@ -321,12 +365,88 @@ export const getIndustryStatsController = async (req, res) => {
 export const deleteIndustryController = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // 1. Find industry first
+    const industry = await IndustryModel.findById(id);
+    if (!industry) {
+      return res.status(404).json({ success: false, message: 'Industry not found' });
+    }
+
+    const industryName = (industry.name || '').trim();
+    const industryNameLower = industryName.toLowerCase();
+
+    // 2. Delete industry from database
     await IndustryModel.findByIdAndDelete(id);
+
+    // 3. Cascade Delete across Workflows (Requests, Appointments, Internships)
+    const allWorkflows = await WorkflowModel.find();
+    for (const wf of allWorkflows) {
+      let wfModified = false;
+
+      // a) Clean up requests
+      if (Array.isArray(wf.requests)) {
+        for (const req of wf.requests) {
+          if ((req.company || '').trim().toLowerCase() === industryNameLower) {
+            req.company = 'Unassigned';
+            wfModified = true;
+          }
+          if (Array.isArray(req.contactedIndustries)) {
+            const initialCount = req.contactedIndustries.length;
+            req.contactedIndustries = req.contactedIndustries.filter(c => {
+              const cName = (c.organizationName || '').trim().toLowerCase();
+              return cName !== industryNameLower;
+            });
+            if (req.contactedIndustries.length !== initialCount) {
+              wfModified = true;
+            }
+          }
+        }
+      }
+
+      // b) Clean up appointments: remove appointments with this industry
+      if (Array.isArray(wf.appointments)) {
+        const initialCount = wf.appointments.length;
+        wf.appointments = wf.appointments.filter(a => {
+          const comp = (a.company || '').trim().toLowerCase();
+          return comp !== industryNameLower;
+        });
+        if (wf.appointments.length !== initialCount) {
+          wfModified = true;
+        }
+      }
+
+      // c) Clean up internships: remove internships with this industry
+      if (Array.isArray(wf.internships)) {
+        const initialCount = wf.internships.length;
+        wf.internships = wf.internships.filter(i => {
+          const comp = (i.company || '').trim().toLowerCase();
+          return comp !== industryNameLower;
+        });
+        if (wf.internships.length !== initialCount) {
+          wfModified = true;
+        }
+      }
+
+      if (wfModified) {
+        await wf.save();
+      }
+    }
+
+    // 4. Delete associated jobs
+    try {
+      await JobModel.deleteMany({
+        employer: { $regex: safeRegex(industryName) }
+      });
+    } catch (jErr) {
+      console.error('Failed to delete jobs for industry:', jErr);
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Industry deleted successfully'
+      message: `Industry "${industryName}" and all linked student placements/appointments removed successfully`
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+

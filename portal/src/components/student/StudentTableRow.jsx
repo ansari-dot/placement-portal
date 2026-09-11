@@ -4,20 +4,35 @@ import { allColumns } from './studentData';
 
 const isStudentOnline = (s) => {
   if (!s) return false;
-  if (s.isOnline) return true;
+  // 1. Database-backed real-time online status
+  if (s.isOnline === true) return true;
+
+  // 2. Active logged-in user matching student email or ID
+  try {
+    const rawAuth = localStorage.getItem('user') || localStorage.getItem('portal_user');
+    if (rawAuth) {
+      const u = JSON.parse(rawAuth);
+      if (
+        (u.email && s.email && u.email.toLowerCase().trim() === s.email.toLowerCase().trim()) ||
+        (u.id && (u.id === s.id || u.id === s.studentId || u.id === s.dbId))
+      ) {
+        return true;
+      }
+    }
+  } catch (e) {}
+
+  // 3. Dynamic active session registry
   try {
     const raw = localStorage.getItem('portal_online_users');
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list) && list.some(u => 
-        (u.id && (u.id === s.id || u.id === s.studentId)) || 
-        (u.email && s.email && u.email.toLowerCase() === s.email.toLowerCase()) || 
-        (u.name && s.name && u.name.toLowerCase() === s.name.toLowerCase())
+        (u.id && (u.id === s.id || u.id === s.studentId || u.id === s.dbId)) || 
+        (u.email && s.email && u.email.toLowerCase().trim() === s.email.toLowerCase().trim())
       )) return true;
     }
   } catch (e) {}
-  if (s.email && s.email.toLowerCase().includes('warda')) return true;
-  if (s.name && s.name.toLowerCase().includes('warda')) return true;
+
   return false;
 };
 
@@ -97,6 +112,8 @@ const renderCell = (student, colKey) => {
       );
     case 'source':
       return <span className="text-slate-600">{student.source || '—'}</span>;
+    case 'assignedAt':
+      return <span className="text-slate-600 font-medium">{student.assignedAt || student.created || '—'}</span>;
     case 'created':
       return <span className="text-slate-600">{student.created}</span>;
     default:

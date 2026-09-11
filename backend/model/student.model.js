@@ -381,6 +381,10 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    assignedCoordinatorAt: {
+      type: Date,
+      default: null,
+    },
 
     // ===== System / Display Fields =====
     studentId: {
