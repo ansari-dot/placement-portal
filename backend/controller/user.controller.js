@@ -133,7 +133,7 @@ export const getUserStatsController = async (req, res) => {
 // POST /users - Create new user
 export const createUserController = async (req, res) => {
   try {
-    const { name, email, role, department, status, phone, avatar } = req.body;
+    const { name, email, password, role, department, status, phone, avatar } = req.body;
 
     if (!name || !email) {
       return res.status(400).json({ success: false, message: 'Name and email are required' });
@@ -145,8 +145,9 @@ export const createUserController = async (req, res) => {
     }
 
     const user = await UserModel.create({
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password: password?.trim() || 'User@123',
       role: role || 'Staff',
       department: department || 'Placement Operations',
       status: status || 'Active',
@@ -177,11 +178,29 @@ export const createUserController = async (req, res) => {
   }
 };
 
-// PUT /users/:id - Update user
+// PUT or PATCH /users/:id - Update user
 export const updateUserController = async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await UserModel.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
+    const updateData = { ...req.body };
+
+    // Don't overwrite password with empty string if not provided
+    if (!updateData.password) {
+      delete updateData.password;
+    }
+
+    // Check if updating email to another existing user's email
+    if (updateData.email) {
+      const existing = await UserModel.findOne({
+        email: updateData.email.toLowerCase().trim(),
+        _id: { $ne: id },
+      });
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'Another user with this email already exists' });
+      }
+    }
+
+    const updated = await UserModel.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
 
     if (!updated) {
       return res.status(404).json({ success: false, message: 'User not found' });
@@ -201,15 +220,28 @@ export const updateUserController = async (req, res) => {
 export const deleteUserController = async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await UserModel.findByIdAndDelete(id);
+    const user = await UserModel.findById(id);
 
-    if (!deleted) {
+    if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    // Prevent deleting the last Administrator account
+    if (user.role === 'Administrator') {
+      const adminCount = await UserModel.countDocuments({ role: 'Administrator' });
+      if (adminCount <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot delete the only Administrator account on the portal.',
+        });
+      }
+    }
+
+    await UserModel.findByIdAndDelete(id);
+
     res.status(200).json({
       success: true,
-      message: 'User deleted successfully',
+      message: `${user.name} was deleted successfully`,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

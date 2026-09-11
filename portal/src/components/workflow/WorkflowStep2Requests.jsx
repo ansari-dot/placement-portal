@@ -1,4 +1,4 @@
-﻿// src/components/workflow/WorkflowStep2Requests.jsx
+// src/components/workflow/WorkflowStep2Requests.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -8,6 +8,7 @@ import {
   Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText, UserCheck
 } from 'lucide-react';
 import { fetchJobs } from '../../api/jobApi';
+import { createIndustry } from '../../api/industryApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 
 export default function WorkflowStep2Requests({
@@ -132,6 +133,26 @@ export default function WorkflowStep2Requests({
     if (onAddContact) {
       try {
         await onAddContact(targetKey, newRecord);
+
+        // Also save to Industry collection so it immediately appears in Industries page (/industry)
+        try {
+          await createIndustry({
+            industryName: orgForm.organizationName.trim(),
+            industryType: orgForm.industryType || 'Aged Care',
+            contactPersonName: orgForm.contactPerson.trim(),
+            contactEmail: orgForm.email.trim(),
+            contactPhone: orgForm.phone.trim(),
+            address: orgForm.address.trim(),
+            suburb: '',
+            state: '',
+            postCode: '',
+            country: 'Australia',
+            shortDescription: orgForm.notes || '',
+          });
+        } catch (indErr) {
+          console.log('Industry already in DB or synced:', indErr?.message);
+        }
+
         showToast(`Added contact record for ${orgForm.organizationName}`);
         setShowAddOrgModal(false);
         setOrgForm({
@@ -346,8 +367,12 @@ export default function WorkflowStep2Requests({
       case 'Coordinator Review': return 'bg-blue-50 text-blue-600';
       case 'RTO Review': return 'bg-amber-50 text-amber-600';
       case 'Appointment': return 'bg-cyan-50 text-cyan-600';
-      case 'Offered': return 'bg-emerald-50 text-emerald-600';
-      case 'Declined': return 'bg-rose-50 text-rose-600';
+      case 'Offered':
+      case 'Approved': return 'bg-emerald-50 text-emerald-600';
+      case 'Withdrawn': return 'bg-amber-50 text-amber-700';
+      case 'Declined':
+      case 'Rejected':
+      case 'Cancelled': return 'bg-rose-50 text-rose-600';
       case 'Closed': return 'bg-slate-100 text-slate-500';
       default: return 'bg-slate-100 text-slate-500';
     }
@@ -405,8 +430,10 @@ export default function WorkflowStep2Requests({
           </div>
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
-              <p className="text-[9px] text-slate-500 font-medium">Offered</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'Approved').length}</h3>
+              <p className="text-[9px] text-slate-500 font-medium">Offered / Approved</p>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">
+                {requestList.filter(r => r.status === 'Approved' || r.status === 'Offered').length}
+              </h3>
             </div>
             <div className="w-6 h-6 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
               <CheckCircle2 className="w-3 h-3" />
@@ -414,8 +441,10 @@ export default function WorkflowStep2Requests({
           </div>
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
-              <p className="text-[9px] text-slate-500 font-medium">Declined / Closed</p>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5">{requestList.filter(r => r.status === 'Rejected').length}</h3>
+              <p className="text-[9px] text-slate-500 font-medium">Declined / Withdrawn</p>
+              <h3 className="text-base font-bold text-slate-900 mt-0.5">
+                {requestList.filter(r => r.status === 'Rejected' || r.status === 'Declined' || r.status === 'Withdrawn' || r.status === 'Closed' || r.status === 'Cancelled').length}
+              </h3>
             </div>
             <div className="w-6 h-6 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
               <XCircle className="w-3 h-3" />
@@ -453,7 +482,7 @@ export default function WorkflowStep2Requests({
             </button>
             {showStatusFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
-                {['All', 'New', 'Coordinator Review', 'RTO Review', 'Appointment', 'Offered', 'Declined', 'Closed'].map((s) => (
+                {['All', 'New', 'Coordinator Review', 'RTO Review', 'Appointment', 'Offered', 'Approved', 'Withdrawn', 'Declined', 'Cancelled', 'Closed'].map((s) => (
                   <button
                     key={s}
                     onClick={() => { setStatusFilter(s); setShowStatusFilter(false); setCurrentPage(1); showToast(`Status: ${s}`); }}
@@ -1366,7 +1395,7 @@ export default function WorkflowStep2Requests({
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Edit Internship Request</h3>
+                <h3 className="text-sm font-bold text-slate-900">Edit Placement Request</h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">{editRequest.reqId} Â· {editRequest.student}</p>
               </div>
               <button onClick={() => setEditRequest(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
@@ -1472,7 +1501,7 @@ export default function WorkflowStep2Requests({
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Delete Request</h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Delete internship request <span className="font-semibold text-slate-800">{deleteConfirmReq.reqId}</span> for <span className="font-semibold">{deleteConfirmReq.student}</span>? This cannot be undone.
+                  Delete placement request <span className="font-semibold text-slate-800">{deleteConfirmReq.reqId}</span> for <span className="font-semibold">{deleteConfirmReq.student}</span>? This cannot be undone.
                 </p>
               </div>
             </div>

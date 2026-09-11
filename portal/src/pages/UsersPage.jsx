@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import JobLayout from '../components/layout/JobLayout';
 import UsersPageApp from '../components/user/UsersPageApp';
 import { fetchUsers, fetchUserStats, createUser, updateUser, deleteUser } from '../api/userApi';
+import { toast } from 'react-toastify';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -40,8 +41,11 @@ export default function UsersPage() {
       await loadData();
       setShowModal(false);
       setEditingUser(null);
+      toast.success(`User account for "${formData.name}" created successfully!`);
     } catch (err) {
       console.error('Failed to create User:', err);
+      const msg = err?.response?.data?.message || 'Failed to create user account.';
+      toast.error(msg);
       throw err;
     }
   }, [loadData]);
@@ -52,18 +56,27 @@ export default function UsersPage() {
       await loadData();
       setShowModal(false);
       setEditingUser(null);
+      toast.success(`User account "${formData.name}" updated successfully!`);
     } catch (err) {
       console.error('Failed to update User:', err);
+      const msg = err?.response?.data?.message || 'Failed to update user account.';
+      toast.error(msg);
       throw err;
     }
   }, [loadData]);
 
-  const handleDeleteUser = useCallback(async (id) => {
+  const handleDeleteUser = useCallback(async (id, userName = 'this user') => {
+    if (!window.confirm(`Are you sure you want to delete ${userName}? This action cannot be undone.`)) {
+      return;
+    }
     try {
-      await deleteUser(id);
+      const res = await deleteUser(id);
       await loadData();
+      toast.success(res?.message || 'User deleted successfully.');
     } catch (err) {
       console.error('Failed to delete User:', err);
+      const msg = err?.response?.data?.message || 'Failed to delete user account.';
+      toast.error(msg);
     }
   }, [loadData]);
 

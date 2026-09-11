@@ -8,7 +8,6 @@ import WorkflowStep1Students from '../components/workflow/WorkflowStep1Students'
 import WorkflowStep2Requests from '../components/workflow/WorkflowStep2Requests';
 import WorkflowStep3Appointments from '../components/workflow/WorkflowStep3Appointments';
 import WorkflowStep4Internships from '../components/workflow/WorkflowStep4Internships';
-import WorkflowStep5PlacementHours from '../components/workflow/WorkflowStep5PlacementHours';
 import { fetchUsers } from '../api/userApi';
 import {
   fetchWorkflows,
@@ -29,7 +28,7 @@ import {
   deleteInternship,
 } from '../api/workflowApi';
 
-const STEP_LABELS = ['Students', 'Internship Requests', 'Appointments', 'Internships', 'Placement Hours'];
+const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements'];
 
 export const getResponseStyle = (response) => {
   if (!response) return 'text-slate-600 bg-slate-50';
@@ -49,7 +48,7 @@ export default function WorkflowPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const stepParam = parseInt(searchParams.get('step') || '1', 10);
   const [activeStep, setActiveStep] = useState(
-    stepParam >= 1 && stepParam <= 5 ? stepParam : 1
+    stepParam >= 1 && stepParam <= 4 ? stepParam : 1
   );
 
   const authUser = useSelector((state) => state.auth.user);
@@ -107,15 +106,15 @@ export default function WorkflowPage() {
           setWorkflowId(existing.id || existing._id);
           setWorkflow(existing);
           const stepFromUrl = parseInt(searchParams.get('step') || '', 10);
-          if (stepFromUrl >= 1 && stepFromUrl <= 5) {
+          if (stepFromUrl >= 1 && stepFromUrl <= 4) {
             setActiveStep(stepFromUrl);
           } else {
             setActiveStep(existing.currentStep || 1);
           }
         } else {
           const created = await createWorkflow({
-            name: 'Internship Placement Workflow',
-            description: 'Default internship placement workflow',
+            name: 'Placement Workflow',
+            description: 'Default placement workflow',
             status: 'Active',
             currentStep: 1,
           });
@@ -139,7 +138,7 @@ export default function WorkflowPage() {
   }, []);
 
   useEffect(() => {
-    if (stepParam >= 1 && stepParam <= 5) {
+    if (stepParam >= 1 && stepParam <= 4) {
       setActiveStep(stepParam);
     }
   }, [stepParam]);
@@ -279,6 +278,7 @@ export default function WorkflowPage() {
       const matchingRequests = findRequestsForStudent(stu);
 
       return {
+        ...stu,
         name: stu.name || stuFullName,
         email: stu.emailAddress || stu.email || '',
         id: stu.id || stu._id || '',
@@ -574,6 +574,49 @@ export default function WorkflowPage() {
       console.log('📤 Updating appointment:', appointmentId, appointmentData);
       const result = await updateAppointment(wfId, appointmentId, appointmentData);
       console.log('✅ Appointment updated:', result);
+
+      // Sync matching Step 2 Placement Request if appointment status changed
+      if (appointmentData.status) {
+        const apptObj = (workflow?.appointments || []).find(
+          (a) => String(a._id) === String(appointmentId) || a.id === appointmentId || a.apptId === appointmentId
+        );
+        const studentId = apptObj?.studentId;
+        const studentName = apptObj?.student;
+
+        const matchingReq = (workflow?.requests || []).find(
+          (r) =>
+            (studentId && (r.studentId === studentId || r.id === studentId)) ||
+            (studentName && r.student && r.student.toLowerCase() === studentName.toLowerCase())
+        );
+
+        if (matchingReq) {
+          const reqId = matchingReq._id || matchingReq.id || matchingReq.reqId;
+          let targetReqStatus = null;
+
+          if (appointmentData.status === 'Completed' || appointmentData.status === 'Confirmed') {
+            targetReqStatus = 'Approved';
+          } else if (appointmentData.status === 'Withdrawn') {
+            targetReqStatus = 'Withdrawn';
+          } else if (appointmentData.status === 'Declined') {
+            targetReqStatus = 'Declined';
+          } else if (appointmentData.status === 'Cancelled') {
+            targetReqStatus = 'Cancelled';
+          }
+
+          if (targetReqStatus) {
+            try {
+              await updateInternshipRequest(wfId, reqId, {
+                status: targetReqStatus,
+                cancellationReason: appointmentData.cancellationReason || '',
+                notes: appointmentData.notes || '',
+              });
+            } catch (rErr) {
+              console.log('Sync request status error:', rErr);
+            }
+          }
+        }
+      }
+
       await refreshWorkflowData();
       return result.data;
     } catch (err) {
@@ -778,19 +821,11 @@ export default function WorkflowPage() {
             appointments={mapAppointmentsForStep3()}
             requests={mapRequestsForStep2()}
             onBack={() => goToStep(3)}
-            onNext={() => goToStep(5)}
             onCreateInternship={handleCreateInternship}
             onUpdateInternship={handleUpdateInternship}
             onDeleteInternship={handleDeleteInternship}
             onDeleteAppointment={handleDeleteAppointment}
             students={mapStudentsForStep1()}
-          />
-        );
-      case 5:
-        return (
-          <WorkflowStep5PlacementHours
-            students={mapStudentsForStep1()}
-            onBack={() => goToStep(4)}
           />
         );
       default:

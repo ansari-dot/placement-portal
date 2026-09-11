@@ -42,6 +42,7 @@ const initialFormData = {
   specialisation: '',
   courseLevel: '',
   studyMode: '',
+  studentId: '',
   enrollmentId: '',
   institute: '',
   campus: '',
@@ -54,6 +55,16 @@ const initialFormData = {
   previousQualification: '',
   yearOfCompletion: '',
   documents: null,
+
+  // Structured Compliance / Identity Documents (all optional)
+  ndisDoc: null,
+  resumeDoc: null,
+  wwccDoc: null,
+  passportDoc: null,
+  drivingLicenceDoc: null,
+  infectionControlDoc: null,
+  handHygieneDoc: null,
+  cbrDoc: null,
 
   // RTO & Source / Additional Info
   assignedRto: '',
@@ -137,7 +148,6 @@ export default function AddNewStudentPage() {
       if (formData.transport === 'Yes' && (!formData.licenceNumber || !formData.licenceNumber.trim())) {
         newErrors.licenceNumber = 'Licence number is required';
       }
-      if (!formData.visaStatus) newErrors.visaStatus = 'Visa Status is required';
     }
 
     setErrors(newErrors);
@@ -191,6 +201,11 @@ export default function AddNewStudentPage() {
       if (payload.resumeFile instanceof File) payload.resumeFile = payload.resumeFile.name;
       if (payload.policeCheckDoc instanceof File) payload.policeCheckDoc = payload.policeCheckDoc.name;
       if (payload.covidCheckDoc instanceof File) payload.covidCheckDoc = payload.covidCheckDoc.name;
+      // Serialize the 8 structured document fields
+      const docFields = ['ndisDoc', 'resumeDoc', 'wwccDoc', 'passportDoc', 'drivingLicenceDoc', 'infectionControlDoc', 'handHygieneDoc', 'cbrDoc'];
+      docFields.forEach(field => {
+        if (payload[field] instanceof File) payload[field] = payload[field].name;
+      });
       if (Array.isArray(payload.additionalDocuments)) {
         payload.additionalDocuments = payload.additionalDocuments.map(item => ({
           title: item.title || '',

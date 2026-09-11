@@ -36,6 +36,7 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
     try {
       const res = await fetchUsers({ status: 'Active' });
       const list = res?.data ?? [];
+      // Show ALL active users — any new user added to the portal appears here automatically
       setUsers(list);
     } catch (err) {
       setError('Could not load users. Please try again.');
@@ -163,7 +164,9 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
           {!loading && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-10 text-slate-400">
               <Users className="w-8 h-8 mb-2 opacity-40" />
-              <p className="text-xs font-medium">No users found</p>
+              <p className="text-xs font-medium">
+                {search ? 'No users match your search' : 'No active users found'}
+              </p>
               {search && (
                 <button onClick={() => setSearch('')} className="mt-1 text-[11px] text-blue-500 hover:underline">
                   Clear search

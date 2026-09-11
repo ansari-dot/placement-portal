@@ -336,7 +336,7 @@ export default function Sidebar() {
               />
 
               <span className="truncate">
-                Step 2: Internship Requests
+                Step 2: Placement Requests
               </span>
 
             </Link>
@@ -372,7 +372,7 @@ export default function Sidebar() {
               />
 
               <span className="truncate">
-                Step 4: Internships
+                Step 4: Placements
               </span>
 
             </Link>

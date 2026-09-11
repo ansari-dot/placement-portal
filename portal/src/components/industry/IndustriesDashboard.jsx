@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, CheckCircle2, PauseCircle, Briefcase, GraduationCap, 
   Search, SlidersHorizontal, Plus, ChevronDown, Download, 
@@ -24,6 +24,27 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
     }, 300);
     return () => clearTimeout(delayDebounce);
   }, [searchQuery, statusFilter, sectorFilter, onFilterChange]);
+
+  // Dynamically calculate Top Sectors by Students
+  const topSectors = useMemo(() => {
+    const map = {};
+    industries.forEach((ind) => {
+      const sec = ind.sector || 'General';
+      map[sec] = (map[sec] || 0) + (ind.students || 0);
+    });
+    const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
+    const maxVal = entries[0]?.[1] || 1;
+    return entries.slice(0, 5).map(([secName, count]) => ({
+      name: secName,
+      count,
+      pct: maxVal > 0 ? Math.max(10, Math.round((count / maxVal) * 100)) : 10,
+    }));
+  }, [industries]);
+
+  // Dynamically get 4 most recent industries
+  const recentIndustries = useMemo(() => {
+    return (industries || []).slice(0, 4);
+  }, [industries]);
   return (
     <div className="flex-1 bg-slate-50 text-slate-800 font-sans min-h-screen">
       {/* Main Content Area */}
@@ -234,12 +255,59 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
                       </td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                          item.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                          item.status === 'Active'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
                         }`}>
-                          {item.status} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
+                          {item.status || 'Active'} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-slate-800">{item.students || 0}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            onClick={() => setViewingIndustry(item)}
+                            className="font-bold text-slate-800 text-xs hover:text-indigo-600 hover:underline flex items-center gap-1 text-left cursor-pointer"
+                          >
+                            <span>{item.students || 0} Student(s)</span>
+                          </button>
+                          {item.studentDetails && item.studentDetails.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {item.studentDetails.slice(0, 2).map((st, sIdx) => {
+                                const isRej = st.status.includes('Rejected');
+                                const isPl = st.status === 'Placed' || st.status === 'Accepted';
+                                return (
+                                  <span
+                                    key={sIdx}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
+                                      isPl
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : isRej
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                                    }`}
+                                    title={`${st.studentName} - ${st.status}${st.rejectionReason ? ` (${st.rejectionReason})` : ''}`}
+                                  >
+                                    {st.studentName} ({st.status})
+                                  </span>
+                                );
+                              })}
+                              {item.studentDetails.length > 2 && (
+                                <button
+                                  onClick={() => setViewingIndustry(item)}
+                                  className="text-[9px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                                >
+                                  +{item.studentDetails.length - 2} more
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {item.rejectedCount > 0 && (
+                            <span className="text-[9px] font-bold text-rose-600">
+                              {item.rejectedCount} Student Rejected
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{item.jobs || 0}</td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -357,55 +425,26 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
               <h2 className="text-sm font-bold text-slate-900">Top Sectors by Students</h2>
               
               <div className="space-y-3 text-xs">
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Information Technology</span>
-                    <span className="font-semibold text-slate-900">412</span>
+                {topSectors.length > 0 ? (
+                  topSectors.map((sec, sIdx) => (
+                    <div key={sIdx}>
+                      <div className="flex justify-between font-medium mb-1 text-slate-700">
+                        <span>{sec.name}</span>
+                        <span className="font-semibold text-slate-900">{sec.count}</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${sec.pct}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-slate-400 text-xs">
+                    No sector data available yet
                   </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '90%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Healthcare</span>
-                    <span className="font-semibold text-slate-900">298</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '65%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Construction</span>
-                    <span className="font-semibold text-slate-900">187</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '45%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Education</span>
-                    <span className="font-semibold text-slate-900">156</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '35%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Finance</span>
-                    <span className="font-semibold text-slate-900">98</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '22%' }}></div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -413,49 +452,42 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold text-slate-900">Recent Added Industries</h2>
-                <a href="#view-all" className="text-xs font-semibold text-indigo-600 hover:underline">View All</a>
+                <span className="text-xs font-semibold text-indigo-600">Total: {industries.length}</span>
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
+                {recentIndustries.length > 0 ? (
+                  recentIndustries.map((ind, rIdx) => {
+                    const colorVariants = [
+                      'bg-sky-50 text-sky-600',
+                      'bg-amber-50 text-amber-600',
+                      'bg-emerald-50 text-emerald-600',
+                      'bg-purple-50 text-purple-600',
+                    ];
+                    const colorClass = colorVariants[rIdx % colorVariants.length];
+                    return (
+                      <div
+                        key={ind._id || ind.id || rIdx}
+                        onClick={() => setViewingIndustry(ind)}
+                        className="flex items-center gap-3 cursor-pointer p-1 rounded-lg hover:bg-slate-50 transition"
+                      >
+                        <div className={`w-9 h-9 rounded-lg ${colorClass} flex items-center justify-center font-bold text-xs flex-shrink-0`}>
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div className="overflow-hidden">
+                          <h4 className="text-xs font-semibold text-slate-900 truncate">{ind.name}</h4>
+                          <p className="text-[11px] text-slate-400">
+                            {ind.sector || 'Industry'} &bull; {ind.students || 0} student(s)
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-4 text-slate-400 text-xs">
+                    No industries added yet
                   </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">Smart Energy Solutions</h4>
-                    <p className="text-[11px] text-slate-400">Added on 18 Jul 2025</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">AgriTech Australia</h4>
-                    <p className="text-[11px] text-slate-400">Added on 16 Jul 2025</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">LogiChain Logistics</h4>
-                    <p className="text-[11px] text-slate-400">Added on 14 Jul 2025</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">Creative Digital Agency</h4>
-                    <p className="text-[11px] text-slate-400">Added on 12 Jul 2025</p>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -556,20 +588,82 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
               {/* Partnership Overview */}
               <div className="space-y-3">
                 <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1.5">Partnership Overview</h4>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-4 gap-4">
                   <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">Students Assigned</p>
                     <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.students || 0}</p>
                   </div>
                   <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Placed</p>
+                    <p className="font-medium text-emerald-600 mt-0.5">{viewingIndustry.placedCount || 0}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Rejected</p>
+                    <p className="font-medium text-rose-600 mt-0.5">{viewingIndustry.rejectedCount || 0}</p>
+                  </div>
+                  <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">Active Jobs</p>
                     <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.jobs || 0}</p>
                   </div>
-                  <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Placement Rate</p>
-                    <p className="font-medium text-emerald-600 mt-0.5">{viewingIndustry.students > 0 ? '82%' : 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Students & Internships Details */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                  <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600">Students &amp; Internships Status</h4>
+                  <div className="flex gap-2 text-[10px] font-semibold">
+                    <span className="text-emerald-600 font-bold">{viewingIndustry.placedCount || 0} Placed</span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-rose-600 font-bold">{viewingIndustry.rejectedCount || 0} Rejected</span>
                   </div>
                 </div>
+                {viewingIndustry.studentDetails && viewingIndustry.studentDetails.length > 0 ? (
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    {viewingIndustry.studentDetails.map((st, sIdx) => {
+                      const isRej = String(st.status || '').toLowerCase().includes('reject') || String(st.status || '').toLowerCase().includes('declin');
+                      const isPl = String(st.status || '').toLowerCase().includes('place') || String(st.status || '').toLowerCase().includes('accept') || String(st.status || '').toLowerCase().includes('complet');
+                      return (
+                        <div
+                          key={sIdx}
+                          className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+                            isPl
+                              ? 'bg-emerald-50/60 border-emerald-200'
+                              : isRej
+                              ? 'bg-rose-50/60 border-rose-200'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div>
+                            <p className="font-bold text-slate-800">{st.studentName}</p>
+                            {st.date && <p className="text-[10px] text-slate-400 mt-0.5">Date: {st.date}</p>}
+                            {st.rejectionReason && (
+                              <p className="text-[10px] text-rose-700 font-semibold mt-0.5">
+                                Reason: {st.rejectionReason}
+                              </p>
+                            )}
+                            {st.notes && (
+                              <p className="text-[10px] text-slate-500 italic mt-0.5">{st.notes}</p>
+                            )}
+                          </div>
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                              isPl
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : isRej
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : 'bg-blue-100 text-blue-800 border-blue-300'
+                            }`}
+                          >
+                            {st.status}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic py-2">No students linked to this industry yet.</p>
+                )}
               </div>
             </div>
 
@@ -580,15 +674,6 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
                 className="px-4 py-2 border border-slate-200 rounded-xl font-semibold text-slate-700 hover:bg-slate-100 transition text-sm cursor-pointer"
               >
                 Close
-              </button>
-              <button
-                onClick={() => {
-                  alert('Edit Industry Wizard coming soon!');
-                  setViewingIndustry(null);
-                }}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-md transition text-sm cursor-pointer"
-              >
-                Edit Industry
               </button>
             </div>
           </div>

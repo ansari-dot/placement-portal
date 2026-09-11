@@ -299,7 +299,7 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Visa Status <span className="text-rose-500">*</span>
+                Visa Status (optional)
               </label>
               <div className="relative">
                 <select

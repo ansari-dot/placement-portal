@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Pencil, Loader2, User, GraduationCap, Building2, Phone, Mail, MapPin, Info, AlertTriangle, Clock } from 'lucide-react';
+import { ArrowLeft, Pencil, Loader2, User, GraduationCap, Building2, Phone, Mail, MapPin, Info, AlertTriangle, Clock, FileText, Upload, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
@@ -43,7 +43,11 @@ export default function StudentViewEditPage() {
         'availabilityFrom', 'availabilityTo', 'willingToRelocate', 'placementNotes',
         'visaStatus', 'visaSubclass', 'visaExpiryDate', 'workRights', 'workExperience',
         'englishProficiency', 'emergencyContactName', 'emergencyContactPhone', 'heardAboutUs',
-        'hasResume', 'additionalNotes', 'placementHours'
+        'hasResume', 'additionalNotes', 'placementHours',
+        // Structured compliance / identity documents
+        'ndisDoc', 'resumeDoc', 'wwccDoc', 'passportDoc', 'drivingLicenceDoc',
+        'infectionControlDoc', 'handHygieneDoc', 'cbrDoc',
+        'policeCheckDoc', 'covidCheckDoc',
       ];
       const populated = {};
       fields.forEach(f => {
@@ -104,6 +108,13 @@ export default function StudentViewEditPage() {
       });
 
       const dbId = student?.id || student?._id || id;
+
+      // Serialize File objects to filename strings for all 10 structured document fields
+      const docFields = ['policeCheckDoc', 'covidCheckDoc', 'ndisDoc', 'resumeDoc', 'wwccDoc', 'passportDoc', 'drivingLicenceDoc', 'infectionControlDoc', 'handHygieneDoc', 'cbrDoc'];
+      docFields.forEach(field => {
+        if (payload[field] instanceof File) payload[field] = payload[field].name;
+      });
+
       const response = await updateStudent(dbId, payload);
       toast.success(response?.message || 'Student updated successfully!');
       navigate('/my-students');
@@ -169,9 +180,24 @@ export default function StudentViewEditPage() {
     { key: 'personal', label: 'Personal Information', icon: User },
     { key: 'education', label: 'Education', icon: GraduationCap },
     { key: 'rto', label: 'RTO & Source', icon: Building2 },
+    { key: 'documents', label: 'Documents', icon: FileText },
     { key: 'additional', label: 'Additional', icon: Info },
     { key: 'contacts', label: 'Industry Contacts', icon: Building2 },
     { key: 'placementhours', label: 'Placement Hours', icon: Clock },
+  ];
+
+  // Structured document types — same order as AddNewStudentPage / EducationDetailsForm
+  const STRUCTURED_DOCS = [
+    { field: 'policeCheckDoc',     label: 'Police Check',                  hint: 'National Police History Check (Most preferred for placement)' },
+    { field: 'covidCheckDoc',      label: 'COVID-19 Check',                hint: 'Vaccination Certificate / Test Report' },
+    { field: 'ndisDoc',            label: 'NDIS',                          hint: 'NDIS Screening Check' },
+    { field: 'resumeDoc',          label: 'CB / Resume',                   hint: 'Current resume or CV' },
+    { field: 'wwccDoc',            label: 'WWCC',                          hint: 'Working With Children Check' },
+    { field: 'passportDoc',        label: 'Passport',                      hint: 'Valid passport copy' },
+    { field: 'drivingLicenceDoc',  label: 'Driving Licence',               hint: 'Current driving licence' },
+    { field: 'infectionControlDoc',label: 'Infection Control Certificate', hint: 'Infection control training certificate' },
+    { field: 'handHygieneDoc',     label: 'Hand Hygiene',                  hint: 'Hand hygiene training certificate' },
+    { field: 'cbrDoc',             label: 'CBR',                           hint: 'Criminal Background Record / Police Check' },
   ];
 
   const inputClass = "w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition";
@@ -496,6 +522,148 @@ export default function StudentViewEditPage() {
                 </div>
               </div>
             )}
+
+            {/* Documents */}
+            {activeTab === 'documents' && (() => {
+              const uploadedCount = STRUCTURED_DOCS.filter(d => Boolean(formData[d.field])).length;
+              const missingCount = STRUCTURED_DOCS.length - uploadedCount;
+
+              return (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                      <ShieldCheck size={16} className="text-blue-600" />
+                      <span>Compliance & Student Documents</span>
+                    </h3>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg">
+                        {uploadedCount} Uploaded
+                      </span>
+                      {missingCount > 0 && (
+                        <span className="text-xs font-semibold px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg">
+                          {missingCount} Not Uploaded
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Summary Alert Banner */}
+                  {missingCount > 0 ? (
+                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start space-x-3">
+                      <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div className="flex-1 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-amber-900">
+                            Attention: {missingCount} Document{missingCount > 1 ? 's' : ''} Not Uploaded by Student
+                          </span>
+                          <span className="text-[11px] font-semibold text-amber-700">
+                            {uploadedCount} / {STRUCTURED_DOCS.length} Completed
+                          </span>
+                        </div>
+                        <p className="text-amber-700 mt-1">
+                          The student has not submitted all compliance and verification documents. Missing documents are marked in red below.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-3">
+                      <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                      <div className="text-xs">
+                        <span className="font-bold text-emerald-900">All Documents Uploaded</span>
+                        <p className="text-emerald-700 mt-0.5">All 10 verification and compliance documents have been provided.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {STRUCTURED_DOCS.map(({ field, label, hint }) => {
+                      const fileName = formData[field] || null;
+                      const hasFile = Boolean(fileName);
+
+                      return (
+                        <div 
+                          key={field} 
+                          className={`p-4 rounded-xl border transition ${
+                            hasFile 
+                              ? 'bg-slate-50/60 border-slate-200' 
+                              : 'bg-rose-50/20 border-rose-200/80 shadow-xs'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-800">{label}</span>
+                            {hasFile ? (
+                              <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                <CheckCircle2 size={10} />
+                                <span>Uploaded</span>
+                              </span>
+                            ) : (
+                              <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">
+                                <AlertTriangle size={10} className="text-rose-500" />
+                                <span>Not Uploaded</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {isEdit ? (
+                            <label className={`w-full px-3.5 py-2.5 bg-white border border-dashed rounded-xl flex items-center space-x-2 cursor-pointer transition ${
+                              hasFile ? 'border-emerald-300 hover:border-emerald-500' : 'border-rose-300 hover:border-rose-500'
+                            }`}>
+                              {hasFile ? (
+                                <FileText size={14} className="text-emerald-600 shrink-0" />
+                              ) : (
+                                <Upload size={14} className="text-rose-500 shrink-0" />
+                              )}
+                              <span className={`text-xs font-semibold truncate flex-1 ${hasFile ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                {hasFile ? (typeof fileName === 'string' ? fileName : fileName.name) : `Upload ${label}`}
+                              </span>
+                              {hasFile && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); updateField(field, null); }}
+                                  className="text-slate-400 hover:text-rose-500 transition shrink-0"
+                                  title="Remove file"
+                                >
+                                  <X size={13} />
+                                </button>
+                              )}
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                onChange={(e) => updateField(field, e.target.files[0]?.name || e.target.files[0] || null)}
+                              />
+                            </label>
+                          ) : (
+                            <div className={`px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-between ${
+                              hasFile 
+                                ? 'bg-white border border-slate-200 text-slate-700 font-medium' 
+                                : 'bg-white border border-dashed border-rose-300 text-rose-600 font-medium'
+                            }`}>
+                              <div className="flex items-center space-x-2 truncate">
+                                <FileText size={14} className={hasFile ? 'text-emerald-600 shrink-0' : 'text-rose-400 shrink-0'} />
+                                <span className="truncate">
+                                  {hasFile 
+                                    ? (typeof fileName === 'string' ? fileName : fileName.name) 
+                                    : 'Document not uploaded by student'}
+                                </span>
+                              </div>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded shrink-0 ${
+                                hasFile 
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                  : 'bg-rose-50 text-rose-600 border border-rose-200'
+                              }`}>
+                                {hasFile ? 'Uploaded' : 'Missing'}
+                              </span>
+                            </div>
+                          )}
+                          <p className="text-[10px] text-slate-400 mt-1.5">{hint}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Additional */}
             {activeTab === 'additional' && (

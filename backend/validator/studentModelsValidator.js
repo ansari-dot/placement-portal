@@ -59,9 +59,13 @@ export const studentSchema = z.object({
   phoneNumber: z
     .string()
     .trim()
-    .regex(
-      /^[+]?[\d\s-]{10,15}$/,
-      "Please provide a valid phone number"
+    .refine(
+      (val) => {
+        // Strip spaces and dashes then check digit count is 7–15
+        const digits = val.replace(/[\s\-\+]/g, '');
+        return /^\d{7,15}$/.test(digits);
+      },
+      { message: "Please provide a valid phone number (7–15 digits)" }
     ),
 
   altPhoneCode: z
@@ -258,6 +262,16 @@ export const studentSchema = z.object({
     .any()
     .optional()
     .default([]),
+
+  // ===== Structured Compliance / Identity Documents =====
+  ndisDoc: z.string().nullable().optional().default(null),
+  resumeDoc: z.string().nullable().optional().default(null),
+  wwccDoc: z.string().nullable().optional().default(null),
+  passportDoc: z.string().nullable().optional().default(null),
+  drivingLicenceDoc: z.string().nullable().optional().default(null),
+  infectionControlDoc: z.string().nullable().optional().default(null),
+  handHygieneDoc: z.string().nullable().optional().default(null),
+  cbrDoc: z.string().nullable().optional().default(null),
 
   preferredLocation: z
     .string()

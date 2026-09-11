@@ -310,7 +310,7 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => onDeleteUser && onDeleteUser(uId)}
+                      onClick={() => onDeleteUser && onDeleteUser(uId, user.name)}
                       className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex cursor-pointer"
                       title="Delete User"
                     >
@@ -422,17 +422,21 @@ export default function UsersPageApp({
 }) {
   const [modalName, setModalName] = useState('');
   const [modalEmail, setModalEmail] = useState('');
+  const [modalPassword, setModalPassword] = useState('');
   const [modalRole, setModalRole] = useState('Staff');
   const [modalDept, setModalDept] = useState('Placement Operations');
   const [modalStatus, setModalStatus] = useState('Active');
   const [modalPhone, setModalPhone] = useState('');
+  const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Sync editing user state
   React.useEffect(() => {
+    setFormError('');
     if (editingUser) {
       setModalName(editingUser.name || '');
       setModalEmail(editingUser.email || '');
+      setModalPassword('');
       setModalRole(editingUser.role || 'Staff');
       setModalDept(editingUser.department || 'Placement Operations');
       setModalStatus(editingUser.status || 'Active');
@@ -440,6 +444,7 @@ export default function UsersPageApp({
     } else {
       setModalName('');
       setModalEmail('');
+      setModalPassword('');
       setModalRole('Staff');
       setModalDept('Placement Operations');
       setModalStatus('Active');
@@ -449,31 +454,35 @@ export default function UsersPageApp({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!modalName || !modalEmail) return;
+    setFormError('');
+    if (!modalName.trim() || !modalEmail.trim()) {
+      setFormError('Name and email are required.');
+      return;
+    }
 
     try {
       setSubmitting(true);
+      const payload = {
+        name: modalName.trim(),
+        email: modalEmail.trim(),
+        role: modalRole,
+        department: modalDept.trim() || 'Placement Operations',
+        status: modalStatus,
+        phone: modalPhone.trim(),
+      };
+
+      if (modalPassword.trim()) {
+        payload.password = modalPassword.trim();
+      }
+
       if (editingUser) {
-        await onUpdateUser(editingUser.id || editingUser._id, {
-          name: modalName,
-          email: modalEmail,
-          role: modalRole,
-          department: modalDept,
-          status: modalStatus,
-          phone: modalPhone,
-        });
+        await onUpdateUser(editingUser.id || editingUser._id, payload);
       } else {
-        await onCreateUser({
-          name: modalName,
-          email: modalEmail,
-          role: modalRole,
-          department: modalDept,
-          status: modalStatus,
-          phone: modalPhone,
-        });
+        await onCreateUser(payload);
       }
     } catch (err) {
       console.error(err);
+      setFormError(err?.response?.data?.message || 'Operation failed. Please check inputs and try again.');
     } finally {
       setSubmitting(false);
     }
@@ -515,6 +524,12 @@ export default function UsersPageApp({
               </button>
             </div>
 
+            {formError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold">
+                {formError}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Full Name *</label>
@@ -536,6 +551,19 @@ export default function UsersPageApp({
                   placeholder="e.g. wasiq@portal.com"
                   value={modalEmail}
                   onChange={(e) => setModalEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Password {editingUser ? '(Optional - leave blank to keep current)' : '(Optional - default is User@123)'}
+                </label>
+                <input
+                  type="password"
+                  placeholder={editingUser ? '•••••••• (leave blank to keep unchanged)' : 'User@123 (or set custom password)'}
+                  value={modalPassword}
+                  onChange={(e) => setModalPassword(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -596,7 +624,7 @@ export default function UsersPageApp({
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold rounded-xl transition-all duration-500 cursor-pointer shadow-xs"
+                  className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold rounded-xl transition-all duration-500 cursor-pointer shadow-xs disabled:opacity-50"
                 >
                   {submitting ? 'Saving...' : editingUser ? 'Update Account' : 'Create User'}
                 </button>

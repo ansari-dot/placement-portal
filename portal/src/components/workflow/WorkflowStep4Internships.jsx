@@ -45,7 +45,7 @@ export default function WorkflowStep4Internships({
   const [toast, setToast] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
-  const [activeStatusTab, setActiveStatusTab] = useState('All Internships');
+  const [activeStatusTab, setActiveStatusTab] = useState('All Placements');
 
   // ─── Edit Internship Modal ────────────────────────────────────────────────
   const [editInternship, setEditInternship] = useState(null);
@@ -209,7 +209,7 @@ export default function WorkflowStep4Internships({
       (item.intId || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
     const matchesCompany = companyFilter === 'All' || item.company === companyFilter;
-    const matchesStatusTab = activeStatusTab === 'All Internships' || item.status === activeStatusTab;
+    const matchesStatusTab = activeStatusTab === 'All Placements' || activeStatusTab === 'All Internships' || item.status === activeStatusTab;
     return matchesSearch && matchesStatus && matchesCompany && matchesStatusTab;
   });
 
@@ -217,7 +217,7 @@ export default function WorkflowStep4Internships({
   const paginatedInternships = filteredInternships.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const hasActiveFilters = searchQuery !== '' || statusFilter !== 'All' || 
-                          companyFilter !== 'All' || activeStatusTab !== 'All Internships';
+                          companyFilter !== 'All' || (activeStatusTab !== 'All Placements' && activeStatusTab !== 'All Internships');
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -312,7 +312,7 @@ export default function WorkflowStep4Internships({
     setSearchQuery('');
     setStatusFilter('All');
     setCompanyFilter('All');
-    setActiveStatusTab('All Internships');
+    setActiveStatusTab('All Placements');
     showToast('Filters cleared');
   };
 
@@ -420,7 +420,7 @@ export default function WorkflowStep4Internships({
             <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search internships..." 
+              placeholder="Search placements..." 
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
@@ -630,7 +630,7 @@ export default function WorkflowStep4Internships({
 
         {/* ─── Status Tabs ────────────────────────────────────────────────── */}
         <div className="flex border-b border-slate-200 text-xs font-semibold text-slate-500 space-x-6 px-1 overflow-x-auto">
-          {['All Internships', 'Active', 'Waiting to Join', 'Joined', 'Declined', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
+          {['All Placements', 'Active', 'Waiting to Join', 'Joined', 'Declined', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
             <button
               key={tab}
               onClick={() => { setActiveStatusTab(tab); setCurrentPage(1); }}
@@ -640,7 +640,7 @@ export default function WorkflowStep4Internships({
             >
               {tab}
               <span className="ml-1.5 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
-                {tab === 'All Internships' ? filteredInternships.length : 
+                {tab === 'All Placements' || tab === 'All Internships' ? filteredInternships.length : 
                   filteredInternships.filter(i => i.status === tab).length}
               </span>
             </button>
@@ -832,8 +832,8 @@ export default function WorkflowStep4Internships({
               onClick={onNext}
               className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-xs font-semibold text-white rounded-xl flex items-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs"
             >
-              <span>Continue to Placement Hours</span>
-              <ChevronRight className="w-4 h-4" />
+              <span>Complete Workflow</span>
+              <CheckCircle2 className="w-4 h-4" />
             </button>
           )}
         </div>

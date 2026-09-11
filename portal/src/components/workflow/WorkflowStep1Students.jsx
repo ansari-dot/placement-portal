@@ -9,6 +9,19 @@ import { useNavigate } from 'react-router-dom';
 import { deleteStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 
+const STEP1_DRAWER_DOCS = [
+  { field: 'policeCheckDoc',     label: 'Police Check' },
+  { field: 'covidCheckDoc',      label: 'COVID-19 Check' },
+  { field: 'ndisDoc',            label: 'NDIS' },
+  { field: 'resumeDoc',          label: 'CB / Resume' },
+  { field: 'wwccDoc',            label: 'WWCC' },
+  { field: 'passportDoc',        label: 'Passport' },
+  { field: 'drivingLicenceDoc',  label: 'Driving Licence' },
+  { field: 'infectionControlDoc',label: 'Infection Control' },
+  { field: 'handHygieneDoc',     label: 'Hand Hygiene' },
+  { field: 'cbrDoc',             label: 'CBR' },
+];
+
 export default function WorkflowStep1Students({ 
   students = [], 
   initialSelectedStudentIds = [], 
@@ -76,10 +89,31 @@ export default function WorkflowStep1Students({
 
   const studentList = students;
 
+  // ─── Dynamic Top Metric Counts from Database Students ─────────────────────
+  const totalStudentsCount = studentList.length;
+  const readyStudentsCount = studentList.filter(s => 
+    (s.placementStatus || '').toLowerCase() === 'ready'
+  ).length;
+  const pendingInfoCount = studentList.filter(s => 
+    (s.placementStatus || '').toLowerCase().includes('pending') ||
+    (s.status || '').toLowerCase() === 'pending' ||
+    !s.rto || s.rto === 'N/A' ||
+    (!s.course && !s.courseQualification)
+  ).length;
+  const recentlyAddedCount = studentList.filter(s => {
+    const rawDate = s.createdAt || s.addedOn;
+    if (!rawDate) return false;
+    const addedDate = new Date(rawDate);
+    if (isNaN(addedDate.getTime())) return false;
+    const diffDays = (Date.now() - addedDate.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays <= 30;
+  }).length;
+
   // Filter students based on search query
   const filteredStudents = studentList.filter(stu => 
     stu.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     stu.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (stu.studentId && stu.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
     stu.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     stu.rto.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -155,11 +189,11 @@ export default function WorkflowStep1Students({
     setShowRowMenu(null);
     if (action === 'view') {
       setSelectedStudent({
-        ...selectedStudent,
+        ...stu,
         name: stu.name,
         email: stu.email,
         id: stu.id,
-        studentId: stu.studentId || stu.id,
+        studentId: stu.studentId || stu.enrollmentId || stu.id,
         institute: stu.rto,
         status: stu.status,
         addedOn: stu.addedOn,
@@ -340,7 +374,7 @@ export default function WorkflowStep1Students({
 
   const handleGenerateRequestSubmit = () => {
     if (!genTargetStudent) return;
-    showToast(`Generated Internship Request with ${genPriority} priority for ${genTargetStudent.name}`);
+    showToast(`Generated Placement Request with ${genPriority} priority for ${genTargetStudent.name}`);
     setShowGenRequestModal(false);
     if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
   };
@@ -378,13 +412,13 @@ export default function WorkflowStep1Students({
       {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
         
-        {/* Metric Cards */}
+        {/* Metric Cards - Fully Dynamic */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Total Students</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">2,543</h3>
-              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">↑ 12.5% vs last month</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{totalStudentsCount}</h3>
+              <span className="text-[9px] text-blue-600 font-semibold mt-0.5 inline-block">Active in database</span>
             </div>
             <div className="w-7 h-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
               <UsersIcon className="w-3.5 h-3.5" />
@@ -393,8 +427,10 @@ export default function WorkflowStep1Students({
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Ready for Placement</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">1,428</h3>
-              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">↑ 18.2% vs last month</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{readyStudentsCount}</h3>
+              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">
+                {totalStudentsCount > 0 ? Math.round((readyStudentsCount / totalStudentsCount) * 100) : 0}% of all students
+              </span>
             </div>
             <div className="w-7 h-7 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
               <Briefcase className="w-3.5 h-3.5" />
@@ -403,8 +439,10 @@ export default function WorkflowStep1Students({
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Pending Information</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">356</h3>
-              <span className="text-[9px] text-rose-600 font-semibold mt-0.5 inline-block">↓ 6.3% vs last month</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{pendingInfoCount}</h3>
+              <span className="text-[9px] text-amber-600 font-semibold mt-0.5 inline-block">
+                {pendingInfoCount > 0 ? 'Requires attention' : 'All profiles complete'}
+              </span>
             </div>
             <div className="w-7 h-7 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center">
               <Clock className="w-3.5 h-3.5" />
@@ -413,8 +451,8 @@ export default function WorkflowStep1Students({
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Recently Added</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">128</h3>
-              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">↑ 8.7% vs last week</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{recentlyAddedCount}</h3>
+              <span className="text-[9px] text-purple-600 font-semibold mt-0.5 inline-block">In last 30 days</span>
             </div>
             <div className="w-7 h-7 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center">
               <User className="w-3.5 h-3.5" />
@@ -531,41 +569,6 @@ export default function WorkflowStep1Students({
               </div>
             )}
           </div>
-
-          <div className="relative shrink-0">
-            <button 
-              onClick={handleAddStudent}
-              className="px-3 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-[11px] font-semibold text-white rounded-xl flex items-center space-x-1.5 shadow-xs transition-all duration-500 cursor-pointer whitespace-nowrap"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Add Student</span>
-            </button>
-            {showAddStudent && (
-              <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-4">
-                <h4 className="text-sm font-bold text-slate-900 mb-3">Add New Student</h4>
-                <div className="space-y-2">
-                  <input placeholder="Full Name" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Email" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Student ID" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Institute" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                </div>
-                <div className="flex space-x-2 mt-3">
-                  <button 
-                    onClick={() => { setShowAddStudent(false); showToast('Student added'); }}
-                    className="flex-1 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-lg transition-all duration-500 cursor-pointer"
-                  >
-                    Save
-                  </button>
-                  <button 
-                    onClick={() => setShowAddStudent(false)}
-                    className="px-3 py-2 border border-slate-200 text-xs font-semibold text-slate-600 rounded-lg hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Table Subheader Count & Actions */}
@@ -655,7 +658,7 @@ export default function WorkflowStep1Students({
                 <th className="p-4">RTO / Institute</th>
                 <th className="p-4">Status</th>
                 <th className="p-4">Placement Status</th>
-                <th className="p-4">Internship Request</th>
+                <th className="p-4">Placement Request</th>
                 <th className="p-4">Added On</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
@@ -672,11 +675,11 @@ export default function WorkflowStep1Students({
                     key={rowIdx} 
                     onClick={() => {
                       setSelectedStudent({
-                        ...selectedStudent,
+                        ...stu,
                         name: stu.name,
                         email: stu.email,
                         id: stu.id,
-                        studentId: stu.studentId || stu.id,
+                        studentId: stu.studentId || stu.enrollmentId || stu.id,
                         institute: stu.rto,
                         status: stu.status,
                         addedOn: stu.addedOn,
@@ -704,7 +707,9 @@ export default function WorkflowStep1Students({
                         <p className="text-[11px] text-slate-400">{stu.email}</p>
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-slate-700">ST{paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}</td>
+                    <td className="p-4 font-medium text-slate-700">
+                      {stu.studentId || stu.enrollmentId || (stu.id ? `ST${stu.id.slice(-4).toUpperCase()}` : `ST${paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}`)}
+                    </td>
                     <td className="p-4 text-slate-600">{stu.rto}</td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -866,7 +871,7 @@ export default function WorkflowStep1Students({
               onClick={onNext}
               className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-xs font-semibold text-white rounded-xl flex items-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs"
             >
-              <span>Continue to Internship Requests</span>
+              <span>Continue to Placement Requests</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -1053,7 +1058,7 @@ export default function WorkflowStep1Students({
 
               {/* Tabs */}
               <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-5 bg-white">
-                {['Overview', 'Education', 'RTO & Source', 'Notes', 'Industry Contacts'].map((tab) => (
+                {['Overview', 'Education', 'Documents', 'Industry Contacts'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -1068,6 +1073,70 @@ export default function WorkflowStep1Students({
                   </button>
                 ))}
               </div>
+
+              {/* ─── DOCUMENTS TAB ─────────────────────────────────────────── */}
+              {activeTab === 'Documents' && (
+                <div className="p-5 space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Student Documents</span>
+                    </h5>
+                    {(() => {
+                      const upCount = STEP1_DRAWER_DOCS.filter(d => Boolean(selectedStudent?.[d.field])).length;
+                      return (
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                          {upCount} / {STEP1_DRAWER_DOCS.length} Uploaded
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="space-y-2">
+                    {STEP1_DRAWER_DOCS.map(({ field, label }) => {
+                      const docVal = selectedStudent?.[field];
+                      const isUploaded = Boolean(docVal);
+
+                      return (
+                        <div 
+                          key={field}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between transition ${
+                            isUploaded ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/40 border-rose-200/80'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <p className="font-semibold text-slate-800 text-[11px] truncate">{label}</p>
+                            <p className={`text-[10px] truncate ${isUploaded ? 'text-slate-500' : 'text-rose-600 font-medium'}`}>
+                              {isUploaded 
+                                ? (typeof docVal === 'string' ? docVal : 'File attached') 
+                                : 'Student has not uploaded'}
+                            </p>
+                          </div>
+                          {isUploaded ? (
+                            <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold shrink-0">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              <span>Uploaded</span>
+                            </span>
+                          ) : (
+                            <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[9px] font-bold shrink-0">
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-500" />
+                              <span>Missing</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => navigate(`/students/${selectedStudent.id}`)}
+                    className="w-full mt-2 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] border border-blue-200 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>View Student Profile</span>
+                  </button>
+                </div>
+              )}
 
               {/* ─── INDUSTRY CONTACTS TAB ─────────────────────────────────── */}
               {activeTab === 'Industry Contacts' && (
@@ -1133,7 +1202,7 @@ export default function WorkflowStep1Students({
               )}
 
               {/* ─── OTHER TABS CONTENT ────────────────────────────────────── */}
-              {activeTab !== 'Industry Contacts' && (
+              {activeTab !== 'Industry Contacts' && activeTab !== 'Documents' && (
                 <div className="p-5 space-y-4 text-xs">
                   {/* Key Stats Row */}
                   <div className="grid grid-cols-3 gap-2">
@@ -1252,15 +1321,15 @@ export default function WorkflowStep1Students({
                     </h5>
                     <div className="grid grid-cols-2 gap-2">
                       <button 
-                        onClick={() => showToast('Opening full profile...')}
-                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                        onClick={() => navigate(`/students/${selectedStudent.id}`)}
+                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
                       >
                         <User className="w-3.5 h-3.5 text-slate-500" />
                         <span>Profile</span>
                       </button>
                       <button 
-                        onClick={() => showToast('Editing student...')}
-                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                        onClick={() => navigate(`/students/${selectedStudent.id}/edit`)}
+                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
                       >
                         <Edit className="w-3.5 h-3.5 text-slate-500" />
                         <span>Edit</span>
@@ -1271,7 +1340,7 @@ export default function WorkflowStep1Students({
                       className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Create Internship Request</span>
+                      <span>Create Placement Request</span>
                       <ArrowUpRight className="w-3 h-3 text-blue-200" />
                     </button>
                     
@@ -1304,14 +1373,14 @@ export default function WorkflowStep1Students({
         </div>
       )}
 
-      {/* Generate Internship Request Modal */}
+      {/* Generate Placement Request Modal */}
       {showGenRequestModal && genTargetStudent && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Generate Internship Request</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Moving student to Step 2 – Internship Request</p>
+                <h3 className="text-base font-bold text-slate-900">Generate Placement Request</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Moving student to Step 2 – Placement Request</p>
               </div>
               <button onClick={() => setShowGenRequestModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
