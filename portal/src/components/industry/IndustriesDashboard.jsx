@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, CheckCircle2, PauseCircle, Briefcase, GraduationCap, 
   Search, SlidersHorizontal, Plus, ChevronDown, Download, 
@@ -6,11 +6,94 @@ import {
   MapPin, ArrowUpRight, Trash2, X
 } from 'lucide-react';
 
-export default function IndustriesDashboard({ onAddNewIndustry, industries = [], stats = {}, onFilterChange, onDeleteIndustry }) {
+export default function IndustriesDashboard({ 
+  onAddNewIndustry, 
+  industries = [], 
+  stats = {}, 
+  onFilterChange, 
+  onDeleteIndustry,
+  onUpdateIndustry 
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sectorFilter, setSectorFilter] = useState('All');
   const [viewingIndustry, setViewingIndustry] = useState(null);
+
+  // Edit Industry state
+  const [editingIndustry, setEditingIndustry] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    sector: 'Aged Care',
+    abn: '',
+    status: 'Active',
+    contactPersonName: '',
+    contactJobTitle: '',
+    contactEmail: '',
+    contactPhone: '',
+    address: '',
+    suburb: '',
+    state: '',
+    postCode: '',
+    website: '',
+    shortDescription: '',
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Delete Industry state
+  const [deletingIndustry, setDeletingIndustry] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleOpenEdit = (item) => {
+    setEditingIndustry(item);
+    setEditFormData({
+      name: item.name || '',
+      sector: item.sector || 'Aged Care',
+      abn: item.abn || '',
+      status: item.status || 'Active',
+      contactPersonName: item.contactPersonName || '',
+      contactJobTitle: item.contactJobTitle || '',
+      contactEmail: item.contactEmail || '',
+      contactPhone: item.contactPhone || '',
+      address: item.address || '',
+      suburb: item.suburb || '',
+      state: item.state || '',
+      postCode: item.postCode || '',
+      website: item.website || '',
+      shortDescription: item.shortDescription || '',
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e?.preventDefault();
+    if (!editFormData.name?.trim()) {
+      alert('Industry / Company Name is required');
+      return;
+    }
+    if (!onUpdateIndustry || !editingIndustry) return;
+    try {
+      setIsSavingEdit(true);
+      await onUpdateIndustry(editingIndustry._id || editingIndustry.id, editFormData);
+      setEditingIndustry(null);
+    } catch (err) {
+      console.error('Save edit error:', err);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!onDeleteIndustry || !deletingIndustry) return;
+    try {
+      setIsDeleting(true);
+      await onDeleteIndustry(deletingIndustry._id || deletingIndustry.id, deletingIndustry.name);
+      setDeletingIndustry(null);
+    } catch (err) {
+      console.error('Delete industry error:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
@@ -24,6 +107,27 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
     }, 300);
     return () => clearTimeout(delayDebounce);
   }, [searchQuery, statusFilter, sectorFilter, onFilterChange]);
+
+  // Dynamically calculate Top Sectors by Students
+  const topSectors = useMemo(() => {
+    const map = {};
+    industries.forEach((ind) => {
+      const sec = ind.sector || 'General';
+      map[sec] = (map[sec] || 0) + (ind.students || 0);
+    });
+    const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
+    const maxVal = entries[0]?.[1] || 1;
+    return entries.slice(0, 5).map(([secName, count]) => ({
+      name: secName,
+      count,
+      pct: maxVal > 0 ? Math.max(10, Math.round((count / maxVal) * 100)) : 10,
+    }));
+  }, [industries]);
+
+  // Dynamically get 4 most recent industries
+  const recentIndustries = useMemo(() => {
+    return (industries || []).slice(0, 4);
+  }, [industries]);
   return (
     <div className="flex-1 bg-slate-50 text-slate-800 font-sans min-h-screen">
       {/* Main Content Area */}
@@ -234,12 +338,59 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
                       </td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                          item.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                          item.status === 'Active'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
                         }`}>
-                          {item.status} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
+                          {item.status || 'Active'} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-slate-800">{item.students || 0}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            onClick={() => setViewingIndustry(item)}
+                            className="font-bold text-slate-800 text-xs hover:text-indigo-600 hover:underline flex items-center gap-1 text-left cursor-pointer"
+                          >
+                            <span>{item.students || 0} Student(s)</span>
+                          </button>
+                          {item.studentDetails && item.studentDetails.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {item.studentDetails.slice(0, 2).map((st, sIdx) => {
+                                const isRej = st.status.includes('Rejected');
+                                const isPl = st.status === 'Placed' || st.status === 'Accepted';
+                                return (
+                                  <span
+                                    key={sIdx}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
+                                      isPl
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : isRej
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                                    }`}
+                                    title={`${st.studentName} - ${st.status}${st.rejectionReason ? ` (${st.rejectionReason})` : ''}`}
+                                  >
+                                    {st.studentName} ({st.status})
+                                  </span>
+                                );
+                              })}
+                              {item.studentDetails.length > 2 && (
+                                <button
+                                  onClick={() => setViewingIndustry(item)}
+                                  className="text-[9px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                                >
+                                  +{item.studentDetails.length - 2} more
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {item.rejectedCount > 0 && (
+                            <span className="text-[9px] font-bold text-rose-600">
+                              {item.rejectedCount} Student Rejected
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{item.jobs || 0}</td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -251,18 +402,14 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => alert('Edit Industry Wizard coming soon!')}
+                            onClick={() => handleOpenEdit(item)}
                             title="Edit Industry"
                             className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (window.confirm(`Are you sure you want to delete ${item.name}?`)) {
-                                onDeleteIndustry(item._id || item.id);
-                              }
-                            }}
+                            onClick={() => setDeletingIndustry(item)}
                             title="Delete Industry"
                             className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           >
@@ -357,55 +504,26 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
               <h2 className="text-sm font-bold text-slate-900">Top Sectors by Students</h2>
               
               <div className="space-y-3 text-xs">
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Information Technology</span>
-                    <span className="font-semibold text-slate-900">412</span>
+                {topSectors.length > 0 ? (
+                  topSectors.map((sec, sIdx) => (
+                    <div key={sIdx}>
+                      <div className="flex justify-between font-medium mb-1 text-slate-700">
+                        <span>{sec.name}</span>
+                        <span className="font-semibold text-slate-900">{sec.count}</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${sec.pct}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-slate-400 text-xs">
+                    No sector data available yet
                   </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '90%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Healthcare</span>
-                    <span className="font-semibold text-slate-900">298</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '65%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Construction</span>
-                    <span className="font-semibold text-slate-900">187</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '45%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Education</span>
-                    <span className="font-semibold text-slate-900">156</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '35%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1 text-slate-700">
-                    <span>Finance</span>
-                    <span className="font-semibold text-slate-900">98</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: '22%' }}></div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -413,49 +531,42 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold text-slate-900">Recent Added Industries</h2>
-                <a href="#view-all" className="text-xs font-semibold text-indigo-600 hover:underline">View All</a>
+                <span className="text-xs font-semibold text-indigo-600">Total: {industries.length}</span>
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
+                {recentIndustries.length > 0 ? (
+                  recentIndustries.map((ind, rIdx) => {
+                    const colorVariants = [
+                      'bg-sky-50 text-sky-600',
+                      'bg-amber-50 text-amber-600',
+                      'bg-emerald-50 text-emerald-600',
+                      'bg-purple-50 text-purple-600',
+                    ];
+                    const colorClass = colorVariants[rIdx % colorVariants.length];
+                    return (
+                      <div
+                        key={ind._id || ind.id || rIdx}
+                        onClick={() => setViewingIndustry(ind)}
+                        className="flex items-center gap-3 cursor-pointer p-1 rounded-lg hover:bg-slate-50 transition"
+                      >
+                        <div className={`w-9 h-9 rounded-lg ${colorClass} flex items-center justify-center font-bold text-xs flex-shrink-0`}>
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div className="overflow-hidden">
+                          <h4 className="text-xs font-semibold text-slate-900 truncate">{ind.name}</h4>
+                          <p className="text-[11px] text-slate-400">
+                            {ind.sector || 'Industry'} &bull; {ind.students || 0} student(s)
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-4 text-slate-400 text-xs">
+                    No industries added yet
                   </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">Smart Energy Solutions</h4>
-                    <p className="text-[11px] text-slate-400">Added on 18 Jul 2025</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">AgriTech Australia</h4>
-                    <p className="text-[11px] text-slate-400">Added on 16 Jul 2025</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">LogiChain Logistics</h4>
-                    <p className="text-[11px] text-slate-400">Added on 14 Jul 2025</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-semibold text-slate-900 truncate">Creative Digital Agency</h4>
-                    <p className="text-[11px] text-slate-400">Added on 12 Jul 2025</p>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -556,20 +667,82 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
               {/* Partnership Overview */}
               <div className="space-y-3">
                 <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1.5">Partnership Overview</h4>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-4 gap-4">
                   <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">Students Assigned</p>
                     <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.students || 0}</p>
                   </div>
                   <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Placed</p>
+                    <p className="font-medium text-emerald-600 mt-0.5">{viewingIndustry.placedCount || 0}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Rejected</p>
+                    <p className="font-medium text-rose-600 mt-0.5">{viewingIndustry.rejectedCount || 0}</p>
+                  </div>
+                  <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">Active Jobs</p>
                     <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.jobs || 0}</p>
                   </div>
-                  <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Placement Rate</p>
-                    <p className="font-medium text-emerald-600 mt-0.5">{viewingIndustry.students > 0 ? '82%' : 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Students & Internships Details */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                  <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600">Students &amp; Internships Status</h4>
+                  <div className="flex gap-2 text-[10px] font-semibold">
+                    <span className="text-emerald-600 font-bold">{viewingIndustry.placedCount || 0} Placed</span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-rose-600 font-bold">{viewingIndustry.rejectedCount || 0} Rejected</span>
                   </div>
                 </div>
+                {viewingIndustry.studentDetails && viewingIndustry.studentDetails.length > 0 ? (
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    {viewingIndustry.studentDetails.map((st, sIdx) => {
+                      const isRej = String(st.status || '').toLowerCase().includes('reject') || String(st.status || '').toLowerCase().includes('declin');
+                      const isPl = String(st.status || '').toLowerCase().includes('place') || String(st.status || '').toLowerCase().includes('accept') || String(st.status || '').toLowerCase().includes('complet');
+                      return (
+                        <div
+                          key={sIdx}
+                          className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+                            isPl
+                              ? 'bg-emerald-50/60 border-emerald-200'
+                              : isRej
+                              ? 'bg-rose-50/60 border-rose-200'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div>
+                            <p className="font-bold text-slate-800">{st.studentName}</p>
+                            {st.date && <p className="text-[10px] text-slate-400 mt-0.5">Date: {st.date}</p>}
+                            {st.rejectionReason && (
+                              <p className="text-[10px] text-rose-700 font-semibold mt-0.5">
+                                Reason: {st.rejectionReason}
+                              </p>
+                            )}
+                            {st.notes && (
+                              <p className="text-[10px] text-slate-500 italic mt-0.5">{st.notes}</p>
+                            )}
+                          </div>
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                              isPl
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : isRej
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : 'bg-blue-100 text-blue-800 border-blue-300'
+                            }`}
+                          >
+                            {st.status}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic py-2">No students linked to this industry yet.</p>
+                )}
               </div>
             </div>
 
@@ -581,14 +754,288 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Edit Industry Modal ─────────────────────────────────────────── */}
+      {editingIndustry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Edit Industry</h3>
+                  <p className="text-xs text-slate-500">Update company profile, contact details, and partnership status</p>
+                </div>
+              </div>
               <button
-                onClick={() => {
-                  alert('Edit Industry Wizard coming soon!');
-                  setViewingIndustry(null);
-                }}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-md transition text-sm cursor-pointer"
+                onClick={() => setEditingIndustry(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
               >
-                Edit Industry
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleSaveEdit} className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+              
+              {/* Company Info */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1">
+                  Company Information
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Company Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.name}
+                      onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                      placeholder="e.g. HealthCare Australia"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Sector / Industry Type</label>
+                    <select
+                      value={editFormData.sector}
+                      onChange={(e) => setEditFormData({ ...editFormData, sector: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600 cursor-pointer"
+                    >
+                      <option value="Aged Care">Aged Care</option>
+                      <option value="Disability Centre">Disability Centre</option>
+                      <option value="Healthcare">Healthcare</option>
+                      <option value="Education">Education</option>
+                      <option value="Information Technology">Information Technology</option>
+                      <option value="Hospitality & Tourism">Hospitality & Tourism</option>
+                      <option value="Finance & Banking">Finance & Banking</option>
+                      <option value="Construction">Construction</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">ABN</label>
+                    <input
+                      type="text"
+                      value={editFormData.abn}
+                      onChange={(e) => setEditFormData({ ...editFormData, abn: e.target.value })}
+                      placeholder="e.g. 51 824 753 556"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Status</label>
+                    <select
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600 cursor-pointer"
+                    >
+                      <option value="Active">Active (Partnership ongoing)</option>
+                      <option value="Inactive">Inactive (Paused / Suspended)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Person */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1">
+                  Contact Person
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Contact Person Name</label>
+                    <input
+                      type="text"
+                      value={editFormData.contactPersonName}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactPersonName: e.target.value })}
+                      placeholder="e.g. Sarah Jenkins"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Job Title / Designation</label>
+                    <input
+                      type="text"
+                      value={editFormData.contactJobTitle}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactJobTitle: e.target.value })}
+                      placeholder="e.g. HR Placement Director"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Contact Email</label>
+                    <input
+                      type="email"
+                      value={editFormData.contactEmail}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactEmail: e.target.value })}
+                      placeholder="e.g. info@company.com"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Contact Phone</label>
+                    <input
+                      type="text"
+                      value={editFormData.contactPhone}
+                      onChange={(e) => setEditFormData({ ...editFormData, contactPhone: e.target.value })}
+                      placeholder="e.g. +61 412 345 678"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Location & Details */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1">
+                  Location &amp; Online Presence
+                </h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-3 space-y-1">
+                    <label className="font-bold text-slate-700">Street Address</label>
+                    <input
+                      type="text"
+                      value={editFormData.address}
+                      onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                      placeholder="e.g. 123 Collins Street"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">City / Suburb</label>
+                    <input
+                      type="text"
+                      value={editFormData.suburb}
+                      onChange={(e) => setEditFormData({ ...editFormData, suburb: e.target.value })}
+                      placeholder="e.g. Melbourne"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">State</label>
+                    <input
+                      type="text"
+                      value={editFormData.state}
+                      onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value })}
+                      placeholder="e.g. VIC"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Postal Code</label>
+                    <input
+                      type="text"
+                      value={editFormData.postCode}
+                      onChange={(e) => setEditFormData({ ...editFormData, postCode: e.target.value })}
+                      placeholder="e.g. 3000"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="col-span-3 space-y-1">
+                    <label className="font-bold text-slate-700">Website</label>
+                    <input
+                      type="text"
+                      value={editFormData.website}
+                      onChange={(e) => setEditFormData({ ...editFormData, website: e.target.value })}
+                      placeholder="e.g. https://www.company.com"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                  <div className="col-span-3 space-y-1">
+                    <label className="font-bold text-slate-700">Description / Notes</label>
+                    <textarea
+                      rows={2}
+                      value={editFormData.shortDescription}
+                      onChange={(e) => setEditFormData({ ...editFormData, shortDescription: e.target.value })}
+                      placeholder="Brief details about this industry partner..."
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingIndustry(null)}
+                  className="px-4 py-2 bg-white border border-slate-200 rounded-xl font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Confirmation Modal ───────────────────────────────────── */}
+      {deletingIndustry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Industry Partner</h3>
+                <p className="text-xs text-slate-500">Cascade delete and unlink from students</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-1">
+              <p className="font-bold">Are you sure you want to delete {deletingIndustry.name}?</p>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                This action is permanent. It will delete this industry record and <strong>automatically remove it from all student placement requests, appointments, and active placements</strong> linked to this company.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingIndustry(null)}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete Industry</span>
+                )}
               </button>
             </div>
           </div>
@@ -597,4 +1044,4 @@ export default function IndustriesDashboard({ onAddNewIndustry, industries = [],
 
     </div>
   );
-}
+}

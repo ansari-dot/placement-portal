@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import UserModel from '../model/user.model.js';
+import StudentModel from '../model/student.model.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mantis_portal_super_secret_key_2026';
 
@@ -33,6 +34,16 @@ export const loginController = async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
+    // Mark matching student as online
+    try {
+      await StudentModel.updateMany(
+        { emailAddress: email.toLowerCase().trim() },
+        { $set: { isOnline: true, lastActive: new Date() } }
+      );
+    } catch (stErr) {
+      console.log('Student online update:', stErr?.message);
+    }
+
     // Create JWT Token
     const token = jwt.sign(
       { id: user._id, role: user.role, email: user.email },
@@ -64,6 +75,15 @@ export const loginController = async (req, res) => {
 // POST /auth/logout - Clear HttpOnly Session Cookie
 export const logoutController = async (req, res) => {
   try {
+    if (req.user?.email) {
+      try {
+        await StudentModel.updateMany(
+          { emailAddress: req.user.email.toLowerCase().trim() },
+          { $set: { isOnline: false } }
+        );
+      } catch (stErr) {}
+    }
+
     res.clearCookie('portal_token', {
       httpOnly: true,
       sameSite: 'lax',

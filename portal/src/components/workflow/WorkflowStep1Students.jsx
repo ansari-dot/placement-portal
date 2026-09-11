@@ -1,13 +1,27 @@
 // src/components/workflow/WorkflowStep1Students.jsx
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
-  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck
+  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, Moon
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { deleteStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
+
+const STEP1_DRAWER_DOCS = [
+  { field: 'policeCheckDoc',     label: 'Police Check' },
+  { field: 'covidCheckDoc',      label: 'COVID-19 Check' },
+  { field: 'ndisDoc',            label: 'NDIS' },
+  { field: 'resumeDoc',          label: 'CB / Resume' },
+  { field: 'wwccDoc',            label: 'WWCC' },
+  { field: 'passportDoc',        label: 'Passport' },
+  { field: 'drivingLicenceDoc',  label: 'Driving Licence' },
+  { field: 'infectionControlDoc',label: 'Infection Control' },
+  { field: 'handHygieneDoc',     label: 'Hand Hygiene' },
+  { field: 'cbrDoc',             label: 'CBR' },
+];
 
 export default function WorkflowStep1Students({ 
   students = [], 
@@ -76,10 +90,31 @@ export default function WorkflowStep1Students({
 
   const studentList = students;
 
+  // ─── Dynamic Top Metric Counts from Database Students ─────────────────────
+  const totalStudentsCount = studentList.length;
+  const readyStudentsCount = studentList.filter(s => 
+    (s.placementStatus || '').toLowerCase() === 'ready'
+  ).length;
+  const pendingInfoCount = studentList.filter(s => 
+    (s.placementStatus || '').toLowerCase().includes('pending') ||
+    (s.status || '').toLowerCase() === 'pending' ||
+    !s.rto || s.rto === 'N/A' ||
+    (!s.course && !s.courseQualification)
+  ).length;
+  const recentlyAddedCount = studentList.filter(s => {
+    const rawDate = s.createdAt || s.addedOn;
+    if (!rawDate) return false;
+    const addedDate = new Date(rawDate);
+    if (isNaN(addedDate.getTime())) return false;
+    const diffDays = (Date.now() - addedDate.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays <= 30;
+  }).length;
+
   // Filter students based on search query
   const filteredStudents = studentList.filter(stu => 
     stu.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     stu.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (stu.studentId && stu.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
     stu.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     stu.rto.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -155,11 +190,11 @@ export default function WorkflowStep1Students({
     setShowRowMenu(null);
     if (action === 'view') {
       setSelectedStudent({
-        ...selectedStudent,
+        ...stu,
         name: stu.name,
         email: stu.email,
         id: stu.id,
-        studentId: stu.studentId || stu.id,
+        studentId: stu.studentId || stu.enrollmentId || stu.id,
         institute: stu.rto,
         status: stu.status,
         addedOn: stu.addedOn,
@@ -316,9 +351,56 @@ export default function WorkflowStep1Students({
     handleOpenAppointmentForm(stu, industryData);
   };
 
+  const authUser = useSelector((state) => state.auth?.user);
+
   const [showGenRequestModal, setShowGenRequestModal] = useState(false);
-  const [genPriority, setGenPriority] = useState('Normal');
+  const [genPriority, setGenPriority] = useState('Normal'); // 'Normal' | 'Urgent' | 'Snooze'
   const [genTargetStudent, setGenTargetStudent] = useState(null);
+  const [snoozeDuration, setSnoozeDuration] = useState('7_days');
+  const [snoozeReason, setSnoozeReason] = useState('');
+  const [showSnoozedModal, setShowSnoozedModal] = useState(false);
+  const [snoozedSearchQuery, setSnoozedSearchQuery] = useState('');
+
+  // ✅ Local request map — immediately shows badge after generate (merges with prop & localStorage)
+  const [localRequestMap, setLocalRequestMap] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('portal_workflow_requests') || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  // Persisted snoozed students dictionary
+  const [snoozedStudentIds, setSnoozedStudentIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('portal_snoozed_students');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Check if student is online (fully dynamic)
+  const isStudentOnline = (id, email, name, studentObj) => {
+    if (studentObj?.isOnline === true) return true;
+    if (authUser?.email && email && authUser.email.toLowerCase().trim() === email.toLowerCase().trim()) {
+      return true;
+    }
+    if (authUser?.id && id && authUser.id === id) {
+      return true;
+    }
+    try {
+      const active = JSON.parse(localStorage.getItem('portal_online_users') || '{}');
+      if (Array.isArray(active)) {
+        if (active.some(u => (u.id && u.id === id) || (u.email && email && u.email.toLowerCase().trim() === email.toLowerCase().trim()))) return true;
+      } else if (typeof active === 'object') {
+        if (email && active[email.toLowerCase().trim()]) return true;
+        if (id && active[id]) return true;
+      }
+    } catch (e) {}
+    return false;
+  };
+
 
   // ─── Delete confirmation modal ───────────────────────────────────────────
   const [deleteConfirm, setDeleteConfirm] = useState(null); // holds the student to delete
@@ -335,14 +417,71 @@ export default function WorkflowStep1Students({
     }
     setGenTargetStudent(target);
     setGenPriority('Normal');
+    setSnoozeReason('');
     setShowGenRequestModal(true);
   };
 
   const handleGenerateRequestSubmit = () => {
     if (!genTargetStudent) return;
-    showToast(`Generated Internship Request with ${genPriority} priority for ${genTargetStudent.name}`);
+    const stuId = genTargetStudent.id || genTargetStudent._id || genTargetStudent.studentId;
+
+    if (genPriority === 'Snooze') {
+      const durationLabels = {
+        '7_days': '7 Days',
+        '14_days': '14 Days',
+        '30_days': '30 Days',
+        'indefinite': 'Indefinite'
+      };
+      const newEntry = {
+        id: stuId,
+        studentId: genTargetStudent.studentId || genTargetStudent.enrollmentId || stuId,
+        name: genTargetStudent.name,
+        email: genTargetStudent.email,
+        rto: genTargetStudent.rto || 'RTO',
+        snoozedAt: new Date().toISOString(),
+        duration: snoozeDuration,
+        durationLabel: durationLabels[snoozeDuration] || '7 Days',
+        reason: snoozeReason || 'Deferred from placement workflow',
+        rawStudent: genTargetStudent,
+      };
+      const updated = { ...snoozedStudentIds, [stuId]: newEntry };
+      setSnoozedStudentIds(updated);
+      try {
+        localStorage.setItem('portal_snoozed_students', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      showToast(`Student ${genTargetStudent.name} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
+      setShowGenRequestModal(false);
+      setSnoozeReason('');
+      return;
+    }
+
+    // ✅ Immediately update local badge — no need to wait for backend refresh
+    const updatedLocal = { ...localRequestMap };
+    if (stuId) updatedLocal[stuId] = genPriority;
+    if (genTargetStudent.name) updatedLocal[genTargetStudent.name] = genPriority;
+    if (genTargetStudent.studentId) updatedLocal[genTargetStudent.studentId] = genPriority;
+    setLocalRequestMap(updatedLocal);
+    try {
+      localStorage.setItem('portal_workflow_requests', JSON.stringify(updatedLocal));
+    } catch (_) {}
+
+    showToast(`✅ Placement Request generated (${genPriority} priority) for ${genTargetStudent.name}`);
     setShowGenRequestModal(false);
     if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
+  };
+
+  const handleUnsnoozeStudent = (stuId, stuName) => {
+    const updated = { ...snoozedStudentIds };
+    delete updated[stuId];
+    setSnoozedStudentIds(updated);
+    try {
+      localStorage.setItem('portal_snoozed_students', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
+    showToast(`Student ${stuName || ''} un-snoozed & restored to active workflow`);
   };
 
   const handleCreateRequest = () => {
@@ -378,13 +517,13 @@ export default function WorkflowStep1Students({
       {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
         
-        {/* Metric Cards */}
+        {/* Metric Cards - Fully Dynamic */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Total Students</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">2,543</h3>
-              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">↑ 12.5% vs last month</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{totalStudentsCount}</h3>
+              <span className="text-[9px] text-blue-600 font-semibold mt-0.5 inline-block">Active in database</span>
             </div>
             <div className="w-7 h-7 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
               <UsersIcon className="w-3.5 h-3.5" />
@@ -393,8 +532,10 @@ export default function WorkflowStep1Students({
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Ready for Placement</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">1,428</h3>
-              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">↑ 18.2% vs last month</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{readyStudentsCount}</h3>
+              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">
+                {totalStudentsCount > 0 ? Math.round((readyStudentsCount / totalStudentsCount) * 100) : 0}% of all students
+              </span>
             </div>
             <div className="w-7 h-7 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
               <Briefcase className="w-3.5 h-3.5" />
@@ -403,8 +544,10 @@ export default function WorkflowStep1Students({
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Pending Information</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">356</h3>
-              <span className="text-[9px] text-rose-600 font-semibold mt-0.5 inline-block">↓ 6.3% vs last month</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{pendingInfoCount}</h3>
+              <span className="text-[9px] text-amber-600 font-semibold mt-0.5 inline-block">
+                {pendingInfoCount > 0 ? 'Requires attention' : 'All profiles complete'}
+              </span>
             </div>
             <div className="w-7 h-7 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center">
               <Clock className="w-3.5 h-3.5" />
@@ -413,8 +556,8 @@ export default function WorkflowStep1Students({
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[9px] text-slate-500 font-medium">Recently Added</p>
-              <h3 className="text-lg font-bold text-slate-900 mt-0.5">128</h3>
-              <span className="text-[9px] text-emerald-600 font-semibold mt-0.5 inline-block">↑ 8.7% vs last week</span>
+              <h3 className="text-lg font-bold text-slate-900 mt-0.5">{recentlyAddedCount}</h3>
+              <span className="text-[9px] text-purple-600 font-semibold mt-0.5 inline-block">In last 30 days</span>
             </div>
             <div className="w-7 h-7 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center">
               <User className="w-3.5 h-3.5" />
@@ -532,40 +675,17 @@ export default function WorkflowStep1Students({
             )}
           </div>
 
-          <div className="relative shrink-0">
-            <button 
-              onClick={handleAddStudent}
-              className="px-3 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-[11px] font-semibold text-white rounded-xl flex items-center space-x-1.5 shadow-xs transition-all duration-500 cursor-pointer whitespace-nowrap"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Add Student</span>
-            </button>
-            {showAddStudent && (
-              <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-4">
-                <h4 className="text-sm font-bold text-slate-900 mb-3">Add New Student</h4>
-                <div className="space-y-2">
-                  <input placeholder="Full Name" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Email" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Student ID" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                  <input placeholder="Institute" className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" />
-                </div>
-                <div className="flex space-x-2 mt-3">
-                  <button 
-                    onClick={() => { setShowAddStudent(false); showToast('Student added'); }}
-                    className="flex-1 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-lg transition-all duration-500 cursor-pointer"
-                  >
-                    Save
-                  </button>
-                  <button 
-                    onClick={() => setShowAddStudent(false)}
-                    className="px-3 py-2 border border-slate-200 text-xs font-semibold text-slate-600 rounded-lg hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Snoozed Students Button right next to Export */}
+          <button
+            onClick={() => setShowSnoozedModal(true)}
+            className="px-3 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-[11px] font-semibold rounded-xl flex items-center space-x-1.5 transition cursor-pointer whitespace-nowrap shadow-xs"
+          >
+            <Moon className="w-3.5 h-3.5 text-amber-600" />
+            <span>Snoozed Students</span>
+            <span className="px-1.5 py-0.2 bg-amber-200 text-amber-950 rounded-full text-[10px] font-bold">
+              {Object.keys(snoozedStudentIds).length}
+            </span>
+          </button>
         </div>
 
         {/* Table Subheader Count & Actions */}
@@ -655,7 +775,7 @@ export default function WorkflowStep1Students({
                 <th className="p-4">RTO / Institute</th>
                 <th className="p-4">Status</th>
                 <th className="p-4">Placement Status</th>
-                <th className="p-4">Internship Request</th>
+                <th className="p-4">Placement Request</th>
                 <th className="p-4">Added On</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
@@ -664,7 +784,11 @@ export default function WorkflowStep1Students({
               {paginatedStudents.map((stu, rowIdx) => {
                 const isSelected = selectedStudent?.id === stu.id;
                 const isRowSelected = selectedRows.includes(stu.id);
-                const reqValue = internshipRequestMap[stu.id] || (stu.studentId && internshipRequestMap[stu.studentId]) || (stu.name && internshipRequestMap[stu.name]);
+                const reqValue = 
+                  // ✅ Check localRequestMap first (immediate update after generate)
+                  localRequestMap[stu.id] || localRequestMap[stu.studentId] || (stu.name && localRequestMap[stu.name]) ||
+                  // Then check prop from backend
+                  internshipRequestMap[stu.id] || (stu.studentId && internshipRequestMap[stu.studentId]) || (stu.name && internshipRequestMap[stu.name]);
                 // Open menu upward for the last 3 rows to avoid viewport clipping
                 const openUpward = rowIdx >= paginatedStudents.length - 3;
                 return (
@@ -672,11 +796,11 @@ export default function WorkflowStep1Students({
                     key={rowIdx} 
                     onClick={() => {
                       setSelectedStudent({
-                        ...selectedStudent,
+                        ...stu,
                         name: stu.name,
                         email: stu.email,
                         id: stu.id,
-                        studentId: stu.studentId || stu.id,
+                        studentId: stu.studentId || stu.enrollmentId || stu.id,
                         institute: stu.rto,
                         status: stu.status,
                         addedOn: stu.addedOn,
@@ -696,15 +820,32 @@ export default function WorkflowStep1Students({
                       />
                     </td>
                     <td className="py-3 px-2 flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
-                        {stu.name[0]}
+                      <div className="relative shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs">
+                          {stu.name ? stu.name[0] : '?'}
+                        </div>
+                        {isStudentOnline(stu.id, stu.email, stu.name) && (
+                          <span 
+                            title="Student is Online" 
+                            className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse"
+                          />
+                        )}
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900">{stu.name}</p>
+                        <div className="flex items-center space-x-1.5">
+                          <p className="font-bold text-slate-900">{stu.name}</p>
+                          {isStudentOnline(stu.id, stu.email, stu.name) && (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Online
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[11px] text-slate-400">{stu.email}</p>
                       </div>
                     </td>
-                    <td className="p-4 font-medium text-slate-700">ST{paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}</td>
+                    <td className="p-4 font-medium text-slate-700">
+                      {stu.studentId || stu.enrollmentId || (stu.id ? `ST${stu.id.slice(-4).toUpperCase()}` : `ST${paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}`)}
+                    </td>
                     <td className="p-4 text-slate-600">{stu.rto}</td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -715,15 +856,26 @@ export default function WorkflowStep1Students({
                     </td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        stu.placementStatus === 'Ready' ? 'bg-emerald-50 text-emerald-600' : 
-                        stu.placementStatus === 'Pending Info' ? 'bg-amber-50 text-amber-600' : 
-                        'bg-blue-50 text-blue-600'
+                        reqValue || stu.placementStatus?.includes('Progress') ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                        stu.placementStatus === 'Ready' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 
+                        stu.placementStatus === 'Pending Info' ? 'bg-amber-50 text-amber-600 border border-amber-200' : 
+                        'bg-blue-50 text-blue-600 border border-blue-200'
                       }`}>
-                        {stu.placementStatus}
+                        {reqValue ? 'In Progress' : (stu.placementStatus || 'Ready')}
                       </span>
                     </td>
                     <td className="p-4">
-                      {reqValue ? (
+                      {snoozedStudentIds[stu.id] ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setShowSnoozedModal(true); }}
+                          title={`Snoozed: ${snoozedStudentIds[stu.id].reason || 'Deferred'}`}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition cursor-pointer"
+                        >
+                          <span>💤</span>
+                          <span>Snoozed ({snoozedStudentIds[stu.id].durationLabel || '7 Days'})</span>
+                        </button>
+                      ) : reqValue ? (
                         <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
                           reqValue === 'Urgent'
                             ? 'bg-rose-50 text-rose-600 border border-rose-200'
@@ -742,7 +894,7 @@ export default function WorkflowStep1Students({
                     <td className="p-4 text-right relative" data-row-menu onClick={(e) => e.stopPropagation()}>
                       <button 
                         onClick={() => setShowRowMenu(showRowMenu === stu.id ? null : stu.id)}
-                        className="p-1 hover:bg-slate-100 rounded-lg inline-flex"
+                        className="p-1 hover:bg-slate-100 rounded-lg inline-flex cursor-pointer"
                       >
                         <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
                       </button>
@@ -752,6 +904,17 @@ export default function WorkflowStep1Students({
                             <Plus className="w-3.5 h-3.5 text-blue-600" />
                             <span>Generate Request</span>
                           </button>
+                          {snoozedStudentIds[stu.id] ? (
+                            <button onClick={() => { setShowRowMenu(null); handleUnsnoozeStudent(stu.id, stu.name); }} className="w-full text-left px-3 py-2 text-xs text-emerald-600 font-semibold hover:bg-emerald-50 rounded-lg flex items-center space-x-2">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Restore / Un-snooze</span>
+                            </button>
+                          ) : (
+                            <button onClick={() => { setShowRowMenu(null); setGenTargetStudent(stu); setGenPriority('Snooze'); setShowGenRequestModal(true); }} className="w-full text-left px-3 py-2 text-xs text-amber-700 font-semibold hover:bg-amber-50 rounded-lg flex items-center space-x-2">
+                              <Moon className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Snooze Student</span>
+                            </button>
+                          )}
 
                           <button onClick={() => handleRowAction('view', stu)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                             <Eye className="w-3.5 h-3.5 text-slate-400" />
@@ -866,7 +1029,7 @@ export default function WorkflowStep1Students({
               onClick={onNext}
               className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-xs font-semibold text-white rounded-xl flex items-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs"
             >
-              <span>Continue to Internship Requests</span>
+              <span>Continue to Placement Requests</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -1053,7 +1216,7 @@ export default function WorkflowStep1Students({
 
               {/* Tabs */}
               <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-5 bg-white">
-                {['Overview', 'Education', 'RTO & Source', 'Notes', 'Industry Contacts'].map((tab) => (
+                {['Overview', 'Education', 'Documents', 'Industry Contacts'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -1068,6 +1231,70 @@ export default function WorkflowStep1Students({
                   </button>
                 ))}
               </div>
+
+              {/* ─── DOCUMENTS TAB ─────────────────────────────────────────── */}
+              {activeTab === 'Documents' && (
+                <div className="p-5 space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Student Documents</span>
+                    </h5>
+                    {(() => {
+                      const upCount = STEP1_DRAWER_DOCS.filter(d => Boolean(selectedStudent?.[d.field])).length;
+                      return (
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                          {upCount} / {STEP1_DRAWER_DOCS.length} Uploaded
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="space-y-2">
+                    {STEP1_DRAWER_DOCS.map(({ field, label }) => {
+                      const docVal = selectedStudent?.[field];
+                      const isUploaded = Boolean(docVal);
+
+                      return (
+                        <div 
+                          key={field}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between transition ${
+                            isUploaded ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/40 border-rose-200/80'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <p className="font-semibold text-slate-800 text-[11px] truncate">{label}</p>
+                            <p className={`text-[10px] truncate ${isUploaded ? 'text-slate-500' : 'text-rose-600 font-medium'}`}>
+                              {isUploaded 
+                                ? (typeof docVal === 'string' ? docVal : 'File attached') 
+                                : 'Student has not uploaded'}
+                            </p>
+                          </div>
+                          {isUploaded ? (
+                            <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold shrink-0">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              <span>Uploaded</span>
+                            </span>
+                          ) : (
+                            <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[9px] font-bold shrink-0">
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-500" />
+                              <span>Missing</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => navigate(`/students/${selectedStudent.id}`)}
+                    className="w-full mt-2 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] border border-blue-200 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>View Student Profile</span>
+                  </button>
+                </div>
+              )}
 
               {/* ─── INDUSTRY CONTACTS TAB ─────────────────────────────────── */}
               {activeTab === 'Industry Contacts' && (
@@ -1133,7 +1360,7 @@ export default function WorkflowStep1Students({
               )}
 
               {/* ─── OTHER TABS CONTENT ────────────────────────────────────── */}
-              {activeTab !== 'Industry Contacts' && (
+              {activeTab !== 'Industry Contacts' && activeTab !== 'Documents' && (
                 <div className="p-5 space-y-4 text-xs">
                   {/* Key Stats Row */}
                   <div className="grid grid-cols-3 gap-2">
@@ -1252,15 +1479,15 @@ export default function WorkflowStep1Students({
                     </h5>
                     <div className="grid grid-cols-2 gap-2">
                       <button 
-                        onClick={() => showToast('Opening full profile...')}
-                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                        onClick={() => navigate(`/students/${selectedStudent.id}`)}
+                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
                       >
                         <User className="w-3.5 h-3.5 text-slate-500" />
                         <span>Profile</span>
                       </button>
                       <button 
-                        onClick={() => showToast('Editing student...')}
-                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                        onClick={() => navigate(`/students/${selectedStudent.id}/edit`)}
+                        className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
                       >
                         <Edit className="w-3.5 h-3.5 text-slate-500" />
                         <span>Edit</span>
@@ -1271,7 +1498,7 @@ export default function WorkflowStep1Students({
                       className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Create Internship Request</span>
+                      <span>Create Placement Request</span>
                       <ArrowUpRight className="w-3 h-3 text-blue-200" />
                     </button>
                     
@@ -1304,14 +1531,14 @@ export default function WorkflowStep1Students({
         </div>
       )}
 
-      {/* Generate Internship Request Modal */}
+      {/* Generate Placement Request Modal */}
       {showGenRequestModal && genTargetStudent && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Generate Internship Request</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Moving student to Step 2 – Internship Request</p>
+                <h3 className="text-base font-bold text-slate-900">Generate Placement Request</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Moving student to Step 2 – Placement Request</p>
               </div>
               <button onClick={() => setShowGenRequestModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -1331,53 +1558,231 @@ export default function WorkflowStep1Students({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-2">Request Priority <span className="text-rose-500">*</span></label>
-                <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-semibold text-slate-700 mb-2">Request Action &amp; Priority <span className="text-rose-500">*</span></label>
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setGenPriority('Normal')}
-                    className={`py-3 px-4 rounded-xl border flex items-center justify-between transition ${
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
                       genPriority === 'Normal'
                         ? 'bg-blue-50 border-blue-600 text-blue-700 font-bold shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                     }`}
                   >
-                    <span>Normal Priority</span>
-                    <input type="radio" name="priority" checked={genPriority === 'Normal'} onChange={() => {}} className="accent-blue-600" />
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs">Normal</span>
+                      <input type="radio" name="priority" checked={genPriority === 'Normal'} onChange={() => {}} className="accent-blue-600" />
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal mt-1">Normal Priority</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setGenPriority('Urgent')}
-                    className={`py-3 px-4 rounded-xl border flex items-center justify-between transition ${
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
                       genPriority === 'Urgent'
                         ? 'bg-rose-50 border-rose-600 text-rose-700 font-bold shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                     }`}
                   >
-                    <span className="flex items-center space-x-1">
-                      <span>🔥</span>
-                      <span>Urgent Priority</span>
-                    </span>
-                    <input type="radio" name="priority" checked={genPriority === 'Urgent'} onChange={() => {}} className="accent-rose-600" />
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs flex items-center space-x-1">
+                        <span>🔥</span>
+                        <span>Urgent</span>
+                      </span>
+                      <input type="radio" name="priority" checked={genPriority === 'Urgent'} onChange={() => {}} className="accent-rose-600" />
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal mt-1">Urgent Priority</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setGenPriority('Snooze')}
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
+                      genPriority === 'Snooze'
+                        ? 'bg-amber-50 border-amber-600 text-amber-900 font-bold shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs flex items-center space-x-1">
+                        <Moon className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Snooze</span>
+                      </span>
+                      <input type="radio" name="priority" checked={genPriority === 'Snooze'} onChange={() => {}} className="accent-amber-600" />
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal mt-1">Snooze Student</span>
                   </button>
                 </div>
               </div>
+
+              {genPriority === 'Snooze' && (
+                <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl space-y-2.5 animate-in fade-in duration-150">
+                  <div>
+                    <label className="block text-[10px] font-bold text-amber-900 uppercase">Snooze Duration</label>
+                    <select
+                      value={snoozeDuration}
+                      onChange={(e) => setSnoozeDuration(e.target.value)}
+                      className="w-full mt-1 px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none"
+                    >
+                      <option value="7_days">7 Days (1 Week)</option>
+                      <option value="14_days">14 Days (2 Weeks)</option>
+                      <option value="30_days">30 Days (1 Month)</option>
+                      <option value="indefinite">Until Manually Restored</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-amber-900 uppercase">Reason / Note (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Student requested postponement, awaiting documents..."
+                      value={snoozeReason}
+                      onChange={(e) => setSnoozeReason(e.target.value)}
+                      className="w-full mt-1 px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex space-x-3 pt-2">
               <button
                 type="button"
                 onClick={() => setShowGenRequestModal(false)}
-                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition"
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleGenerateRequestSubmit}
-                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+                className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                  genPriority === 'Snooze'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-[#0147A6] hover:bg-blue-700'
+                }`}
               >
-                Generate & Continue
+                {genPriority === 'Snooze' ? (
+                  <>
+                    <Moon className="w-3.5 h-3.5 text-white" />
+                    <span>Snooze Student</span>
+                  </>
+                ) : (
+                  <span>Generate &amp; Continue</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Snoozed Students Modal ────────────────────────────────────── */}
+      {showSnoozedModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                  <Moon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Snoozed Students ({Object.keys(snoozedStudentIds).length})
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Students temporarily deferred from placement requests</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowSnoozedModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search snoozed students..."
+                value={snoozedSearchQuery}
+                onChange={(e) => setSnoozedSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            {/* List */}
+            <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+              {Object.values(snoozedStudentIds).filter(item => 
+                (item.name || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase()) ||
+                (item.studentId || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase())
+              ).map((item) => (
+                <div key={item.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="relative shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-700 text-xs">
+                        {item.name ? item.name[0] : '?'}
+                      </div>
+                      {isStudentOnline(item.id, item.email, item.name) && (
+                        <span title="Online now" className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-bold text-slate-900 text-xs">{item.name}</p>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          {item.durationLabel || 'Snoozed'}
+                        </span>
+                        {isStudentOnline(item.id, item.email, item.name) && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Online
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">{item.studentId} &bull; {item.rto}</p>
+                      {item.reason && (
+                        <p className="text-[10px] text-slate-500 italic mt-0.5">Reason: {item.reason}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button
+                      onClick={() => handleUnsnoozeStudent(item.id, item.name)}
+                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                    >
+                      Restore Student
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleUnsnoozeStudent(item.id, item.name);
+                        setShowSnoozedModal(false);
+                        handleOpenGenRequest(item.rawStudent || item);
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                    >
+                      Generate Request
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {Object.keys(snoozedStudentIds).length === 0 && (
+                <div className="py-12 text-center text-slate-400">
+                  <Moon className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                  <p className="font-semibold text-xs text-slate-600">No Snoozed Students</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">You can snooze a student from the Generate Placement Request modal.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setShowSnoozedModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

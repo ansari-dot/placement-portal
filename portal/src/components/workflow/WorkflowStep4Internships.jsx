@@ -1,5 +1,6 @@
 // src/components/workflow/WorkflowStep4Internships.jsx
 import React, { useState, useMemo } from 'react';
+import { useSelector } from 'react-redux';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
@@ -45,7 +46,7 @@ export default function WorkflowStep4Internships({
   const [toast, setToast] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
-  const [activeStatusTab, setActiveStatusTab] = useState('All Internships');
+  const [activeStatusTab, setActiveStatusTab] = useState('All Placements');
 
   // ─── Edit Internship Modal ────────────────────────────────────────────────
   const [editInternship, setEditInternship] = useState(null);
@@ -95,95 +96,211 @@ export default function WorkflowStep4Internships({
     }
   };
 
-  // ─── ✅ FIX: Process EACH appointment individually ───────────────────────
+  // ─── ✅ FIX: Use BOTH internships prop AND appointments ────────────────────
   const processedInternships = useMemo(() => {
-    console.log('📋 Step4: Processing appointments:', appointments?.length || 0);
+    console.log('📋 Step4: internships prop:', internships?.length || 0, '| appointments:', appointments?.length || 0);
     
-    if (!appointments || appointments.length === 0) {
-      console.log('⚠️ No appointments received in Step4');
-      return [];
+    const result = [];
+    const seenIds = new Set();
+
+    // 1️⃣ First: add all items from the internships prop (directly from backend workflow.internships)
+    if (internships && internships.length > 0) {
+      internships.forEach((item, index) => {
+        const id = item.id || item._id || `int-prop-${index}`;
+        if (!seenIds.has(id)) {
+          seenIds.add(id);
+          result.push({
+            id,
+            intId: item.intId || item.apptId || `INT-${String(index + 1).padStart(6, '0')}`,
+            student: item.student || 'Unknown Student',
+            studentId: item.studentId || '',
+            company: item.company || 'Unknown Company',
+            title: item.title || item.position || 'Internship Placement',
+            rto: item.rto || 'TBD',
+            status: item.status || 'Waiting to Join',
+            start: item.start || item.date || new Date().toISOString().split('T')[0],
+            end: item.end || '',
+            duration: item.duration || '12 weeks',
+            workType: item.workType || item.meetingType || 'In-Person',
+            location: item.location || 'TBD',
+            coordinator: item.coordinator || item.interviewer || '',
+            progress: item.progress || (item.status === 'Completed' ? 100 : 0),
+            tasksCompleted: item.tasksCompleted || '0',
+            trainingCompleted: item.trainingCompleted || '0',
+            reviewsCompleted: item.reviewsCompleted || '0',
+            notes: item.notes || '',
+            _appointmentId: item._appointmentId || item.id || item._id,
+            _appointmentDate: item._appointmentDate || item.date,
+            _appointmentTime: item._appointmentTime || item.time,
+            _appointmentStatus: item._appointmentStatus || item.status,
+            cancellationReason: item.cancellationReason || '',
+            cancellationType: item.cancellationType || '',
+            contactedIndustries: item.contactedIndustries || [],
+          });
+        }
+      });
     }
 
-    // ✅ Create a separate internship for EACH appointment
-    // No duplicate check - show all appointments
-    const result = [];
+    // 2️⃣ Second: derive from appointments (not already added)
+    if (appointments && appointments.length > 0) {
+      appointments.forEach((appt, index) => {
+        // Skip if already represented by internships prop (match by apptId or _id)
+        const apptId = appt.id || appt._id;
+        const alreadyExists = result.some(r => 
+          (r._appointmentId && apptId && String(r._appointmentId) === String(apptId)) ||
+          (r.studentId && appt.studentId && String(r.studentId) === String(appt.studentId) && r.company === appt.company)
+        );
+        if (alreadyExists) return;
 
-    appointments.forEach((appt, index) => {
-      console.log(`📋 Step4: Processing appt ${index + 1}:`, appt);
-      
-      const studentName = appt.student || 'Unknown Student';
-      const studentId = appt.studentId || '';
-      
-      const startDate = appt.date || new Date().toISOString().split('T')[0];
-      const start = new Date(startDate);
-      const end = new Date(start);
-      end.setDate(end.getDate() + (12 * 7));
-      const endDate = end.toISOString().split('T')[0];
+        const studentName = appt.student || 'Unknown Student';
+        const studentId = appt.studentId || '';
+        
+        const startDate = appt.date || new Date().toISOString().split('T')[0];
+        const start = new Date(startDate);
+        const end = new Date(start);
+        end.setDate(end.getDate() + (12 * 7));
+        const endDate = end.toISOString().split('T')[0];
 
-      let status = 'Waiting to Join';
-      let cancellationReason = '';
-      let cancellationType = '';
-      
-      if (appt.status === 'Completed') {
-        status = 'Completed';
-      } else if (appt.status === 'Scheduled') {
-        status = 'Waiting to Join';
-      } else if (appt.status === 'Declined') {
-        status = 'Declined';
-        cancellationReason = appt.cancellationReason || 'Industry rejected the student';
-        cancellationType = appt.cancellationType || 'industry';
-      } else if (appt.status === 'Withdrawn') {
-        status = 'Withdrawn';
-        cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
-        cancellationType = appt.cancellationType || 'withdrawn';
-      } else if (appt.status === 'Cancelled') {
-        status = 'Cancelled';
-        cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
-      } else if (appt.status === 'No Show') {
-        status = 'Declined';
-        cancellationReason = 'Student did not show up for appointment';
-        cancellationType = 'student';
-      }
+        let status = 'Waiting to Join';
+        let cancellationReason = '';
+        let cancellationType = '';
+        
+        if (appt.status === 'Completed') {
+          status = 'Completed';
+        } else if (appt.status === 'Confirmed') {
+          status = 'Active';
+        } else if (appt.status === 'Scheduled') {
+          status = 'Waiting to Join';
+        } else if (appt.status === 'Declined') {
+          status = 'Declined';
+          cancellationReason = appt.cancellationReason || 'Industry rejected the student';
+          cancellationType = appt.cancellationType || 'industry';
+        } else if (appt.status === 'Withdrawn') {
+          status = 'Withdrawn';
+          cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
+          cancellationType = appt.cancellationType || 'withdrawn';
+        } else if (appt.status === 'Cancelled') {
+          status = 'Cancelled';
+          cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
+        } else if (appt.status === 'No Show') {
+          status = 'Declined';
+          cancellationReason = 'Student did not show up for appointment';
+          cancellationType = 'student';
+        }
 
-      // ✅ Generate unique ID for each internship
-      const uniqueId = appt.id || appt._id || `INT-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 4)}`;
-      
-      console.log(`✅ Step4: Creating internship ${index + 1} for ${studentName} → ${status}`);
-
-      result.push({
-        id: uniqueId,
-        intId: appt.apptId || `INT-${String(index + 1).padStart(6, '0')}`,
-        student: studentName,
-        studentId: studentId,
-        company: appt.company || 'Unknown Company',
-        title: appt.position || 'Internship Placement',
-        rto: appt.rto || 'TBD',
-        status: status,
-        start: startDate,
-        end: endDate,
-        duration: '12 weeks',
-        workType: appt.meetingType || 'In-Person',
-        location: appt.location || 'TBD',
-        coordinator: appt.interviewer || '',
-        progress: status === 'Completed' ? 100 : 0,
-        tasksCompleted: '0',
-        trainingCompleted: '0',
-        reviewsCompleted: '0',
-        notes: appt.notes || '',
-        _appointmentId: appt.id || appt._id,
-        _appointmentDate: appt.date,
-        _appointmentTime: appt.time,
-        _appointmentStatus: appt.status,
-        cancellationReason: cancellationReason || appt.cancellationReason || '',
-        cancellationType: cancellationType || appt.cancellationType || '',
-        contactedIndustries: appt.contactedIndustries || [],
-        _index: index, // Keep track of original index
+        const uniqueId = apptId || `INT-appt-${Date.now()}-${index}`;
+        if (!seenIds.has(uniqueId)) {
+          seenIds.add(uniqueId);
+          result.push({
+            id: uniqueId,
+            intId: appt.apptId || `INT-${String(result.length + 1).padStart(6, '0')}`,
+            student: studentName,
+            studentId: studentId,
+            company: appt.company || 'Unknown Company',
+            title: appt.position || 'Internship Placement',
+            rto: appt.rto || 'TBD',
+            status: status,
+            start: startDate,
+            end: endDate,
+            duration: '12 weeks',
+            workType: appt.meetingType || 'In-Person',
+            location: appt.location || 'TBD',
+            coordinator: appt.interviewer || '',
+            progress: status === 'Completed' ? 100 : 0,
+            tasksCompleted: '0',
+            trainingCompleted: '0',
+            reviewsCompleted: '0',
+            notes: appt.notes || '',
+            _appointmentId: apptId,
+            _appointmentDate: appt.date,
+            _appointmentTime: appt.time,
+            _appointmentStatus: appt.status,
+            cancellationReason: cancellationReason || appt.cancellationReason || '',
+            cancellationType: cancellationType || appt.cancellationType || '',
+            contactedIndustries: appt.contactedIndustries || [],
+          });
+        }
       });
-    });
+    }
 
-    console.log('📋 Step4: FINAL internships count:', result.length);
+    console.log('📋 Step4: FINAL processed count:', result.length);
     return result;
-  }, [appointments]);
+  }, [internships, appointments]);
+
+  const authUser = useSelector((state) => state.auth?.user);
+
+  // Helper to check if a student is online (fully dynamic)
+  const isStudentOnline = (studentId, studentName, item) => {
+    if (item?.isOnline === true) return true;
+    if (authUser?.name && studentName && authUser.name.toLowerCase().trim() === studentName.toLowerCase().trim()) {
+      return true;
+    }
+    if (authUser?.email && item?.email && authUser.email.toLowerCase().trim() === item.email.toLowerCase().trim()) {
+      return true;
+    }
+    try {
+      const active = JSON.parse(localStorage.getItem('portal_online_users') || '{}');
+      if (Array.isArray(active)) {
+        if (active.some(u => (u.id && u.id === studentId) || (u.name && studentName && u.name.toLowerCase().trim() === studentName.toLowerCase().trim()))) return true;
+      } else if (typeof active === 'object') {
+        if (studentId && active[studentId]) return true;
+        if (studentName && active[studentName.toLowerCase().trim()]) return true;
+      }
+    } catch (e) {}
+    return false;
+  };
+
+
+  // Helper to check if placement is ending soon or ended
+  const getEndingStatus = (item) => {
+    if (!item) return null;
+    if (item.status === 'Withdrawn' || item.status === 'Declined' || item.status === 'Cancelled') {
+      return null;
+    }
+    if (item.status === 'Completed') {
+      return {
+        type: 'ended',
+        badgeText: 'Placement Ended (Completed)',
+        message: 'Internship concluded successfully.',
+        messageSummary: 'Completed'
+      };
+    }
+
+    if (!item.end) return null;
+    const end = new Date(item.end);
+    if (isNaN(end.getTime())) return null;
+
+    const now = new Date();
+    const diffMs = end.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+      return {
+        type: 'ended',
+        badgeText: 'Placement Period Concluded',
+        message: 'Placement scheduled period has concluded. Final verification required.',
+        messageSummary: 'Ended'
+      };
+    }
+
+    // ✅ Show if within 7 WEEKS (49 days) — fully dynamic, based on real end date
+    if (diffDays <= 49) {
+      const weeksLeft = Math.ceil(diffDays / 7);
+      const label = diffDays <= 7
+        ? `${diffDays} day${diffDays === 1 ? '' : 's'}`
+        : `${weeksLeft} week${weeksLeft === 1 ? '' : 's'}`;
+      return {
+        type: 'ending_soon',
+        diffDays,
+        weeksLeft,
+        badgeText: `Ending in ${label}`,
+        message: `Placement ending in ${label}. Verify student hours, logbooks, and completion assessments.`,
+        messageSummary: `${label} left`
+      };
+    }
+
+    return null;
+  };
 
   // ─── Metrics ──────────────────────────────────────────────────────────────
 
@@ -196,7 +313,11 @@ export default function WorkflowStep4Internships({
     const declined = processedInternships.filter(i => i.status === 'Declined').length;
     const withdrawn = processedInternships.filter(i => i.status === 'Withdrawn').length;
     const cancelled = processedInternships.filter(i => i.status === 'Cancelled').length;
-    return { total, active, waiting, joined, completed, declined, withdrawn, cancelled };
+    const endingSoon = processedInternships.filter(i => {
+      const s = getEndingStatus(i);
+      return s && (s.type === 'ending_soon' || s.type === 'ended');
+    }).length;
+    return { total, active, waiting, joined, completed, declined, withdrawn, cancelled, endingSoon };
   }, [processedInternships]);
 
   // ─── Filtering ────────────────────────────────────────────────────────────
@@ -209,7 +330,10 @@ export default function WorkflowStep4Internships({
       (item.intId || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
     const matchesCompany = companyFilter === 'All' || item.company === companyFilter;
-    const matchesStatusTab = activeStatusTab === 'All Internships' || item.status === activeStatusTab;
+    const matchesStatusTab = 
+      activeStatusTab === 'All Placements' || 
+      activeStatusTab === 'All Internships' || 
+      (activeStatusTab === 'Ending Soon' ? Boolean(getEndingStatus(item)) : item.status === activeStatusTab);
     return matchesSearch && matchesStatus && matchesCompany && matchesStatusTab;
   });
 
@@ -217,7 +341,7 @@ export default function WorkflowStep4Internships({
   const paginatedInternships = filteredInternships.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const hasActiveFilters = searchQuery !== '' || statusFilter !== 'All' || 
-                          companyFilter !== 'All' || activeStatusTab !== 'All Internships';
+                          companyFilter !== 'All' || (activeStatusTab !== 'All Placements' && activeStatusTab !== 'All Internships');
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -312,7 +436,7 @@ export default function WorkflowStep4Internships({
     setSearchQuery('');
     setStatusFilter('All');
     setCompanyFilter('All');
-    setActiveStatusTab('All Internships');
+    setActiveStatusTab('All Placements');
     showToast('Filters cleared');
   };
 
@@ -420,7 +544,7 @@ export default function WorkflowStep4Internships({
             <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search internships..." 
+              placeholder="Search placements..." 
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
@@ -628,9 +752,34 @@ export default function WorkflowStep4Internships({
           </div>
         </div>
 
+        {/* ─── Placement Ending Soon Banner ──────────────────────────────── */}
+        {metrics.endingSoon > 0 && (
+          <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-amber-950">
+                  {metrics.endingSoon} Placement(s) Ending Soon / Concluded
+                </p>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Notice: Placement period is near completion. Verify student hours, logbooks, and completion assessments.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => { setActiveStatusTab('Ending Soon'); setCurrentPage(1); }}
+              className="px-3 py-1.5 bg-amber-200/80 hover:bg-amber-200 text-amber-900 rounded-xl text-[11px] font-bold transition cursor-pointer"
+            >
+              View Placements ({metrics.endingSoon})
+            </button>
+          </div>
+        )}
+
         {/* ─── Status Tabs ────────────────────────────────────────────────── */}
         <div className="flex border-b border-slate-200 text-xs font-semibold text-slate-500 space-x-6 px-1 overflow-x-auto">
-          {['All Internships', 'Active', 'Waiting to Join', 'Joined', 'Declined', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
+          {['All Placements', 'Active', 'Waiting to Join', 'Joined', 'Declined', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
             <button
               key={tab}
               onClick={() => { setActiveStatusTab(tab); setCurrentPage(1); }}
@@ -640,11 +789,25 @@ export default function WorkflowStep4Internships({
             >
               {tab}
               <span className="ml-1.5 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
-                {tab === 'All Internships' ? filteredInternships.length : 
+                {tab === 'All Placements' || tab === 'All Internships' ? filteredInternships.length : 
                   filteredInternships.filter(i => i.status === tab).length}
               </span>
             </button>
           ))}
+          {metrics.endingSoon > 0 && (
+            <button
+              onClick={() => { setActiveStatusTab('Ending Soon'); setCurrentPage(1); }}
+              className={`pb-3 relative transition whitespace-nowrap flex items-center space-x-1.5 ${
+                activeStatusTab === 'Ending Soon' ? 'text-amber-600 font-bold border-b-2 border-amber-600' : 'text-amber-700 hover:text-amber-900'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Ending Soon</span>
+              <span className="ml-1 text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-full font-bold">
+                {metrics.endingSoon}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* ─── Table ────────────────────────────────────────────────────────── */}
@@ -694,12 +857,48 @@ export default function WorkflowStep4Internships({
                       </td>
                       <td className="p-4 font-bold text-slate-900">{item.intId}</td>
                       <td className="py-3 px-2 flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
-                          {item.student ? item.student[0] : '?'}
+                        <div className="relative shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
+                            {item.student ? item.student[0] : '?'}
+                          </div>
+                          {isStudentOnline(item.studentId, item.student) && (
+                            <span 
+                              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse" 
+                              title="Student is online"
+                            />
+                          )}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900">{item.student}</p>
-                          <p className="text-[11px] text-slate-400">{item.studentId}</p>
+                          <div className="flex items-center space-x-1.5">
+                            <p className="font-bold text-slate-900">{item.student}</p>
+                            {isStudentOnline(item.studentId, item.student) && (
+                              <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 inline-flex items-center">
+                                ● Online
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-1.5 flex-wrap">
+                            <p className="text-[11px] text-slate-400">{item.studentId}</p>
+                            {(() => {
+                              const endingInfo = getEndingStatus(item);
+                              if (endingInfo && endingInfo.type === 'ending_soon' && item.status === 'Active') {
+                                return (
+                                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-full inline-flex items-center space-x-0.5" title="Placement ending soon">
+                                    <Clock className="w-2.5 h-2.5 mr-0.5 text-amber-600" />
+                                    <span>Ending Soon</span>
+                                  </span>
+                                );
+                              }
+                              if (endingInfo && endingInfo.type === 'ended') {
+                                return (
+                                  <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded-full">
+                                    Ended
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </div>
                       </td>
                       <td className="p-4 text-slate-600 font-medium flex items-center space-x-1.5 pt-5">
@@ -716,6 +915,17 @@ export default function WorkflowStep4Internships({
                         <div className="flex flex-col">
                           <span className="text-slate-600">{formatDate(item.start)}</span>
                           <span className="text-[9px] text-slate-400">→ {formatDate(item.end)}</span>
+                          {(() => {
+                            const endingInfo = getEndingStatus(item);
+                            if (endingInfo && endingInfo.messageSummary && item.status === 'Active') {
+                              return (
+                                <span className={`text-[9px] font-medium mt-0.5 ${endingInfo.type === 'ending_soon' ? 'text-amber-600 font-semibold' : 'text-slate-400'}`}>
+                                  ⏳ {endingInfo.messageSummary}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       </td>
                       <td className="p-4 w-32">
@@ -832,8 +1042,8 @@ export default function WorkflowStep4Internships({
               onClick={onNext}
               className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-xs font-semibold text-white rounded-xl flex items-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs"
             >
-              <span>Continue to Placement Hours</span>
-              <ChevronRight className="w-4 h-4" />
+              <span>Complete Workflow</span>
+              <CheckCircle2 className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -870,15 +1080,49 @@ export default function WorkflowStep4Internships({
             </div>
 
             <div className="relative mt-4 flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-slate-600 shrink-0 border-2 border-white/20 flex items-center justify-center text-white font-bold text-sm">
-                {selectedInternship.student ? selectedInternship.student[0] : '?'}
+              <div className="relative shrink-0">
+                <div className="w-10 h-10 rounded-full bg-slate-600 shrink-0 border-2 border-white/20 flex items-center justify-center text-white font-bold text-sm">
+                  {selectedInternship.student ? selectedInternship.student[0] : '?'}
+                </div>
+                {isStudentOnline(selectedInternship.studentId, selectedInternship.student) && (
+                  <span 
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-slate-900 animate-pulse" 
+                    title="Student is online now"
+                  />
+                )}
               </div>
               <div>
-                <p className="font-bold text-white text-xs">{selectedInternship.student}</p>
+                <div className="flex items-center space-x-1.5">
+                  <p className="font-bold text-white text-xs">{selectedInternship.student}</p>
+                  {isStudentOnline(selectedInternship.studentId, selectedInternship.student) && (
+                    <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold rounded-full">
+                      ● Online
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-slate-400 font-mono">{selectedInternship.studentId}</p>
                 <p className="text-[10px] text-slate-300">{selectedInternship.rto}</p>
               </div>
             </div>
+
+            {/* Placement Ending Soon Warning in Drawer */}
+            {(() => {
+              const drawerEndingInfo = getEndingStatus(selectedInternship);
+              if (drawerEndingInfo.isEndingSoon && selectedInternship.status === 'Active') {
+                return (
+                  <div className="relative mt-3 p-2.5 bg-amber-500/20 border border-amber-400/40 rounded-xl flex items-start space-x-2">
+                    <Clock className="w-4 h-4 text-amber-300 shrink-0 mt-0.5 animate-pulse" />
+                    <div>
+                      <p className="text-[10px] font-bold text-amber-200 uppercase tracking-wider">Placement Ending Soon</p>
+                      <p className="text-[10px] text-amber-100/90 mt-0.5">
+                        {drawerEndingInfo.messageSummary || 'This placement is approaching its completion date.'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <div className="relative mt-3 flex flex-wrap items-center gap-1.5">
               <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">

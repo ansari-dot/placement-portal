@@ -18,6 +18,13 @@ export const createStudentController = async (req, res) => {
         // Validate request body with Zod
         const validatedData = studentSchema.parse(req.body);
 
+        // Auto-assign the logged-in user as coordinator (if not already set in the form).
+        // This ensures the student is visible to whoever created them in My Students.
+        if (req.user && !validatedData.assignedCoordinator) {
+            validatedData.assignedCoordinator = String(req.user._id);
+            validatedData.assignedCoordinatorName = req.user.name;
+        }
+
         const student = await createStudent(validatedData);
 
         // Trigger Notification
@@ -55,11 +62,21 @@ export const createStudentController = async (req, res) => {
 
 export const getAllStudentsController = async (req, res) => {
     try {
-        // Non-admin users only see students assigned to them
+        // Build the visibility filter based on who is requesting
         let filter = {};
         if (req.user && req.user.role !== 'Administrator') {
-            filter = { assignedCoordinator: req.user._id };
+            // Non-admin users see:
+            //   1) Students explicitly assigned to them
+            //   2) Students with no coordinator assigned (so nobody is locked out)
+            filter = {
+                $or: [
+                    { assignedCoordinator: req.user._id },
+                    { assignedCoordinator: null },
+                    { assignedCoordinator: { $exists: false } },
+                ],
+            };
         } else if (req.query.coordinatorId) {
+            // Admin filtering by a specific coordinator or unassigned
             if (req.query.coordinatorId === 'unassigned') {
                 filter = { $or: [{ assignedCoordinator: null }, { assignedCoordinator: { $exists: false } }] };
             } else {
@@ -191,6 +208,7 @@ export const assignCoordinatorController = async (req, res) => {
         const student = await updateStudent(id, {
             assignedCoordinator: coordinatorId || null,
             assignedCoordinatorName: coordinatorName || '',
+            assignedCoordinatorAt: coordinatorId ? new Date() : null,
         });
 
         if (!student) {

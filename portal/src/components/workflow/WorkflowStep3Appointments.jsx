@@ -1,6 +1,5 @@
-// src/components/workflow/WorkflowStep3Appointments.jsx
 import React, { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
   FileText, CheckCircle2, UserX, Clock, Plus, Filter,
@@ -24,8 +23,9 @@ export default function WorkflowStep3Appointments({
   prefilledAppointmentData = null,
   onClearPrefilledData = null
 }) {
-  // ─── Get pre-selected student from navigation state ─────────────────────
+  // ─── Get pre-selected student from navigation state or URL ──────────────
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const preSelectedStudent = location.state?.preSelectedStudent || null;
 
   // Modal State
@@ -44,7 +44,11 @@ export default function WorkflowStep3Appointments({
 
   // ─── Auto-fill form when pre-selected student data is available ─────────
   useEffect(() => {
-    const data = prefilledAppointmentData || preSelectedStudent || null;
+    const studentIdParam = searchParams.get('studentId');
+    const studentNameParam = searchParams.get('studentName');
+    const urlData = (studentIdParam || studentNameParam) ? { studentId: studentIdParam, studentName: studentNameParam } : null;
+    const data = prefilledAppointmentData || preSelectedStudent || urlData || null;
+
     if (data) {
       console.log('📋 Pre-selected / prefilled appointment data:', data);
 
@@ -61,6 +65,10 @@ export default function WorkflowStep3Appointments({
         setNewApptStudentId(matchedStu.id || matchedStu._id || matchedStu.studentId);
       } else if (data.studentId) {
         setNewApptStudentId(data.studentId);
+      }
+
+      if (urlData) {
+        setShowNewAppointment(true);
       }
 
       if (data.reqId) {
@@ -620,6 +628,34 @@ export default function WorkflowStep3Appointments({
       } catch (err) {
         console.error('Failed to cancel appointment:', err);
         showToast('Failed to cancel appointment: ' + (err.message || 'Unknown error'));
+      }
+    }
+  };
+
+  // Handle Quick Direct Confirm Appointment -> Updates appointment & moves student to Step 4 Placements
+  const handleConfirmAppointmentDirect = async () => {
+    if (!selectedAppointment) return;
+    const dbId = selectedAppointment.id || selectedAppointment._id;
+    if (onUpdateAppointment && dbId) {
+      try {
+        const payload = {
+          status: 'Completed',
+          appointmentOutcome: 'successful',
+          confirmedAt: new Date().toISOString(),
+          notes: selectedAppointment.notes || 'Appointment confirmed and student placed successfully.'
+        };
+        await onUpdateAppointment(dbId, payload);
+        setSelectedAppointment(prev => ({
+          ...prev,
+          status: 'Completed',
+          appointmentOutcome: 'successful',
+          cancellationReason: '',
+          cancellationType: '',
+        }));
+        showToast('Appointment Confirmed! Placement updated in Step 4 Placements');
+      } catch (err) {
+        console.error('Failed to confirm appointment:', err);
+        showToast('Failed to confirm appointment');
       }
     }
   };
@@ -1365,7 +1401,7 @@ export default function WorkflowStep3Appointments({
               onClick={onNext}
               className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-xs font-semibold text-white rounded-xl flex items-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs"
             >
-              <span>Continue to Internships</span>
+              <span>Continue to Placements</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           )}
@@ -1565,6 +1601,16 @@ export default function WorkflowStep3Appointments({
                     <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
                     <span>Quick Status Actions</span>
                   </h5>
+
+                  {/* Confirm Appointment & Move to Placement Button */}
+                  <button
+                    onClick={handleConfirmAppointmentDirect}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer shadow-xs text-xs"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-white" />
+                    <span>Confirm Appointment &amp; Placement</span>
+                  </button>
+
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => {
@@ -1588,10 +1634,10 @@ export default function WorkflowStep3Appointments({
 
                   <button
                     onClick={handleOpenOutcomeModal}
-                    className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
+                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer text-[11px]"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Set Appointment Outcome</span>
+                    <Check className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Set Outcome Details</span>
                   </button>
                 </div>
               </>
@@ -1867,7 +1913,7 @@ export default function WorkflowStep3Appointments({
               {cancelType === 'industry' && (
                 <div className="bg-rose-50 p-3 rounded-xl border border-rose-200">
                   <p className="text-[10px] text-rose-800 font-medium">
-                    ⚠️ Industry rejected the student. This will be marked as "Declined" in internships.
+                    ⚠️ Industry rejected the student. This will be marked as "Declined" in placements.
                   </p>
                 </div>
               )}
@@ -1875,7 +1921,7 @@ export default function WorkflowStep3Appointments({
               {cancelType === 'student' && (
                 <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
                   <p className="text-[10px] text-blue-800 font-medium">
-                    ℹ️ Student requested cancellation. This will be marked as "Declined" in internships.
+                    ℹ️ Student requested cancellation. This will be marked as "Declined" in placements.
                   </p>
                 </div>
               )}

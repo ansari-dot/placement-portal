@@ -1,4 +1,4 @@
-export const defaultStudents = [];
+﻿export const defaultStudents = [];
 
 export const emptyFilters = {
   firstName: '',
@@ -43,5 +43,5 @@ export const allColumns = [
   { key: 'location', label: 'City / Suburb' },
   { key: 'status', label: 'Status' },
   { key: 'source', label: 'Source' },
-  { key: 'created', label: 'Created At' },
+  { key: 'assignedAt', label: 'Assigned At' },
 ];

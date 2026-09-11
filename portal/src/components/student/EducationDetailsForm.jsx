@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  GraduationCap, ChevronDown, Info, X, Upload, Plus, Trash2, ShieldCheck
+  GraduationCap, ChevronDown, Info, X, Upload, Plus, Trash2, ShieldCheck, FileText, CheckCircle2
 } from 'lucide-react';
 import { fetchRtos } from '../../api/rtoApi';
 
@@ -27,7 +27,38 @@ const courses = [
   'Individual Support',
   'Early Childhood Education and Care',
   'Hospitality Management',
+  'Community Services',
+  'Allied Health System',
+  'Construction',
   'Other',
+];
+
+// Structured compliance / identity document types
+// Police Check and COVID-19 Check kept prominent with original badges
+const STRUCTURED_DOCS = [
+  {
+    field: 'policeCheckDoc',
+    label: 'Police Check Document',
+    badge: 'Most Preferable',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    highlight: true,
+    hint: 'National Police Certificate (Most preferred for placement)'
+  },
+  {
+    field: 'covidCheckDoc',
+    label: 'COVID-19 Check Document',
+    badge: 'Optional',
+    badgeClass: 'bg-slate-100 text-slate-500 border-slate-200',
+    hint: 'Vaccination Certificate / Test Report (PDF/JPG/PNG)'
+  },
+  { field: 'ndisDoc',            label: 'NDIS',                         hint: 'NDIS Screening Check' },
+  { field: 'resumeDoc',          label: 'CB / Resume',                  hint: 'Current resume or CV' },
+  { field: 'wwccDoc',            label: 'WWCC',                         hint: 'Working With Children Check' },
+  { field: 'passportDoc',        label: 'Passport',                     hint: 'Valid passport copy' },
+  { field: 'drivingLicenceDoc',  label: 'Driving Licence',              hint: 'Current driving licence' },
+  { field: 'infectionControlDoc',label: 'Infection Control Certificate',hint: 'Infection control training certificate' },
+  { field: 'handHygieneDoc',     label: 'Hand Hygiene',                 hint: 'Hand hygiene training certificate' },
+  { field: 'cbrDoc',             label: 'CBR',                          hint: 'Criminal Background Record / Police Check' },
 ];
 
 const inputClass = (hasError) =>
@@ -52,6 +83,17 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
       formData.studentSource !== 'Social Media'
     )
   );
+
+  // 'auto' = system generates student ID automatically
+  // 'manual' = user types student ID manually
+  const [isManualId, setIsManualId] = useState(Boolean(formData.studentId));
+
+  const toggleIdMode = (manual) => {
+    setIsManualId(manual);
+    if (!manual) {
+      updateField('studentId', '');
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -103,6 +145,13 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
   };
 
   const isOtherCollege = (formData.institute || formData.assignedRto) === 'Other';
+
+  // Helper: get current file value for a doc field (may be File object or string filename)
+  const getDocFileName = (val) => {
+    if (!val) return null;
+    if (val instanceof File) return val.name;
+    return val;
+  };
 
   return (
     <div className="w-full font-sans">
@@ -179,17 +228,67 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
 
 
 
-          {/* Row 2: Enrollment ID, College / RTO, Student Source (only when College/RTO = Other) */}
+          {/* Row 2: Student ID (Auto/Manual), College Enrollment ID, College / RTO */}
           <div className="grid grid-cols-3 gap-5">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Enrollment / Student ID</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-700">Student ID</label>
+                <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => toggleIdMode(false)}
+                    className={`px-2 py-0.5 rounded-md transition ${
+                      !isManualId ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleIdMode(true)}
+                    className={`px-2 py-0.5 rounded-md transition ${
+                      isManualId ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Manual
+                  </button>
+                </div>
+              </div>
+
+              {isManualId ? (
+                <input
+                  type="text"
+                  placeholder="Enter Student ID (e.g. STU11, CE15)"
+                  value={formData.studentId || ''}
+                  onChange={(e) => updateField('studentId', e.target.value)}
+                  className={inputClass()}
+                  autoFocus
+                />
+              ) : (
+                <input
+                  type="text"
+                  value="Auto-generated on Save (e.g. STU11)"
+                  disabled
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-400 font-medium cursor-not-allowed italic"
+                />
+              )}
+              <p className="text-[10px] text-slate-400 mt-1">
+                {isManualId
+                  ? "Manual ID set — system will not auto-generate"
+                  : "Auto mode active — sequential ID generated automatically"}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">College Enrollment ID (optional)</label>
               <input
                 type="text"
-                placeholder="Enter enrollment or student ID"
-                value={formData.enrollmentId}
+                placeholder="Enter college enrollment ID"
+                value={formData.enrollmentId || ''}
                 onChange={(e) => updateField('enrollmentId', e.target.value)}
                 className={inputClass()}
               />
+              <p className="text-[10px] text-slate-400 mt-1">College/RTO issued internal reference number</p>
             </div>
 
             <div>
@@ -279,58 +378,87 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
             )}
           </div>
 
-          {/* Section: Compliance & Verification Documents */}
+          {/* ===== Section: Structured Compliance & Identity Documents ===== */}
           <div className="pt-2 border-t border-slate-100 space-y-4">
             <div className="flex items-center space-x-2">
               <ShieldCheck size={16} className="text-blue-600" />
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Compliance & Check Documents</h4>
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Documents</h4>
+              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-semibold">All Optional</span>
             </div>
+            <p className="text-[11px] text-slate-400 -mt-2">Upload any relevant compliance, identity, or certification documents. All fields are optional and can be uploaded later from the student profile.</p>
 
-            <div className="grid grid-cols-2 gap-5">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">Police Check Document</label>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
-                    Most Preferable
-                  </span>
-                </div>
-                <label className="w-full px-3.5 py-2.5 bg-white border border-dashed border-amber-300 hover:border-amber-500 rounded-xl flex items-center space-x-2 cursor-pointer transition">
-                  <Upload size={16} className="text-amber-600 shrink-0" />
-                  <span className="text-xs font-semibold text-amber-700 truncate">
-                    {formData.policeCheckDoc ? (formData.policeCheckDoc.name || formData.policeCheckDoc) : 'Upload Police Check'}
-                  </span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => updateField('policeCheckDoc', e.target.files[0])}
-                  />
-                </label>
-                <p className="text-[10px] text-amber-700/80 font-medium mt-1">National Police Certificate (Most preferred for placement)</p>
-              </div>
+            <div className="grid grid-cols-2 gap-4">
+              {STRUCTURED_DOCS.map(({ field, label, hint, badge, badgeClass, highlight }) => {
+                const currentFile = formData[field];
+                const fileName = getDocFileName(currentFile);
+                const hasFile = Boolean(fileName);
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">COVID-19 Check Document (optional)</label>
-                <label className="w-full px-3.5 py-2.5 bg-white border border-dashed border-slate-300 rounded-xl flex items-center space-x-2 cursor-pointer hover:border-blue-600 transition">
-                  <Upload size={16} className="text-blue-600 shrink-0" />
-                  <span className="text-xs font-semibold text-blue-600 truncate">
-                    {formData.covidCheckDoc ? (formData.covidCheckDoc.name || formData.covidCheckDoc) : 'Upload COVID-19 Report'}
-                  </span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => updateField('covidCheckDoc', e.target.files[0])}
-                  />
-                </label>
-                <p className="text-[10px] text-slate-400 mt-1">Vaccination Certificate / Test Report (PDF/JPG/PNG)</p>
-              </div>
+                return (
+                  <div key={field}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-700">{label}</label>
+                      <div className="flex items-center space-x-1.5">
+                        {badge && !hasFile && (
+                          <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${badgeClass}`}>
+                            {badge}
+                          </span>
+                        )}
+                        {hasFile && (
+                          <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                            <CheckCircle2 size={10} />
+                            <span>Uploaded</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <label className={`w-full px-3.5 py-2.5 bg-white border border-dashed rounded-xl flex items-center space-x-2 cursor-pointer transition ${
+                      hasFile
+                        ? 'border-emerald-300 hover:border-emerald-500'
+                        : highlight
+                        ? 'border-amber-300 hover:border-amber-500'
+                        : 'border-slate-300 hover:border-blue-600'
+                    }`}>
+                      {hasFile ? (
+                        <FileText size={15} className="text-emerald-600 shrink-0" />
+                      ) : highlight ? (
+                        <Upload size={15} className="text-amber-600 shrink-0" />
+                      ) : (
+                        <Upload size={15} className="text-blue-600 shrink-0" />
+                      )}
+                      <span className={`text-xs font-semibold truncate ${
+                        hasFile ? 'text-emerald-700' : highlight ? 'text-amber-700' : 'text-blue-600'
+                      }`}>
+                        {hasFile ? fileName : `Upload ${label}`}
+                      </span>
+                      {hasFile && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); updateField(field, null); }}
+                          className="ml-auto text-slate-400 hover:text-rose-500 transition shrink-0"
+                          title="Remove file"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        onChange={(e) => updateField(field, e.target.files[0] || null)}
+                      />
+                    </label>
+                    <p className={`text-[10px] mt-1 ${highlight ? 'text-amber-700/90 font-medium' : 'text-slate-400'}`}>{hint}</p>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Dynamic Custom Document Addition Bar */}
-            <div className="space-y-3 pt-2">
+            <div className="space-y-3 pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between">
                 <div>
-                  <h5 className="text-xs font-bold text-slate-800">Additional Custom Documents / Requirements</h5>
-                  <p className="text-[10px] text-slate-400">Add any extra documents manually with a custom title (e.g. NDIS Screening, First Aid, Flu Vaccine).</p>
+                  <h5 className="text-xs font-bold text-slate-800">Additional Custom Documents</h5>
+                  <p className="text-[10px] text-slate-400">Add any extra documents with a custom title (e.g. First Aid, Flu Vaccine).</p>
                 </div>
                 <button
                   type="button"

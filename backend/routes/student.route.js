@@ -12,7 +12,7 @@ import { protectRoute, softAuth } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-router.post("/", createStudentController);
+router.post("/", softAuth, createStudentController);
 router.get("/", softAuth, getAllStudentsController);
 router.get("/all", getAllStudentsUnfilteredController);
 router.get("/:id", getStudentByIdController);

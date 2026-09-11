@@ -66,7 +66,7 @@ const studentSchema = new mongoose.Schema(
       required: [true, "Phone number is required"],
       trim: true,
       match: [
-        /^[+]?[\d\s-]{10,15}$/,
+        /^[+]?[\d\s\-]{7,20}$/,
         "Please provide a valid phone number",
       ],
     },
@@ -238,6 +238,17 @@ const studentSchema = new mongoose.Schema(
         file: { type: String, default: "" },
       }
     ],
+
+    // ===== Structured Compliance / Identity Documents =====
+    ndisDoc: { type: String, default: null },              // NDIS Screening Check
+    resumeDoc: { type: String, default: null },            // CB / Resume
+    wwccDoc: { type: String, default: null },              // Working With Children Check
+    passportDoc: { type: String, default: null },          // Passport
+    drivingLicenceDoc: { type: String, default: null },    // Driving Licence
+    infectionControlDoc: { type: String, default: null },  // Infection Control Certificate
+    handHygieneDoc: { type: String, default: null },       // Hand Hygiene Certificate
+    cbrDoc: { type: String, default: null },               // CBR (Criminal Background Record / Police Check)
+
     preferredLocation: {
       type: String,
       trim: true,
@@ -370,6 +381,10 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    assignedCoordinatorAt: {
+      type: Date,
+      default: null,
+    },
 
     // ===== System / Display Fields =====
     studentId: {
@@ -391,6 +406,30 @@ const studentSchema = new mongoose.Schema(
       default: "Active",
     },
     created: {
+      type: String,
+      default: "",
+    },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    lastActive: {
+      type: Date,
+      default: Date.now,
+    },
+    snoozed: {
+      type: Boolean,
+      default: false,
+    },
+    snoozedAt: {
+      type: Date,
+      default: null,
+    },
+    snoozeUntil: {
+      type: Date,
+      default: null,
+    },
+    snoozeReason: {
       type: String,
       default: "",
     },

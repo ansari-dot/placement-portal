@@ -36,7 +36,13 @@ const mapBackendStudent = (s) => ({
   created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
   assignedCoordinator: s.assignedCoordinator || null,
   assignedCoordinatorName: s.assignedCoordinatorName || '',
+  assignedAt: s.assignedCoordinatorAt
+    ? new Date(s.assignedCoordinatorAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+    : (s.assignedAt || '—'),
+  isOnline: s.isOnline === true,
 });
+
+
 
 export default function AllStudentsTable() {
   const navigate = useNavigate();
@@ -204,6 +210,12 @@ export default function AllStudentsTable() {
       navigate(`/students/${dbId}/edit`);
     } else if (action === 'assignCoordinator') {
       setAssignTarget(student);
+    } else if (action === 'generateRequest') {
+      navigate(`/workflow?step=1`);
+    } else if (action === 'contactIndustry') {
+      navigate(`/workflow?step=2&studentId=${encodeURIComponent(student.id || '')}&studentName=${encodeURIComponent(student.name || '')}&openContact=true`);
+    } else if (action === 'createAppointment') {
+      navigate(`/workflow?step=3&studentId=${encodeURIComponent(student.id || '')}&studentName=${encodeURIComponent(student.name || '')}`);
     } else if (action === 'delete') {
       if (student.dbId) {
         try {
