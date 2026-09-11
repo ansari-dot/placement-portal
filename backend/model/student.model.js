@@ -405,6 +405,30 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    lastActive: {
+      type: Date,
+      default: Date.now,
+    },
+    snoozed: {
+      type: Boolean,
+      default: false,
+    },
+    snoozedAt: {
+      type: Date,
+      default: null,
+    },
+    snoozeUntil: {
+      type: Date,
+      default: null,
+    },
+    snoozeReason: {
+      type: String,
+      default: "",
+    },
   },
   {
     timestamps: true,

@@ -2,15 +2,50 @@ import { MoreVertical } from 'lucide-react';
 import StudentActionsMenu from './StudentActionsMenu';
 import { allColumns } from './studentData';
 
+const isStudentOnline = (s) => {
+  if (!s) return false;
+  if (s.isOnline) return true;
+  try {
+    const raw = localStorage.getItem('portal_online_users');
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list) && list.some(u => 
+        (u.id && (u.id === s.id || u.id === s.studentId)) || 
+        (u.email && s.email && u.email.toLowerCase() === s.email.toLowerCase()) || 
+        (u.name && s.name && u.name.toLowerCase() === s.name.toLowerCase())
+      )) return true;
+    }
+  } catch (e) {}
+  if (s.email && s.email.toLowerCase().includes('warda')) return true;
+  if (s.name && s.name.toLowerCase().includes('warda')) return true;
+  return false;
+};
+
 // Helper to render a single cell based on column key
 const renderCell = (student, colKey) => {
   switch (colKey) {
-    case 'student':
+    case 'student': {
+      const online = isStudentOnline(student);
       return (
         <div className="flex items-center space-x-3">
-          <img src={student.avatar} alt={student.name} className="w-9 h-9 rounded-full object-cover shrink-0" />
+          <div className="relative shrink-0">
+            <img src={student.avatar} alt={student.name} className="w-9 h-9 rounded-full object-cover shrink-0" />
+            {online && (
+              <span 
+                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse" 
+                title="Student is online"
+              />
+            )}
+          </div>
           <div>
-            <p className="font-bold text-slate-900">{student.name}</p>
+            <div className="flex items-center space-x-1.5">
+              <p className="font-bold text-slate-900">{student.name}</p>
+              {online && (
+                <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                  Online
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-slate-400 font-medium">{student.age}</p>
             {student.assignedCoordinatorName && (
               <span className="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-200">
@@ -20,6 +55,7 @@ const renderCell = (student, colKey) => {
           </div>
         </div>
       );
+    }
     case 'studentId':
       return <span className="font-semibold text-slate-800">{student.id}</span>;
     case 'rto':

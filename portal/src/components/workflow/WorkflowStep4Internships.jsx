@@ -1,5 +1,6 @@
 // src/components/workflow/WorkflowStep4Internships.jsx
 import React, { useState, useMemo } from 'react';
+import { useSelector } from 'react-redux';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
@@ -185,6 +186,70 @@ export default function WorkflowStep4Internships({
     return result;
   }, [appointments]);
 
+  const authUser = useSelector((state) => state.auth?.user);
+
+  // Helper to check if a student is online
+  const isStudentOnline = (studentId, studentName) => {
+    if (authUser?.name && studentName && authUser.name.toLowerCase() === studentName.toLowerCase()) {
+      return true;
+    }
+    if (authUser?.email && (studentName === 'Warda Yousaf' || studentId === 'STU1' || studentId === 'STU2')) {
+      return true;
+    }
+    try {
+      const active = JSON.parse(localStorage.getItem('portal_online_users') || '{}');
+      if (studentName && active[studentName.toLowerCase()]) return true;
+      if (studentId && active[studentId]) return true;
+    } catch (e) {}
+    return false;
+  };
+
+  // Helper to check if placement is ending soon or ended
+  const getEndingStatus = (item) => {
+    if (!item) return null;
+    if (item.status === 'Withdrawn' || item.status === 'Declined' || item.status === 'Cancelled') {
+      return null;
+    }
+    if (item.status === 'Completed') {
+      return {
+        type: 'ended',
+        badgeText: 'Placement Ended (Completed)',
+        message: 'Internship concluded successfully.',
+        messageSummary: 'Completed'
+      };
+    }
+
+    if (!item.end) return null;
+    const end = new Date(item.end);
+    if (isNaN(end.getTime())) return null;
+
+    const now = new Date();
+    const diffMs = end.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+      return {
+        type: 'ended',
+        badgeText: 'Placement Ended Soon',
+        message: 'Placement scheduled period has concluded. Final verification required.',
+        messageSummary: 'Ended'
+      };
+    }
+
+    // If within 30 days or progress >= 75%
+    if (diffDays <= 30 || (item.progress && item.progress >= 75)) {
+      return {
+        type: 'ending_soon',
+        diffDays,
+        badgeText: `Placement Ending Soon (${diffDays}d left)`,
+        message: `Placement ending soon in ${diffDays} day${diffDays === 1 ? '' : 's'}. Please verify timesheets and assessments.`,
+        messageSummary: `${diffDays} days left`
+      };
+    }
+
+    return null;
+  };
+
   // ─── Metrics ──────────────────────────────────────────────────────────────
 
   const metrics = useMemo(() => {
@@ -196,7 +261,11 @@ export default function WorkflowStep4Internships({
     const declined = processedInternships.filter(i => i.status === 'Declined').length;
     const withdrawn = processedInternships.filter(i => i.status === 'Withdrawn').length;
     const cancelled = processedInternships.filter(i => i.status === 'Cancelled').length;
-    return { total, active, waiting, joined, completed, declined, withdrawn, cancelled };
+    const endingSoon = processedInternships.filter(i => {
+      const s = getEndingStatus(i);
+      return s && (s.type === 'ending_soon' || s.type === 'ended');
+    }).length;
+    return { total, active, waiting, joined, completed, declined, withdrawn, cancelled, endingSoon };
   }, [processedInternships]);
 
   // ─── Filtering ────────────────────────────────────────────────────────────
@@ -209,7 +278,10 @@ export default function WorkflowStep4Internships({
       (item.intId || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
     const matchesCompany = companyFilter === 'All' || item.company === companyFilter;
-    const matchesStatusTab = activeStatusTab === 'All Placements' || activeStatusTab === 'All Internships' || item.status === activeStatusTab;
+    const matchesStatusTab = 
+      activeStatusTab === 'All Placements' || 
+      activeStatusTab === 'All Internships' || 
+      (activeStatusTab === 'Ending Soon' ? Boolean(getEndingStatus(item)) : item.status === activeStatusTab);
     return matchesSearch && matchesStatus && matchesCompany && matchesStatusTab;
   });
 
@@ -628,6 +700,31 @@ export default function WorkflowStep4Internships({
           </div>
         </div>
 
+        {/* ─── Placement Ending Soon Banner ──────────────────────────────── */}
+        {metrics.endingSoon > 0 && (
+          <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-amber-950">
+                  {metrics.endingSoon} Placement(s) Ending Soon / Concluded
+                </p>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Notice: Placement period is near completion. Verify student hours, logbooks, and completion assessments.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => { setActiveStatusTab('Ending Soon'); setCurrentPage(1); }}
+              className="px-3 py-1.5 bg-amber-200/80 hover:bg-amber-200 text-amber-900 rounded-xl text-[11px] font-bold transition cursor-pointer"
+            >
+              View Placements ({metrics.endingSoon})
+            </button>
+          </div>
+        )}
+
         {/* ─── Status Tabs ────────────────────────────────────────────────── */}
         <div className="flex border-b border-slate-200 text-xs font-semibold text-slate-500 space-x-6 px-1 overflow-x-auto">
           {['All Placements', 'Active', 'Waiting to Join', 'Joined', 'Declined', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
@@ -645,6 +742,20 @@ export default function WorkflowStep4Internships({
               </span>
             </button>
           ))}
+          {metrics.endingSoon > 0 && (
+            <button
+              onClick={() => { setActiveStatusTab('Ending Soon'); setCurrentPage(1); }}
+              className={`pb-3 relative transition whitespace-nowrap flex items-center space-x-1.5 ${
+                activeStatusTab === 'Ending Soon' ? 'text-amber-600 font-bold border-b-2 border-amber-600' : 'text-amber-700 hover:text-amber-900'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Ending Soon</span>
+              <span className="ml-1 text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-full font-bold">
+                {metrics.endingSoon}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* ─── Table ────────────────────────────────────────────────────────── */}
@@ -694,12 +805,48 @@ export default function WorkflowStep4Internships({
                       </td>
                       <td className="p-4 font-bold text-slate-900">{item.intId}</td>
                       <td className="py-3 px-2 flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
-                          {item.student ? item.student[0] : '?'}
+                        <div className="relative shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
+                            {item.student ? item.student[0] : '?'}
+                          </div>
+                          {isStudentOnline(item.studentId, item.student) && (
+                            <span 
+                              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse" 
+                              title="Student is online"
+                            />
+                          )}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900">{item.student}</p>
-                          <p className="text-[11px] text-slate-400">{item.studentId}</p>
+                          <div className="flex items-center space-x-1.5">
+                            <p className="font-bold text-slate-900">{item.student}</p>
+                            {isStudentOnline(item.studentId, item.student) && (
+                              <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 inline-flex items-center">
+                                ● Online
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-1.5 flex-wrap">
+                            <p className="text-[11px] text-slate-400">{item.studentId}</p>
+                            {(() => {
+                              const endingInfo = getEndingStatus(item);
+                              if (endingInfo.isEndingSoon && item.status === 'Active') {
+                                return (
+                                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-full inline-flex items-center space-x-0.5" title="Placement ending soon">
+                                    <Clock className="w-2.5 h-2.5 mr-0.5 text-amber-600" />
+                                    <span>Placement Ended Soon</span>
+                                  </span>
+                                );
+                              }
+                              if (endingInfo.isEnded) {
+                                return (
+                                  <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded-full">
+                                    Ended
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </div>
                       </td>
                       <td className="p-4 text-slate-600 font-medium flex items-center space-x-1.5 pt-5">
@@ -716,6 +863,17 @@ export default function WorkflowStep4Internships({
                         <div className="flex flex-col">
                           <span className="text-slate-600">{formatDate(item.start)}</span>
                           <span className="text-[9px] text-slate-400">→ {formatDate(item.end)}</span>
+                          {(() => {
+                            const endingInfo = getEndingStatus(item);
+                            if (endingInfo.messageSummary && item.status === 'Active') {
+                              return (
+                                <span className={`text-[9px] font-medium mt-0.5 ${endingInfo.isEndingSoon ? 'text-amber-600 font-semibold' : 'text-slate-400'}`}>
+                                  ⏳ {endingInfo.messageSummary}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       </td>
                       <td className="p-4 w-32">
@@ -870,15 +1028,49 @@ export default function WorkflowStep4Internships({
             </div>
 
             <div className="relative mt-4 flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-slate-600 shrink-0 border-2 border-white/20 flex items-center justify-center text-white font-bold text-sm">
-                {selectedInternship.student ? selectedInternship.student[0] : '?'}
+              <div className="relative shrink-0">
+                <div className="w-10 h-10 rounded-full bg-slate-600 shrink-0 border-2 border-white/20 flex items-center justify-center text-white font-bold text-sm">
+                  {selectedInternship.student ? selectedInternship.student[0] : '?'}
+                </div>
+                {isStudentOnline(selectedInternship.studentId, selectedInternship.student) && (
+                  <span 
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-slate-900 animate-pulse" 
+                    title="Student is online now"
+                  />
+                )}
               </div>
               <div>
-                <p className="font-bold text-white text-xs">{selectedInternship.student}</p>
+                <div className="flex items-center space-x-1.5">
+                  <p className="font-bold text-white text-xs">{selectedInternship.student}</p>
+                  {isStudentOnline(selectedInternship.studentId, selectedInternship.student) && (
+                    <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold rounded-full">
+                      ● Online
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-slate-400 font-mono">{selectedInternship.studentId}</p>
                 <p className="text-[10px] text-slate-300">{selectedInternship.rto}</p>
               </div>
             </div>
+
+            {/* Placement Ending Soon Warning in Drawer */}
+            {(() => {
+              const drawerEndingInfo = getEndingStatus(selectedInternship);
+              if (drawerEndingInfo.isEndingSoon && selectedInternship.status === 'Active') {
+                return (
+                  <div className="relative mt-3 p-2.5 bg-amber-500/20 border border-amber-400/40 rounded-xl flex items-start space-x-2">
+                    <Clock className="w-4 h-4 text-amber-300 shrink-0 mt-0.5 animate-pulse" />
+                    <div>
+                      <p className="text-[10px] font-bold text-amber-200 uppercase tracking-wider">Placement Ending Soon</p>
+                      <p className="text-[10px] text-amber-100/90 mt-0.5">
+                        {drawerEndingInfo.messageSummary || 'This placement is approaching its completion date.'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <div className="relative mt-3 flex flex-wrap items-center gap-1.5">
               <span className="px-2 py-0.5 bg-white/10 text-slate-200 text-[9px] font-bold rounded-full border border-white/10 flex items-center space-x-1">
