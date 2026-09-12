@@ -18,8 +18,11 @@ import IndustryPage from "./pages/IndustryPage";
 import JobPage from "./pages/JobPage";
 import UsersPage from "./pages/UsersPage";
 
+import { useHeartbeat } from "./hooks/useHeartbeat";
+
 const AppRoutes = () => {
   const dispatch = useDispatch();
+  useHeartbeat();
 
   useEffect(() => {
     dispatch(checkAuthThunk());

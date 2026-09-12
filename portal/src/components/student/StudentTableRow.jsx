@@ -1,6 +1,7 @@
 import { MoreVertical } from 'lucide-react';
 import StudentActionsMenu from './StudentActionsMenu';
 import { allColumns } from './studentData';
+import { formatLastSeen } from '../../utils/presenceUtils';
 
 const isStudentOnline = (s) => {
   if (!s) return false;
@@ -41,23 +42,30 @@ const renderCell = (student, colKey) => {
   switch (colKey) {
     case 'student': {
       const online = isStudentOnline(student);
+      const lastSeenText = formatLastSeen(student.lastSeen || student.lastActive || student.updatedAt, online);
+
       return (
         <div className="flex items-center space-x-3">
           <div className="relative shrink-0">
             <img src={student.avatar} alt={student.name} className="w-9 h-9 rounded-full object-cover shrink-0" />
-            {online && (
-              <span 
-                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse" 
-                title="Student is online"
-              />
-            )}
+            <span 
+              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
+                online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+              }`} 
+              title={online ? 'Online now' : `Last seen: ${lastSeenText}`}
+            />
           </div>
           <div>
             <div className="flex items-center space-x-1.5">
               <p className="font-bold text-slate-900">{student.name}</p>
-              {online && (
-                <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
-                  Online
+              {online ? (
+                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Online</span>
+                </span>
+              ) : (
+                <span className="text-[9px] font-medium text-slate-400">
+                  {lastSeenText}
                 </span>
               )}
             </div>

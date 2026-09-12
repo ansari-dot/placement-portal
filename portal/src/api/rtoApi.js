@@ -15,6 +15,16 @@ export const fetchRtoStats = async () => {
   return response.data;
 };
 
+export const fetchRtoById = async (id) => {
+  const response = await api.get(`/rtos/${id}`);
+  return response.data;
+};
+
+export const updateRto = async (id, rtoData) => {
+  const response = await api.put(`/rtos/${id}`, rtoData);
+  return response.data;
+};
+
 export const deleteRto = async (id) => {
   const response = await api.delete(`/rtos/${id}`);
   return response.data;

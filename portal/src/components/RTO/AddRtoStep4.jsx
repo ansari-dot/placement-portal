@@ -26,12 +26,14 @@ export default function AddRtoStep4({
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Add New RTO</h2>
       </div>
 
+      {/* Stepper Bar (6 Steps) */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between overflow-x-auto gap-4">
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Basic Information</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Basic Info</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Course Pricing</span></div>
         <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Contact Details</span></div>
         <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Address & Location</span></div>
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">4</div><span className="text-xs font-bold text-slate-900">Partnership Details</span></div>
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">5</div><span className="text-xs font-bold text-slate-400">Review & Confirm</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-sm">5</div><span className="text-xs font-bold text-slate-900">Partnership</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">6</div><span className="text-xs font-bold text-slate-400">Review</span></div>
       </div>
 
       <div className="grid grid-cols-12 gap-6 items-start">
@@ -52,19 +54,10 @@ export default function AddRtoStep4({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">RTO Type <span className="text-rose-500">*</span></label>
-              <select 
-                value={formData.partnershipRtoType || ''} 
-                onChange={(e) => handleChange('partnershipRtoType', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700"
-              >
-                <option value="Registered Training Organisation">Registered Training Organisation</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Registration Number <span className="text-rose-500">*</span></label>
               <input 
                 type="text" 
+                placeholder="e.g. RTO-45087"
                 value={formData.registrationNumber || ''} 
                 onChange={(e) => handleChange('registrationNumber', e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
@@ -100,10 +93,11 @@ export default function AddRtoStep4({
             <h4 className="font-bold text-xs text-slate-800">Setup Checklist</h4>
             <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between font-medium text-emerald-600"><span>1. Basic Information</span><span>Completed</span></div>
-              <div className="flex items-center justify-between font-medium text-emerald-600"><span>2. Contact Details</span><span>Completed</span></div>
-              <div className="flex items-center justify-between font-medium text-emerald-600"><span>3. Address & Location</span><span>Completed</span></div>
-              <div className="flex items-center justify-between font-bold text-blue-600 bg-blue-50 p-2 rounded-lg"><span>4. Partnership Details</span><span>In Progress</span></div>
-              <div className="flex items-center justify-between font-medium text-slate-400"><span>5. Review & Confirm</span><span>Pending</span></div>
+              <div className="flex items-center justify-between font-medium text-emerald-600"><span>2. Course Pricing Matrix</span><span>Completed</span></div>
+              <div className="flex items-center justify-between font-medium text-emerald-600"><span>3. Contact Details</span><span>Completed</span></div>
+              <div className="flex items-center justify-between font-medium text-emerald-600"><span>4. Address & Location</span><span>Completed</span></div>
+              <div className="flex items-center justify-between font-bold text-blue-600 bg-blue-50 p-2 rounded-lg"><span>5. Partnership Details</span><span>In Progress</span></div>
+              <div className="flex items-center justify-between font-medium text-slate-400"><span>6. Review & Confirm</span><span>Pending</span></div>
             </div>
           </div>
         </div>

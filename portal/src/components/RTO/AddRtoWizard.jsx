@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import AddRtoStep1 from './AddRtoStep1';
+import AddRtoStep2Pricing from './AddRtoStep2Pricing';
 import AddRtoStep2 from './AddRtoStep2';
 import AddRtoStep3 from './AddRtoStep3';
 import AddRtoStep4 from './AddRtoStep4';
@@ -10,39 +11,50 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [toast, setToast] = useState(null);
   const [formData, setFormData] = useState({
-    // Step 1: Basic Information
+    // Step 1: Basic Information & Media
     rtoName: '',
     rtoCode: '',
-    rtoType: 'Registered Training Organisation',
-    cricosCode: '',
-    abn: '12 345 678 901',
+    paymentCycle: 'Placement',
+    payoutRate: '',
+    coursePricing: [
+      {
+        course: 'Individual Support',
+        qualification: 'Certificate III',
+        pricing: 500,
+        notes: 'Standard placement rate'
+      }
+    ],
+    logo: '',
+    registrationCertificate: '',
+    registrationCertificateName: '',
+    documents: [],
+    abn: '',
     acn: '',
-    website: 'https://www.example.edu.au',
-    yearEstablished: '2015',
-    shortDescription: 'Leading training provider across vocational sectors.',
-    // Step 2: Contact Details
-    contactName: 'Sarah Mitchell',
-    contactEmail: 'sarah.mitchell@aiglobal.edu.au',
-    contactTitle: 'Partnership Manager',
-    contactDepartment: 'Industry Partnerships',
-    contactPhone: '+61 3 9123 4567',
-    contactDirectLine: '+61 3 9123 4568',
-    contactMobile: '+61 412 345 678',
+    website: '',
+    yearEstablished: '',
+    shortDescription: '',
+    // Step 3: Contact Details
+    contactName: '',
+    contactEmail: '',
+    contactTitle: '',
+    contactDepartment: '',
+    contactPhone: '',
+    contactWhatsapp: '',
+    contactMobile: '',
     contactFax: '',
-    // Step 3: Address & Location
-    addressLine1: '12 Collins Street',
-    addressLine2: 'Level 12',
-    suburb: 'Melbourne',
+    // Step 4: Address & Location
+    addressLine1: '',
+    addressLine2: '',
+    suburb: '',
     state: 'Victoria (VIC)',
-    postcode: '3000',
+    postcode: '',
     country: 'Australia',
-    // Step 4: Partnership Details
-    partnershipSince: '15 February 2023',
-    partnershipRtoType: 'Registered Training Organisation',
-    registrationNumber: 'RTO-45087',
+    // Step 5: Partnership Details
+    partnershipSince: new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }),
+    registrationNumber: '',
     issuingAuthority: 'Australian Skills Quality Authority (ASQA)'
   });
-  const totalSteps = 5;
+  const totalSteps = 6;
 
   const showToast = (message) => {
     setToast(message);
@@ -114,15 +126,18 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto }) {
         <AddRtoStep1 {...stepProps} />
       )}
       {currentStep === 2 && (
-        <AddRtoStep2 {...stepProps} />
+        <AddRtoStep2Pricing {...stepProps} />
       )}
       {currentStep === 3 && (
-        <AddRtoStep3 {...stepProps} />
+        <AddRtoStep2 {...stepProps} />
       )}
       {currentStep === 4 && (
-        <AddRtoStep4 {...stepProps} />
+        <AddRtoStep3 {...stepProps} />
       )}
       {currentStep === 5 && (
+        <AddRtoStep4 {...stepProps} />
+      )}
+      {currentStep === 6 && (
         <AddRtoStep5 {...stepProps} onSubmit={submit} />
       )}
     </>

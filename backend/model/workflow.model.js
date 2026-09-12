@@ -182,6 +182,48 @@ const appointmentSchema = new mongoose.Schema(
       trim: true,
       default: "Scheduled",
     },
+    // ── Outcome fields (Set Outcome Details) ──────────────────────────────
+    appointmentOutcome: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    commencementDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    expectedCompletionDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    cancellationType: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    cancellationTypeLabel: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    cancelledAt: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    confirmedAt: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    // ─────────────────────────────────────────────────────────────────────
     notes: {
       type: String,
       trim: true,

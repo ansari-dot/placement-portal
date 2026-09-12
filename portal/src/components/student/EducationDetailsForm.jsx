@@ -58,7 +58,7 @@ const STRUCTURED_DOCS = [
   { field: 'drivingLicenceDoc',  label: 'Driving Licence',              hint: 'Current driving licence' },
   { field: 'infectionControlDoc',label: 'Infection Control Certificate',hint: 'Infection control training certificate' },
   { field: 'handHygieneDoc',     label: 'Hand Hygiene',                 hint: 'Hand hygiene training certificate' },
-  { field: 'cbrDoc',             label: 'CBR',                          hint: 'Criminal Background Record / Police Check' },
+  { field: 'cbrDoc',             label: 'CPR',                          hint: 'Cardiopulmonary Resuscitation (CPR) Certificate' },
 ];
 
 const inputClass = (hasError) =>

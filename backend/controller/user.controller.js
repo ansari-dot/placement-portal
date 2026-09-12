@@ -34,6 +34,9 @@ export const getAllUsersController = async (req, res) => {
           phone: '+61 400 123 456',
           avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
           lastLogin: new Date(),
+          isOnline: true,
+          lastActive: new Date(),
+          lastSeen: new Date(),
         },
         {
           name: 'Sarah Jenkins',
@@ -45,6 +48,9 @@ export const getAllUsersController = async (req, res) => {
           phone: '+61 411 234 567',
           avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=faces',
           lastLogin: new Date(Date.now() - 3600000 * 4),
+          isOnline: true,
+          lastActive: new Date(Date.now() - 1000 * 60 * 2), // Active 2m ago
+          lastSeen: new Date(Date.now() - 1000 * 60 * 2),
         },
         {
           name: 'Michael Chang',
@@ -56,6 +62,9 @@ export const getAllUsersController = async (req, res) => {
           phone: '+61 422 345 678',
           avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
           lastLogin: new Date(Date.now() - 3600000 * 24),
+          isOnline: false,
+          lastActive: new Date(Date.now() - 3600000 * 2),
+          lastSeen: new Date(Date.now() - 3600000 * 2),
         },
         {
           name: 'Emma Watson',
@@ -67,6 +76,9 @@ export const getAllUsersController = async (req, res) => {
           phone: '+61 433 456 789',
           avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=faces',
           lastLogin: new Date(Date.now() - 3600000 * 12),
+          isOnline: false,
+          lastActive: new Date(Date.now() - 3600000 * 12),
+          lastSeen: new Date(Date.now() - 3600000 * 12),
         },
       ];
 
@@ -77,9 +89,22 @@ export const getAllUsersController = async (req, res) => {
       users = await UserModel.find(query).sort({ createdAt: -1 });
     }
 
+    const onlineThresholdMs = 3 * 60 * 1000;
+    const now = Date.now();
+    const processedUsers = users.map(u => {
+      const uObj = u.toObject ? u.toObject() : { ...u };
+      const lastActiveTime = uObj.lastActive ? new Date(uObj.lastActive).getTime() : 0;
+      const isRecentlyActive = (now - lastActiveTime) < onlineThresholdMs;
+      uObj.isOnline = Boolean(uObj.isOnline) && isRecentlyActive;
+      if (!uObj.lastSeen) {
+        uObj.lastSeen = uObj.lastActive || uObj.lastLogin || uObj.updatedAt;
+      }
+      return uObj;
+    });
+
     res.status(200).json({
       success: true,
-      data: users,
+      data: processedUsers,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

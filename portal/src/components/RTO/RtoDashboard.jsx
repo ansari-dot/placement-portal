@@ -5,6 +5,7 @@ import {
   MapPin, Phone, Mail, Globe, CalendarDays, Lock, ExternalLink, X,
   Eye, Edit, Trash2
 } from 'lucide-react';
+import { LivePresenceBadge, formatLastSeen } from '../../utils/presenceUtils';
 
 export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFilterChange, onDeleteRto }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -236,6 +237,8 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                 <th className="p-4">RTO Code</th>
                 <th className="p-4">Location</th>
                 <th className="p-4">Status</th>
+                <th className="p-4">Live Status</th>
+                <th className="p-4">Last Seen</th>
                 <th className="p-4">Students</th>
                 <th className="p-4">Partnership Since</th>
                 <th className="p-4 text-right">Actions</th>
@@ -249,19 +252,47 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                 >
                   <td className="p-4"><input type="checkbox" className="rounded border-slate-300" /></td>
                   <td className="p-4 font-bold text-slate-800 flex items-center space-x-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center">
-                      {(rto.name || 'RTO').substring(0, 2).toUpperCase()}
+                    <div className="relative shrink-0">
+                      {rto.logo ? (
+                        <img 
+                          src={rto.logo} 
+                          alt="logo" 
+                          className="w-7 h-7 rounded-lg object-contain border border-slate-200 bg-white p-0.5" 
+                        />
+                      ) : (
+                        <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center">
+                          {(rto.name || 'RTO').substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${rto.isOnline ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                     </div>
-                    <span>{rto.name}</span>
+                    <div className="min-w-0">
+                      <span className="block truncate">{rto.name}</span>
+                      {rto.paymentCycle && (
+                        <span className="inline-block text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded mt-0.5">
+                          {rto.paymentCycle}
+                        </span>
+                      )}
+                    </div>
                   </td>
-                  <td className="p-4 text-slate-600 font-medium">{rto.code}</td>
-                  <td className="p-4 text-slate-600">{rto.loc}</td>
+                  <td className="p-4 text-slate-600 font-medium">{rto.code || '-'}</td>
+                  <td className="p-4 text-slate-600">{rto.loc || '-'}</td>
                   <td className="p-4">
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${rto.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
                       {rto.status}
                     </span>
                   </td>
-                  <td className="p-4 font-semibold text-slate-700">{rto.students}</td>
+                  <td className="p-4">
+                    <LivePresenceBadge
+                      isOnline={!!rto.isOnline}
+                      lastSeen={rto.lastSeen || rto.lastActive}
+                      size="xs"
+                    />
+                  </td>
+                  <td className="p-4 text-slate-500 text-[11px]">
+                    {formatLastSeen(rto.lastSeen || rto.lastActive, !!rto.isOnline)}
+                  </td>
+                  <td className="p-4 font-semibold text-slate-700">{rto.students || 0}</td>
                   <td className="p-4 text-slate-600">{rto.date}</td>
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
@@ -303,7 +334,7 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
               ))}
               {filteredRtos.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400 text-sm font-medium">
+                  <td colSpan={10} className="p-8 text-center text-slate-400 text-sm font-medium">
                     No RTOs found.
                   </td>
                 </tr>
@@ -336,15 +367,23 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
             {/* Header */}
             <div className="p-6 bg-slate-50 border-b border-slate-200 flex items-start justify-between">
               <div className="flex items-center space-x-4">
-                <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white font-black text-xl flex items-center justify-center shadow-lg">
-                  {(viewingRto.name || 'RTO').substring(0, 2).toUpperCase()}
-                </div>
+                {viewingRto.logo ? (
+                  <img 
+                    src={viewingRto.logo} 
+                    alt="RTO Logo" 
+                    className="w-14 h-14 rounded-2xl object-contain border border-slate-200 bg-white p-1 shadow-md shrink-0" 
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white font-black text-xl flex items-center justify-center shadow-lg shrink-0">
+                    {(viewingRto.name || 'RTO').substring(0, 2).toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <div className="flex items-center space-x-2.5 flex-wrap">
                     <h3 className="font-bold text-slate-800 text-lg">{viewingRto.name}</h3>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${viewingRto.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>{viewingRto.status}</span>
                   </div>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">RTO Code: {viewingRto.code}</p>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">RTO Code: {viewingRto.code || 'N/A'}</p>
                 </div>
               </div>
               <button 
@@ -357,30 +396,150 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
 
             {/* Content Scroll Area */}
             <div className="p-8 overflow-y-auto space-y-6 text-xs text-slate-600">
-              {/* Grid 1: Basic Information */}
+              {/* Grid 1: Basic Information & Payment Cycle */}
               <div className="space-y-3">
-                <h4 className="font-bold text-slate-800 text-xs border-b border-slate-100 pb-1.5 uppercase tracking-wider text-blue-600">Basic Information</h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-600">Basic Information</h4>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                    Cycle: {viewingRto.paymentCycle || 'Placement'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">RTO Name</p>
                     <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.name}</p>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">RTO Code</p>
-                    <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.code}</p>
+                    <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.code || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">RTO Type</p>
-                    <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.rtoType || 'Registered Training Organisation'}</p>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Payment Cycle</p>
+                    <p className="font-bold text-blue-600 text-xs mt-0.5">{viewingRto.paymentCycle || 'Placement'}</p>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">ABN</p>
                     <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.abn || 'Not specified'}</p>
                   </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">ACN</p>
+                    <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.acn || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Website</p>
+                    <p className="font-medium text-blue-600 text-xs mt-0.5 truncate">{viewingRto.website || 'Not specified'}</p>
+                  </div>
                 </div>
+
+                {viewingRto.shortDescription && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Description</p>
+                    <p className="font-normal text-slate-600 text-xs mt-0.5 leading-relaxed">{viewingRto.shortDescription}</p>
+                  </div>
+                )}
               </div>
 
-              {/* Grid 2: Contact Details */}
+              {/* Grid 2: Payout & Course Pricing Matrix */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-emerald-600">Payout & Course Pricing</h4>
+                  {viewingRto.payoutRate ? (
+                    <span className="text-[11px] font-semibold text-slate-600">Base: <strong className="text-emerald-600">${viewingRto.payoutRate} AUD</strong></span>
+                  ) : null}
+                </div>
+
+                {Array.isArray(viewingRto.coursePricing) && viewingRto.coursePricing.length > 0 ? (
+                  <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-200 overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase">
+                          <th className="pb-1.5">Course</th>
+                          <th className="pb-1.5">Certificate Level</th>
+                          <th className="pb-1.5">Pricing</th>
+                          <th className="pb-1.5">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {viewingRto.coursePricing.map((item, idx) => (
+                          <tr key={idx}>
+                            <td className="py-1.5 font-medium text-slate-800">{item.course}</td>
+                            <td className="py-1.5 text-slate-600">{item.qualification}</td>
+                            <td className="py-1.5 font-bold text-emerald-600">${item.pricing} AUD</td>
+                            <td className="py-1.5 text-slate-500 text-[11px]">{item.notes || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-slate-400 italic text-xs">No course-specific pricing registered.</p>
+                )}
+              </div>
+
+              {/* Grid 3: Compliance & Documents */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-slate-800 text-xs border-b border-slate-100 pb-1.5 uppercase tracking-wider text-blue-600">Documents & Compliance Assets</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center space-x-3">
+                    <FileText size={18} className="text-blue-600 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-800 text-xs truncate">Registration Certificate</p>
+                      <p className="text-[10px] text-slate-400 truncate">
+                        {viewingRto.registrationCertificateName || (viewingRto.registrationCertificate ? 'Certificate Attached' : 'Not uploaded')}
+                      </p>
+                    </div>
+                    {viewingRto.registrationCertificate && (
+                      <a 
+                        href={viewingRto.registrationCertificate} 
+                        download={viewingRto.registrationCertificateName || 'registration_certificate'}
+                        className="text-[10px] font-bold text-blue-600 hover:underline shrink-0"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Download
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center space-x-3">
+                    {viewingRto.logo ? (
+                      <img src={viewingRto.logo} alt="Logo" className="w-8 h-8 rounded-lg object-contain border bg-white p-0.5 shrink-0" />
+                    ) : (
+                      <Building2 size={18} className="text-slate-400 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-800 text-xs">RTO Brand Logo</p>
+                      <p className="text-[10px] text-slate-400">{viewingRto.logo ? 'Active & uploaded' : 'None uploaded'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {Array.isArray(viewingRto.documents) && viewingRto.documents.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase">Additional Documents ({viewingRto.documents.length})</p>
+                    {viewingRto.documents.map((doc, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                        <span className="font-medium text-slate-700">{doc.name || `Document ${idx + 1}`}</span>
+                        {doc.file ? (
+                          <a 
+                            href={doc.file} 
+                            download={doc.name || 'document'} 
+                            className="text-[10px] font-bold text-blue-600 hover:underline"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Download ({doc.size || 'File'})
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">{doc.size || 'Attached'}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Grid 4: Contact Details */}
               <div className="space-y-3">
                 <h4 className="font-bold text-slate-800 text-xs border-b border-slate-100 pb-1.5 uppercase tracking-wider text-blue-600">Primary Contact Details</h4>
                 <div className="grid grid-cols-2 gap-4">
@@ -396,14 +555,10 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">Email</p>
                     <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.contactEmail || 'Not specified'}</p>
                   </div>
-                  <div className="col-span-2">
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Website</p>
-                    <p className="font-medium text-blue-600 text-xs mt-0.5">{viewingRto.website || 'Not specified'}</p>
-                  </div>
                 </div>
               </div>
 
-              {/* Grid 3: Location Details */}
+              {/* Grid 5: Location Details */}
               <div className="space-y-3">
                 <h4 className="font-bold text-slate-800 text-xs border-b border-slate-100 pb-1.5 uppercase tracking-wider text-blue-600">Address & Location</h4>
                 <div className="grid grid-cols-2 gap-4">
@@ -422,21 +577,21 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                 </div>
               </div>
 
-              {/* Grid 4: Partnership Overview */}
+              {/* Grid 6: Partnership Overview */}
               <div className="space-y-3">
                 <h4 className="font-bold text-slate-800 text-xs border-b border-slate-100 pb-1.5 uppercase tracking-wider text-blue-600">Partnership Overview</h4>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">Partnership Since</p>
-                    <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.date || 'Not specified'}</p>
+                    <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.date || viewingRto.partnershipSince || 'Not specified'}</p>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-400 text-[10px] uppercase">Students Assigned</p>
                     <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.students || 0}</p>
                   </div>
                   <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Active Internships</p>
-                    <p className="font-medium text-slate-800 text-xs mt-0.5">{Math.floor((viewingRto.students || 0) * 0.3)}</p>
+                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Registration No.</p>
+                    <p className="font-medium text-slate-800 text-xs mt-0.5">{viewingRto.registrationNumber || 'N/A'}</p>
                   </div>
                 </div>
               </div>

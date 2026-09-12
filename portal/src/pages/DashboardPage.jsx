@@ -8,6 +8,7 @@ import InternshipsSummaryCard from '../components/dashboard/InternshipsSummaryCa
 import RequestsChartCard from '../components/dashboard/RequestsChartCard';
 import RecentActivityCard from '../components/dashboard/RecentActivityCard';
 import QuickActions from '../components/dashboard/QuickActions';
+import LivePresenceHub from '../components/dashboard/LivePresenceHub';
 import { Calendar } from 'lucide-react';
 import { fetchWorkflowDashboardData } from '../api/workflowApi';
 
@@ -61,6 +62,9 @@ export default function DashboardPage() {
               <span>Real-Time System Data</span>
             </div>
           </div>
+
+          {/* Real-time Live Presence & Activity Hub */}
+          <LivePresenceHub />
 
           {/* Top 4 KPI Cards */}
           <StatsOverview stats={dashboardData} loading={loading} />

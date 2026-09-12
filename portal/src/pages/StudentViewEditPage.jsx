@@ -247,7 +247,7 @@ export default function StudentViewEditPage() {
     { field: 'drivingLicenceDoc',  label: 'Driving Licence',               hint: 'Current driving licence' },
     { field: 'infectionControlDoc',label: 'Infection Control Certificate', hint: 'Infection control training certificate' },
     { field: 'handHygieneDoc',     label: 'Hand Hygiene',                  hint: 'Hand hygiene training certificate' },
-    { field: 'cbrDoc',             label: 'CBR',                           hint: 'Criminal Background Record / Police Check' },
+    { field: 'cbrDoc',             label: 'CPR',                           hint: 'Cardiopulmonary Resuscitation (CPR) Certificate' },
   ];
 
   const inputClass = "w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 transition";
