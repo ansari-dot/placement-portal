@@ -4,6 +4,7 @@ import {
   ShieldCheck, UserCheck, UserX, Building2, Mail, Phone,
   Calendar, CheckCircle2, Clock, MoreVertical, Edit2
 } from 'lucide-react';
+import { LivePresenceBadge, formatLastSeen } from '../../utils/presenceUtils';
 
 // ==========================================
 // 1. METRICS OVERVIEW CARDS
@@ -254,9 +255,9 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
               <th className="py-4 px-4 font-bold text-slate-600">User Profile & Email</th>
               <th className="py-4 px-4 font-bold text-slate-600">Role</th>
               <th className="py-4 px-4 font-bold text-slate-600">Department</th>
-              <th className="py-4 px-4 font-bold text-slate-600">Phone</th>
+              <th className="py-4 px-4 font-bold text-slate-600">Live Presence</th>
               <th className="py-4 px-4 font-bold text-slate-600">Status</th>
-              <th className="py-4 px-4 font-bold text-slate-600">Last Login</th>
+              <th className="py-4 px-4 font-bold text-slate-600">Last Seen / Active</th>
               <th className="py-4 px-4 text-right font-bold text-slate-600">Actions</th>
             </tr>
           </thead>
@@ -269,17 +270,25 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
                 <tr key={uId || idx} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-4 px-4">
                     <div className="flex items-center gap-3">
-                      {user.avatar ? (
-                        <img
-                          src={user.avatar}
-                          alt={user.name}
-                          className="w-9 h-9 rounded-xl object-cover ring-2 ring-slate-100 shadow-xs"
+                      <div className="relative shrink-0">
+                        {user.avatar ? (
+                          <img
+                            src={user.avatar}
+                            alt={user.name}
+                            className="w-9 h-9 rounded-xl object-cover ring-2 ring-slate-100 shadow-xs"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+                            {initials}
+                          </div>
+                        )}
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
+                            user.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+                          }`}
+                          title={user.isOnline ? 'Online now' : 'Offline'}
                         />
-                      ) : (
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shadow-xs">
-                          {initials}
-                        </div>
-                      )}
+                      </div>
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-900 text-sm">{user.name}</span>
                         <span className="text-slate-500 text-[11px]">{user.email}</span>
@@ -292,14 +301,18 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
                     </span>
                   </td>
                   <td className="py-4 px-4 text-slate-600">{user.department || 'Operations'}</td>
-                  <td className="py-4 px-4 text-slate-600">{user.phone || 'N/A'}</td>
+                  <td className="py-4 px-4">
+                    <LivePresenceBadge isOnline={user.isOnline} lastSeen={user.lastSeen || user.lastActive || user.lastLogin} size="xs" pulse={true} />
+                  </td>
                   <td className="py-4 px-4">
                     <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border inline-block ${getStatusBadge(user.status)}`}>
                       {user.status}
                     </span>
                   </td>
                   <td className="py-4 px-4 text-slate-500 text-[11px]">
-                    {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Recent'}
+                    <span className="font-medium text-slate-700">
+                      {formatLastSeen(user.lastSeen || user.lastActive || user.lastLogin, user.isOnline)}
+                    </span>
                   </td>
                   <td className="py-4 px-4 text-right space-x-1">
                     <button

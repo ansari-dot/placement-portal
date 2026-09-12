@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { logoutThunk } from '../../redux/authSlice';
 import logo1 from '../../assets/logo1.png';
 import { Search, Bell, Settings, ChevronDown, ChevronRight, Menu, LogOut, User, HelpCircle, X, CheckCheck } from 'lucide-react';
@@ -11,6 +11,7 @@ import {
 } from '../../api/notificationApi';
 
 export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
+  const authUser = useSelector((state) => state.auth?.user);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -313,33 +314,59 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
             }}
             aria-label="User profile"
           >
-            <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces"
-              alt="Wasiq Shah"
-              className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-100"
-            />
+            <div className="relative">
+              <img
+                src={authUser?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces"}
+                alt={authUser?.name || "Wasiq Shah"}
+                className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-100"
+              />
+              <span
+                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse"
+                title="Status: Online"
+              />
+            </div>
             <div className="hidden sm:block text-left">
-              <h4 className="text-[11px] font-bold text-slate-900 leading-tight">Wasiq Shah</h4>
-              <span className="text-[10px] text-slate-500 font-medium">Administrator</span>
+              <div className="flex items-center space-x-1.5">
+                <h4 className="text-[11px] font-bold text-slate-900 leading-tight">{authUser?.name || "Wasiq Shah"}</h4>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-[10px] text-slate-500 font-medium">{authUser?.role || "Administrator"}</span>
+                <span className="text-[8px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">Online</span>
+              </div>
             </div>
             <ChevronDown size={14} className={`text-slate-400 hidden sm:block transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Profile Dropdown */}
           {isProfileOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl border border-slate-200 shadow-lg z-50 overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                <h4 className="text-xs font-bold text-slate-900">Wasiq Shah</h4>
-                <span className="text-[10px] text-slate-500 font-medium">Administrator</span>
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 space-y-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-900">{authUser?.name || "Wasiq Shah"}</h4>
+                  <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Online now</span>
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 font-medium">{authUser?.role || "Administrator"} • {authUser?.department || "Administration"}</p>
+                <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Presence Status:</span>
+                  <span className="font-bold text-emerald-600">Active Session</span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Last Seen:</span>
+                  <span className="font-semibold text-slate-600">Active now</span>
+                </div>
               </div>
               <div className="py-1">
                 <Link to="/" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
                   <User className="w-3.5 h-3.5 text-slate-400" />
                   <span>My Profile</span>
                 </Link>
-                <Link to="/" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
+                <Link to="/users" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
                   <Settings className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Account Settings</span>
+                  <span>Account & User Settings</span>
                 </Link>
                 <div className="border-t border-slate-100 my-1" />
                 <button

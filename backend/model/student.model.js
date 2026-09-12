@@ -247,7 +247,13 @@ const studentSchema = new mongoose.Schema(
     drivingLicenceDoc: { type: String, default: null },    // Driving Licence
     infectionControlDoc: { type: String, default: null },  // Infection Control Certificate
     handHygieneDoc: { type: String, default: null },       // Hand Hygiene Certificate
-    cbrDoc: { type: String, default: null },               // CBR (Criminal Background Record / Police Check)
+    cprDoc: { type: String, default: null },               // CPR (Cardiopulmonary Resuscitation Certificate)
+    cbrDoc: { type: String, default: null },               // CBR / CPR backward compatibility
+    
+    // Live Presence & Activity Status
+    isOnline: { type: Boolean, default: false },
+    lastActive: { type: Date, default: Date.now },
+    lastSeen: { type: Date, default: Date.now },
 
     preferredLocation: {
       type: String,

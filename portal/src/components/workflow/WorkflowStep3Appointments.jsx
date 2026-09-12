@@ -1556,6 +1556,66 @@ export default function WorkflowStep3Appointments({
                   </div>
                 </div>
 
+                {/* ── Outcome Result Card (shown after outcome is saved) ─── */}
+                {selectedAppointment.appointmentOutcome && (
+                  <div className={`rounded-xl border p-3 space-y-2
+                    ${selectedAppointment.appointmentOutcome === 'successful'
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : selectedAppointment.appointmentOutcome === 'industry_rejected'
+                        ? 'bg-rose-50 border-rose-200'
+                        : selectedAppointment.appointmentOutcome === 'student_withdrawal'
+                          ? 'bg-orange-50 border-orange-200'
+                          : 'bg-amber-50 border-amber-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Outcome</span>
+                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full
+                        ${selectedAppointment.appointmentOutcome === 'successful'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : selectedAppointment.appointmentOutcome === 'industry_rejected'
+                            ? 'bg-rose-100 text-rose-700'
+                            : selectedAppointment.appointmentOutcome === 'student_withdrawal'
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {selectedAppointment.appointmentOutcome === 'successful' ? 'Successful'
+                          : selectedAppointment.appointmentOutcome === 'industry_rejected' ? 'Industry Rejected'
+                          : selectedAppointment.appointmentOutcome === 'student_withdrawal' ? 'Student Withdrew'
+                          : 'Not Suitable Site'}
+                      </span>
+                    </div>
+                    {selectedAppointment.appointmentOutcome === 'successful' && (
+                      <div className="space-y-1 pt-1 border-t border-emerald-200">
+                        {selectedAppointment.commencementDate && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-emerald-700 font-medium">Commencement</span>
+                            <span className="text-[10px] font-bold text-emerald-900">{selectedAppointment.commencementDate}</span>
+                          </div>
+                        )}
+                        {selectedAppointment.expectedCompletionDate && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-emerald-700 font-medium">Exp. Completion</span>
+                            <span className="text-[10px] font-bold text-emerald-900">{selectedAppointment.expectedCompletionDate}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {selectedAppointment.cancellationTypeLabel && (
+                      <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
+                        <span className="text-[10px] text-slate-500 font-medium">Type</span>
+                        <span className="text-[10px] font-bold text-slate-700">{selectedAppointment.cancellationTypeLabel}</span>
+                      </div>
+                    )}
+                    {selectedAppointment.notes && (
+                      <p className="text-[10px] text-slate-600 pt-1 border-t border-slate-200/60 leading-relaxed">
+                        {selectedAppointment.notes}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {isRescheduling ? (
                   <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 space-y-2">
                     <h5 className="text-xs font-bold text-amber-900">Reschedule Appointment</h5>
@@ -1634,10 +1694,18 @@ export default function WorkflowStep3Appointments({
 
                   <button
                     onClick={handleOpenOutcomeModal}
-                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer text-[11px]"
+                    className={`w-full py-2 font-semibold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer text-[11px]
+                      ${selectedAppointment.appointmentOutcome === 'successful'
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                        : selectedAppointment.appointmentOutcome
+                          ? 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
                   >
-                    <Check className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Set Outcome Details</span>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>
+                      {selectedAppointment.appointmentOutcome ? 'Edit Outcome Details' : 'Set Outcome Details'}
+                    </span>
                   </button>
                 </div>
               </>
@@ -1690,6 +1758,35 @@ export default function WorkflowStep3Appointments({
                          selectedAppointment.cancellationType === 'industry' ? 'Industry Rejected' :
                          selectedAppointment.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
                       </span>
+                    </div>
+                  )}
+                  {selectedAppointment.appointmentOutcome && (
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Outcome</span>
+                      <span className="font-semibold text-slate-800">
+                        {selectedAppointment.appointmentOutcome === 'successful' ? 'Successful'
+                          : selectedAppointment.appointmentOutcome === 'industry_rejected' ? 'Industry Rejected'
+                          : selectedAppointment.appointmentOutcome === 'student_withdrawal' ? 'Student Withdrew'
+                          : 'Not Suitable Site'}
+                      </span>
+                    </div>
+                  )}
+                  {selectedAppointment.commencementDate && (
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Commencement</span>
+                      <span className="font-semibold text-emerald-700">{selectedAppointment.commencementDate}</span>
+                    </div>
+                  )}
+                  {selectedAppointment.expectedCompletionDate && (
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Exp. Completion</span>
+                      <span className="font-semibold text-slate-800">{selectedAppointment.expectedCompletionDate}</span>
+                    </div>
+                  )}
+                  {selectedAppointment.cancellationTypeLabel && (
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Outcome Label</span>
+                      <span className="font-semibold text-slate-800">{selectedAppointment.cancellationTypeLabel}</span>
                     </div>
                   )}
                 </div>
@@ -1760,94 +1857,190 @@ export default function WorkflowStep3Appointments({
 
       {/* ─── APPOINTMENT OUTCOME MODAL ───────────────────────────────────── */}
       {showOutcomeModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Appointment Outcome</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Choose the final result after the interview</p>
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <Check className="w-4 h-4 text-[#0147A6]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Set Outcome Details</h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {selectedAppointment?.student} · {selectedAppointment?.company}
+                  </p>
+                </div>
               </div>
-              <button onClick={() => setShowOutcomeModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
+              <button
+                onClick={() => setShowOutcomeModal(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
+            <div className="px-6 py-5 space-y-5">
+
+              {/* Outcome type selector — card grid */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Outcome *</label>
-                <select
-                  value={appointmentOutcome}
-                  onChange={(e) => setAppointmentOutcome(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
-                >
-                  <option value="successful">1) Appointment Successful</option>
-                  <option value="industry_rejected">2) Industry Rejected</option>
-                  <option value="student_withdrawal">3) Student Withdrawal</option>
-                  <option value="not_suitable_site">4) Not Suitable Site</option>
-                </select>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+                  Outcome *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    {
+                      value: 'successful',
+                      label: 'Appointment Successful',
+                      sub: 'Student is placed & commences',
+                      icon: <CheckCircle2 className="w-4 h-4" />,
+                      active: 'border-emerald-500 bg-emerald-50 text-emerald-800',
+                      icon_c: 'text-emerald-600',
+                      idle: 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50'
+                    },
+                    {
+                      value: 'industry_rejected',
+                      label: 'Industry Rejected',
+                      sub: 'Employer declined the student',
+                      icon: <Building2 className="w-4 h-4" />,
+                      active: 'border-rose-500 bg-rose-50 text-rose-800',
+                      icon_c: 'text-rose-600',
+                      idle: 'border-slate-200 hover:border-rose-300 hover:bg-rose-50/50'
+                    },
+                    {
+                      value: 'student_withdrawal',
+                      label: 'Student Withdrawal',
+                      sub: 'Student withdrew / opted out',
+                      icon: <UserX className="w-4 h-4" />,
+                      active: 'border-orange-500 bg-orange-50 text-orange-800',
+                      icon_c: 'text-orange-600',
+                      idle: 'border-slate-200 hover:border-orange-300 hover:bg-orange-50/50'
+                    },
+                    {
+                      value: 'not_suitable_site',
+                      label: 'Not Suitable Site',
+                      sub: 'Placement site not appropriate',
+                      icon: <AlertCircle className="w-4 h-4" />,
+                      active: 'border-amber-500 bg-amber-50 text-amber-800',
+                      icon_c: 'text-amber-600',
+                      idle: 'border-slate-200 hover:border-amber-300 hover:bg-amber-50/50'
+                    },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setAppointmentOutcome(opt.value)}
+                      className={`text-left p-3 rounded-xl border-2 transition-all duration-150 cursor-pointer
+                        ${appointmentOutcome === opt.value ? opt.active : opt.idle}`}
+                    >
+                      <div className={`mb-1 ${appointmentOutcome === opt.value ? opt.icon_c : 'text-slate-400'}`}>
+                        {opt.icon}
+                      </div>
+                      <p className="text-[11px] font-bold leading-tight">{opt.label}</p>
+                      <p className="text-[9px] text-slate-500 mt-0.5 leading-snug">{opt.sub}</p>
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              {/* Commencement / Completion dates — only for successful */}
               {appointmentOutcome === 'successful' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Commencement Date *</label>
-                    <input
-                      type="date"
-                      value={commencementDate}
-                      onChange={(e) => setCommencementDate(e.target.value)}
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                    />
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <CalendarIcon className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Placement Dates</span>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Expected Completion Date</label>
-                    <input
-                      type="date"
-                      value={expectedCompletionDate}
-                      onChange={(e) => setExpectedCompletionDate(e.target.value)}
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-emerald-700 mb-1">
+                        Commencement Date <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={commencementDate}
+                        onChange={(e) => setCommencementDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs border border-emerald-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-emerald-700 mb-1">
+                        Expected Completion
+                      </label>
+                      <input
+                        type="date"
+                        value={expectedCompletionDate}
+                        onChange={(e) => setExpectedCompletionDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs border border-emerald-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
 
+              {/* Info banner for non-successful outcomes */}
+              {appointmentOutcome !== 'successful' && (
+                <div className={`rounded-xl p-3 border text-[10px] font-medium flex items-start space-x-2
+                  ${appointmentOutcome === 'industry_rejected' ? 'bg-rose-50 border-rose-200 text-rose-800'
+                  : appointmentOutcome === 'student_withdrawal' ? 'bg-orange-50 border-orange-200 text-orange-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'}`}
+                >
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    {appointmentOutcome === 'industry_rejected' && 'Appointment will be marked as Declined. Student returns to workflow for re-placement.'}
+                    {appointmentOutcome === 'student_withdrawal' && 'Appointment will be marked as Withdrawn. Student returns to workflow for re-placement.'}
+                    {appointmentOutcome === 'not_suitable_site' && 'Appointment will be marked as Declined. Student returns to workflow — site deemed not appropriate.'}
+                  </span>
+                </div>
+              )}
+
+              {/* Notes */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Short Notes</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {appointmentOutcome === 'successful' ? 'Placement Notes' : 'Reason / Notes'}
+                </label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   value={outcomeNotes}
                   onChange={(e) => setOutcomeNotes(e.target.value)}
                   placeholder={
                     appointmentOutcome === 'successful'
-                      ? 'Add placement notes, start details, and summary.'
+                      ? 'Add placement summary, supervisor details, or additional start info...'
                       : appointmentOutcome === 'industry_rejected'
-                        ? 'Reason the industry rejected the student.'
+                        ? 'Why did the industry reject the student? (e.g. over-qualified, position filled)'
                         : appointmentOutcome === 'student_withdrawal'
-                          ? 'Reason student withdrew or delayed placement.'
-                          : 'Reason the site was not suitable and the student should return to workflow.'
+                          ? 'Why did the student withdraw? (e.g. personal reasons, found other opportunity)'
+                          : 'Why was the site not suitable? (e.g. safety concerns, mismatch of skills)'
                   }
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-none placeholder:text-slate-300"
                 />
               </div>
-
-              {(appointmentOutcome === 'industry_rejected' || appointmentOutcome === 'student_withdrawal' || appointmentOutcome === 'not_suitable_site') && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-800 font-medium">
-                  This will return the student to the main student list so the placement can be recreated from the start.
-                </div>
-              )}
             </div>
 
-            <div className="flex space-x-2 pt-2">
-              <button
-                onClick={handleConfirmOutcome}
-                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-xl transition-all duration-500 cursor-pointer"
-              >
-                Save Outcome
-              </button>
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-t border-slate-100">
               <button
                 onClick={() => setShowOutcomeModal(false)}
-                className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
+                className="px-4 py-2 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-white transition"
               >
                 Cancel
+              </button>
+              <button
+                onClick={handleConfirmOutcome}
+                className={`px-5 py-2 text-white text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer shadow-sm flex items-center space-x-2
+                  ${appointmentOutcome === 'successful'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : appointmentOutcome === 'industry_rejected'
+                      ? 'bg-rose-600 hover:bg-rose-700'
+                      : appointmentOutcome === 'student_withdrawal'
+                        ? 'bg-orange-600 hover:bg-orange-700'
+                        : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>
+                  {appointmentOutcome === 'successful' ? 'Confirm Placement' : 'Save Outcome'}
+                </span>
               </button>
             </div>
           </div>

@@ -244,6 +244,25 @@ export const appointmentSchema = z.object({
     .optional()
     .default("Scheduled"),
 
+  // ── Outcome fields (Set Outcome Details) ─────────────────────────────────
+  appointmentOutcome: z
+    .enum(["successful", "industry_rejected", "student_withdrawal", "not_suitable_site", ""])
+    .or(z.string().trim())
+    .optional()
+    .default(""),
+
+  commencementDate: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  expectedCompletionDate: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
   cancellationReason: z
     .string()
     .trim()
@@ -251,15 +270,29 @@ export const appointmentSchema = z.object({
     .default(""),
 
   cancellationType: z
-    .enum(["student", "industry", "withdrawn", "other"])
+    .enum(["student", "industry", "withdrawn", "other", ""])
+    .or(z.string().trim())
     .optional()
-    .default("student"),
+    .default(""),
+
+  cancellationTypeLabel: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
 
   cancelledAt: z
     .string()
     .trim()
     .optional()
     .default(""),
+
+  confirmedAt: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+  // ─────────────────────────────────────────────────────────────────────────
 
   notes: z
     .string()

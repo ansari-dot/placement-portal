@@ -30,49 +30,106 @@ export const getAllRTOsController = async (req, res) => {
   }
 };
 
+export const getRTOByIdController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rto = await RtoModel.findById(id);
+    if (!rto) {
+      return res.status(404).json({ success: false, message: 'RTO not found' });
+    }
+    res.status(200).json({
+      success: true,
+      data: rto
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const createRTOController = async (req, res) => {
   try {
     const {
       rtoName,
       rtoCode,
-      rtoType,
-      cricosCode,
       abn,
+      acn,
       website,
+      yearEstablished,
+      shortDescription,
+      paymentCycle,
+      payoutRate,
+      coursePricing,
+      logo,
+      registrationCertificate,
+      registrationCertificateName,
+      documents,
       contactName,
       contactEmail,
+      contactTitle,
+      contactDepartment,
       contactPhone,
+      contactWhatsapp,
+      contactMobile,
+      contactFax,
       addressLine1,
-      suburb,
-      state,
-      postcode
-    } = req.body;
-
-    if (!rtoName || !rtoCode) {
-      return res.status(400).json({
-        success: false,
-        message: 'RTO Name and RTO Code are required'
-      });
-    }
-
-    const rto = new RtoModel({
-      name: rtoName,
-      code: rtoCode,
-      rtoType,
-      cricosCode,
-      abn,
-      website,
-      contactName,
-      contactEmail,
-      contactPhone,
-      address: addressLine1,
+      addressLine2,
       suburb,
       state,
       postcode,
+      country,
+      partnershipSince,
+      registrationNumber,
+      issuingAuthority,
+    } = req.body;
+
+    if (!rtoName || !rtoName.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'RTO Name is required'
+      });
+    }
+
+    // Auto-generate a clean code if none is provided
+    const generatedCode = (rtoCode && rtoCode.trim()) 
+      ? rtoCode.trim() 
+      : `RTO-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    const rto = new RtoModel({
+      name: rtoName.trim(),
+      code: generatedCode,
+      abn: abn || '',
+      acn: acn || '',
+      website: website || '',
+      yearEstablished: yearEstablished || '',
+      shortDescription: shortDescription || '',
+      paymentCycle: paymentCycle || 'Placement',
+      payoutRate: Number(payoutRate) || 0,
+      coursePricing: Array.isArray(coursePricing) ? coursePricing : [],
+      logo: logo || '',
+      registrationCertificate: registrationCertificate || '',
+      registrationCertificateName: registrationCertificateName || '',
+      documents: Array.isArray(documents) ? documents : [],
+      contactName: contactName || '',
+      contactEmail: contactEmail || '',
+      contactTitle: contactTitle || '',
+      contactDepartment: contactDepartment || '',
+      contactPhone: contactPhone || '',
+      contactWhatsapp: contactWhatsapp || '',
+      contactMobile: contactMobile || '',
+      contactFax: contactFax || '',
+      address: addressLine1 || '',
+      addressLine2: addressLine2 || '',
+      suburb: suburb || '',
+      state: state || '',
+      postcode: postcode || '',
+      country: country || 'Australia',
+      partnershipSince: partnershipSince || new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }),
+      registrationNumber: registrationNumber || '',
+      issuingAuthority: issuingAuthority || '',
       loc: suburb && state ? `${suburb}, ${state}` : 'Melbourne, VIC',
-      date: new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }),
+      date: partnershipSince || new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }),
       status: 'Active',
-      students: Math.floor(Math.random() * 100) + 10 // assign a default/random assigned students for premium aesthetic
+      students: 0
     });
 
     await rto.save();
@@ -80,6 +137,31 @@ export const createRTOController = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'RTO created successfully',
+      data: rto
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateRTOController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    if (updates.rtoName) updates.name = updates.rtoName;
+    if (updates.rtoCode) updates.code = updates.rtoCode;
+    if (updates.addressLine1) updates.address = updates.addressLine1;
+    if (updates.suburb && updates.state) updates.loc = `${updates.suburb}, ${updates.state}`;
+
+    const rto = await RtoModel.findByIdAndUpdate(id, updates, { new: true });
+    if (!rto) {
+      return res.status(404).json({ success: false, message: 'RTO not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'RTO updated successfully',
       data: rto
     });
   } catch (error) {
@@ -132,3 +214,4 @@ export const deleteRTOController = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+

@@ -641,6 +641,61 @@ export default function WorkflowPage() {
         }
       }
 
+      // ── Auto-create Step 4 internship when outcome is successful ────────
+      if (
+        appointmentData.appointmentOutcome === 'successful' &&
+        appointmentData.status === 'Completed' &&
+        appointmentData.commencementDate
+      ) {
+        const apptObj = (workflow?.appointments || []).find(
+          (a) =>
+            String(a._id) === String(appointmentId) ||
+            a.id === appointmentId ||
+            a.apptId === appointmentId
+        );
+
+        if (apptObj) {
+          // Only create if no internship already exists for this student + company
+          const alreadyExists = (workflow?.internships || []).some(
+            (i) =>
+              i.studentId === apptObj.studentId &&
+              i.company === apptObj.company
+          );
+
+          if (!alreadyExists) {
+            try {
+              const matchingReqForInt = (workflow?.requests || []).find(
+                (r) =>
+                  r.studentId === apptObj.studentId ||
+                  (apptObj.student && r.student &&
+                    r.student.toLowerCase() === apptObj.student.toLowerCase())
+              );
+
+              await createInternship(wfId, {
+                title: apptObj.position || matchingReqForInt?.title || 'Internship Placement',
+                student: apptObj.student,
+                studentId: apptObj.studentId,
+                company: apptObj.company,
+                rto: apptObj.rto || matchingReqForInt?.rto || '',
+                status: 'Waiting to Join',
+                start: appointmentData.commencementDate,
+                end: appointmentData.expectedCompletionDate || '',
+                duration: matchingReqForInt?.duration || '',
+                workType: matchingReqForInt?.workType || '',
+                location: apptObj.location || matchingReqForInt?.location || '',
+                coordinator: matchingReqForInt?.coordinator || '',
+                notes: appointmentData.notes || apptObj.notes || '',
+              });
+              console.log('✅ Step 4 internship auto-created for', apptObj.student);
+            } catch (intErr) {
+              // Non-fatal — Step 4 can still be created manually
+              console.warn('Auto-create internship skipped:', intErr.message);
+            }
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       await refreshWorkflowData();
       return result.data;
     } catch (err) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ArrowRight, Check } from 'lucide-react';
+import { FileText, ArrowRight, ArrowLeft, Check, Phone, Mail, MessageSquare } from 'lucide-react';
 
 export default function AddRtoStep2({
   onNext,
@@ -9,13 +9,11 @@ export default function AddRtoStep2({
   formData,
   updateFormData,
   showToast,
-  toast,
-  step,
-  totalSteps,
 }) {
   const handleChange = (field, value) => {
     updateFormData({ [field]: value });
   };
+
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto bg-[#F8FAFC] min-h-screen font-sans text-slate-800">
       <div className="flex flex-col space-y-1">
@@ -25,85 +23,101 @@ export default function AddRtoStep2({
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Add New RTO</h2>
       </div>
 
+      {/* Stepper Bar (6 Steps) */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between overflow-x-auto gap-4">
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Basic Information</span></div>
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">2</div><span className="text-xs font-bold text-slate-900">Contact Details</span></div>
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">3</div><span className="text-xs font-bold text-slate-400">Address & Location</span></div>
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">4</div><span className="text-xs font-bold text-slate-400">Partnership Details</span></div>
-        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">5</div><span className="text-xs font-bold text-slate-400">Review & Confirm</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Basic Info</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold text-xs flex items-center justify-center"><Check size={14} /></div><span className="text-xs font-bold text-slate-400">Course Pricing</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-sm">3</div><span className="text-xs font-bold text-slate-900">Contact Details</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">4</div><span className="text-xs font-bold text-slate-400">Address & Location</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">5</div><span className="text-xs font-bold text-slate-400">Partnership</span></div>
+        <div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-xs flex items-center justify-center">6</div><span className="text-xs font-bold text-slate-400">Review</span></div>
       </div>
 
       <div className="grid grid-cols-12 gap-6 items-start">
         <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
           <div>
-            <h3 className="text-base font-bold text-slate-800">Contact Details</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Provide the primary contact information for communication and enquiries.</p>
+            <h3 className="text-base font-bold text-slate-800">Primary Contact Details</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Provide the primary coordinator or partnership officer's contact information.</p>
           </div>
 
-          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide pt-2">Primary Contact Person</h4>
+          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide pt-2">Contact Officer Information</h4>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Full Name <span className="text-rose-500">*</span></label>
+              <label className="text-xs font-bold text-slate-700">Contact Name <span className="text-rose-500">*</span></label>
               <input 
                 type="text" 
+                placeholder="e.g. Sarah Mitchell"
                 value={formData.contactName || ''} 
                 onChange={(e) => handleChange('contactName', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Email Address <span className="text-rose-500">*</span></label>
               <input 
-                type="text" 
+                type="email" 
+                placeholder="sarah.mitchell@rto.edu.au"
                 value={formData.contactEmail || ''} 
                 onChange={(e) => handleChange('contactEmail', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Job Title <span className="text-rose-500">*</span></label>
+              <label className="text-xs font-bold text-slate-700">Job Title</label>
               <input 
                 type="text" 
+                placeholder="e.g. Partnership Coordinator"
                 value={formData.contactTitle || ''} 
                 onChange={(e) => handleChange('contactTitle', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Department</label>
               <input 
                 type="text" 
+                placeholder="e.g. Vocational Placements"
                 value={formData.contactDepartment || ''} 
                 onChange={(e) => handleChange('contactDepartment', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Phone Number <span className="text-rose-500">*</span></label>
               <input 
                 type="text" 
+                placeholder="e.g. +61 3 9123 4567"
                 value={formData.contactPhone || ''} 
                 onChange={(e) => handleChange('contactPhone', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
               />
             </div>
+
+            {/* Direct Line REPLACED WITH WhatsApp Number */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Direct Line</label>
+              <label className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                <MessageSquare size={13} className="text-emerald-600" />
+                <span>WhatsApp Number</span>
+                <span className="text-[10px] text-slate-400 font-normal">(Optional)</span>
+              </label>
               <input 
                 type="text" 
-                value={formData.contactDirectLine || ''} 
-                onChange={(e) => handleChange('contactDirectLine', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                placeholder="e.g. +61 400 123 456"
+                value={formData.contactWhatsapp || ''} 
+                onChange={(e) => handleChange('contactWhatsapp', e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20" 
               />
             </div>
+
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700">Mobile Number</label>
               <input 
                 type="text" 
+                placeholder="e.g. +61 412 345 678"
                 value={formData.contactMobile || ''} 
                 onChange={(e) => handleChange('contactMobile', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
               />
             </div>
             <div className="space-y-1.5">
@@ -113,18 +127,33 @@ export default function AddRtoStep2({
                 placeholder="Enter fax number" 
                 value={formData.contactFax || ''} 
                 onChange={(e) => handleChange('contactFax', e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs" 
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" 
               />
             </div>
           </div>
 
           <div className="pt-6 border-t border-slate-200 flex items-center justify-between">
-            <button onClick={onPrev} className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50">Previous</button>
+            <button 
+              type="button"
+              onClick={onPrev} 
+              className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center space-x-1.5 cursor-pointer"
+            >
+              <ArrowLeft size={14} />
+              <span>Previous</span>
+            </button>
             <div className="flex items-center space-x-3">
-              <button onClick={onSaveDraft} className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center space-x-2">
+              <button 
+                type="button"
+                onClick={onSaveDraft} 
+                className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
+              >
                 <FileText size={14} /><span>Save as Draft</span>
               </button>
-              <button onClick={onNext} className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white rounded-xl text-xs font-semibold shadow-sm flex items-center space-x-2 transition-all duration-500 cursor-pointer">
+              <button 
+                type="button"
+                onClick={onNext} 
+                className="px-5 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white rounded-xl text-xs font-semibold shadow-sm flex items-center space-x-2 transition-all duration-500 cursor-pointer"
+              >
                 <span>Next</span><ArrowRight size={14} />
               </button>
             </div>
@@ -137,14 +166,15 @@ export default function AddRtoStep2({
             <h4 className="font-bold text-xs text-slate-800">Setup Checklist</h4>
             <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between font-medium text-emerald-600"><span>1. Basic Information</span><span className="text-[10px] font-bold">Completed</span></div>
-              <div className="flex items-center justify-between font-bold text-blue-600 bg-blue-50 p-2 rounded-lg"><span>2. Contact Details</span><span className="text-[10px]">In Progress</span></div>
-              <div className="flex items-center justify-between font-medium text-slate-400"><span>3. Address & Location</span><span>Pending</span></div>
-              <div className="flex items-center justify-between font-medium text-slate-400"><span>4. Partnership Details</span><span>Pending</span></div>
-              <div className="flex items-center justify-between font-medium text-slate-400"><span>5. Review & Confirm</span><span>Pending</span></div>
+              <div className="flex items-center justify-between font-medium text-emerald-600"><span>2. Course Pricing</span><span className="text-[10px] font-bold">Completed</span></div>
+              <div className="flex items-center justify-between font-bold text-blue-600 bg-blue-50 p-2 rounded-lg"><span>3. Contact Details</span><span className="text-[10px]">In Progress</span></div>
+              <div className="flex items-center justify-between font-medium text-slate-400"><span>4. Address & Location</span><span>Pending</span></div>
+              <div className="flex items-center justify-between font-medium text-slate-400"><span>5. Partnership Details</span><span>Pending</span></div>
+              <div className="flex items-center justify-between font-medium text-slate-400"><span>6. Review & Confirm</span><span>Pending</span></div>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
+}

@@ -271,7 +271,11 @@ export const studentSchema = z.object({
   drivingLicenceDoc: z.string().nullable().optional().default(null),
   infectionControlDoc: z.string().nullable().optional().default(null),
   handHygieneDoc: z.string().nullable().optional().default(null),
+  cprDoc: z.string().nullable().optional().default(null),
   cbrDoc: z.string().nullable().optional().default(null),
+  isOnline: z.boolean().optional().default(false),
+  lastActive: z.any().optional(),
+  lastSeen: z.any().optional(),
 
   preferredLocation: z
     .string()

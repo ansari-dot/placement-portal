@@ -20,7 +20,7 @@ const STEP1_DRAWER_DOCS = [
   { field: 'drivingLicenceDoc',  label: 'Driving Licence' },
   { field: 'infectionControlDoc',label: 'Infection Control' },
   { field: 'handHygieneDoc',     label: 'Hand Hygiene' },
-  { field: 'cbrDoc',             label: 'CBR' },
+  { field: 'cbrDoc',             label: 'CPR' },
 ];
 
 export default function WorkflowStep1Students({ 
