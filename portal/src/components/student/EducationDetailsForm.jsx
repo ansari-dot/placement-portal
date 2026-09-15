@@ -228,8 +228,8 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
 
 
 
-          {/* Row 2: Student ID (Auto/Manual), College Enrollment ID, College / RTO */}
-          <div className="grid grid-cols-3 gap-5">
+          {/* Row 2: Student ID, College / RTO */}
+          <div className="grid grid-cols-2 gap-5">
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold text-slate-700">Student ID</label>
@@ -277,18 +277,6 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   ? "Manual ID set — system will not auto-generate"
                   : "Auto mode active — sequential ID generated automatically"}
               </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">College Enrollment ID (optional)</label>
-              <input
-                type="text"
-                placeholder="Enter college enrollment ID"
-                value={formData.enrollmentId || ''}
-                onChange={(e) => updateField('enrollmentId', e.target.value)}
-                className={inputClass()}
-              />
-              <p className="text-[10px] text-slate-400 mt-1">College/RTO issued internal reference number</p>
             </div>
 
             <div>

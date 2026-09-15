@@ -122,7 +122,7 @@ export default function ReviewSubmitForm({ formData, onEdit, confirmed, setConfi
                 </button>
               </div>
 
-              <div className="grid grid-cols-5 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-xs">
+              <div className="grid grid-cols-4 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-xs">
                 <div>
                   <span className="block text-slate-400 mb-0.5">Course / Qualification</span>
                   <span className="font-bold text-slate-800">{formatValue(formData.courseQualification)}</span>
@@ -134,10 +134,6 @@ export default function ReviewSubmitForm({ formData, onEdit, confirmed, setConfi
                 <div>
                   <span className="block text-slate-400 mb-0.5">College / RTO</span>
                   <span className="font-semibold text-slate-800">{formatValue(formData.institute || formData.assignedRto)}</span>
-                </div>
-                <div>
-                  <span className="block text-slate-400 mb-0.5">Enrollment / Student ID</span>
-                  <span className="font-semibold text-slate-800">{formatValue(formData.enrollmentId)}</span>
                 </div>
                 <div>
                   <span className="block text-slate-400 mb-0.5">Student Source</span>

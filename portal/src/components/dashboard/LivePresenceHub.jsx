@@ -25,7 +25,6 @@ export default function LivePresenceHub() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'coordinators' | 'students' | 'rtos' | 'admins'
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'online' | 'offline'
 
   const loadPresence = useCallback(async () => {
     try {
@@ -109,7 +108,10 @@ export default function LivePresenceHub() {
       items = activeTab === 'rtos' ? rtoList : [...items, ...rtoList];
     }
 
-    // Apply search filter
+    // Always show only currently online users in this Live Presence section
+    items = items.filter(i => i.isOnline);
+
+    // Apply search filter — searches only within online users
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       items = items.filter(
@@ -118,13 +120,6 @@ export default function LivePresenceHub() {
           (i.email && i.email.toLowerCase().includes(q)) ||
           (i.department && i.department.toLowerCase().includes(q))
       );
-    }
-
-    // Apply online/offline status filter
-    if (statusFilter === 'online') {
-      items = items.filter(i => i.isOnline);
-    } else if (statusFilter === 'offline') {
-      items = items.filter(i => !i.isOnline);
     }
 
     return items;
@@ -270,10 +265,10 @@ export default function LivePresenceHub() {
 
         {/* Filter Controls & Tabs */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
-          {/* Tabs */}
+          {/* Tabs — category filters, all results are online users only */}
           <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0">
             {[
-              { id: 'all', label: 'All Users' },
+              { id: 'all', label: 'All Online' },
               { id: 'students', label: 'Students' },
               { id: 'coordinators', label: 'Coordinators' },
               { id: 'rtos', label: 'RTO Partners' },
@@ -293,7 +288,7 @@ export default function LivePresenceHub() {
             ))}
           </div>
 
-          {/* Search and Status Dropdown */}
+          {/* Search — filters within online users only */}
           <div className="flex items-center space-x-2">
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -301,20 +296,10 @@ export default function LivePresenceHub() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter by name, email..."
+                placeholder="Search online users..."
                 className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 w-44 sm:w-56"
               />
             </div>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
-            >
-              <option value="all">All Status</option>
-              <option value="online">Online Only</option>
-              <option value="offline">Offline Only</option>
-            </select>
           </div>
         </div>
 
@@ -334,7 +319,7 @@ export default function LivePresenceHub() {
               {displayItems.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400 italic text-xs">
-                    No active users or records found matching current filters.
+                    No users are currently online in this category.
                   </td>
                 </tr>
               ) : (
