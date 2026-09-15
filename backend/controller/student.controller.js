@@ -18,12 +18,7 @@ export const createStudentController = async (req, res) => {
         // Validate request body with Zod
         const validatedData = studentSchema.parse(req.body);
 
-        // Auto-assign the logged-in user as coordinator (if not already set in the form).
-        // This ensures the student is visible to whoever created them in My Students.
-        if (req.user && !validatedData.assignedCoordinator) {
-            validatedData.assignedCoordinator = String(req.user._id);
-            validatedData.assignedCoordinatorName = req.user.name;
-        }
+        // No auto-assign — coordinator is assigned manually via "Assign Coordinator"
 
         const student = await createStudent(validatedData);
 
@@ -62,27 +57,22 @@ export const createStudentController = async (req, res) => {
 
 export const getAllStudentsController = async (req, res) => {
     try {
-        // Build the visibility filter based on who is requesting
         let filter = {};
+
         if (req.user && req.user.role !== 'Administrator') {
-            // Non-admin users see:
-            //   1) Students explicitly assigned to them
-            //   2) Students with no coordinator assigned (so nobody is locked out)
-            filter = {
-                $or: [
-                    { assignedCoordinator: req.user._id },
-                    { assignedCoordinator: null },
-                    { assignedCoordinator: { $exists: false } },
-                ],
-            };
-        } else if (req.query.coordinatorId) {
-            // Admin filtering by a specific coordinator or unassigned
+            // Coordinators and non-admin roles: only see their explicitly assigned students
+            filter = { assignedCoordinator: req.user._id };
+        } else if (req.user && req.user.role === 'Administrator') {
+            // Administrator sees ALL students
+            // Optional: filter by coordinatorId query param for the coordinator-switcher dropdown
             if (req.query.coordinatorId === 'unassigned') {
                 filter = { $or: [{ assignedCoordinator: null }, { assignedCoordinator: { $exists: false } }] };
-            } else {
+            } else if (req.query.coordinatorId) {
                 filter = { assignedCoordinator: req.query.coordinatorId };
             }
+            // else filter stays {} — all students returned
         }
+
         const students = await getAllStudents(filter);
         res.status(200).json({
             message: "Students fetched successfully",

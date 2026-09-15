@@ -30,8 +30,9 @@ export default function WorkflowStep1Students({
   onNext,
   internshipRequestMap = {},
   onGoToStep,
-  onCreateAppointment, // NEW: For creating appointment
-  appointments = [] // NEW: For checking existing appointments
+  onCreateAppointment,
+  appointments = [],
+  onUpdateRequest, // Used when changing priority of an existing placement request
 }) {
   const navigate = useNavigate();
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -354,6 +355,7 @@ export default function WorkflowStep1Students({
   const authUser = useSelector((state) => state.auth?.user);
 
   const [showGenRequestModal, setShowGenRequestModal] = useState(false);
+  const [isChangingPlacement, setIsChangingPlacement] = useState(false); // true = Change Placement Requirement mode
   const [genPriority, setGenPriority] = useState('Normal'); // 'Normal' | 'Urgent' | 'Snooze'
   const [genTargetStudent, setGenTargetStudent] = useState(null);
   const [snoozeDuration, setSnoozeDuration] = useState('7_days');
@@ -361,14 +363,8 @@ export default function WorkflowStep1Students({
   const [showSnoozedModal, setShowSnoozedModal] = useState(false);
   const [snoozedSearchQuery, setSnoozedSearchQuery] = useState('');
 
-  // ✅ Local request map — immediately shows badge after generate (merges with prop & localStorage)
-  const [localRequestMap, setLocalRequestMap] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('portal_workflow_requests') || '{}');
-    } catch {
-      return {};
-    }
-  });
+  // ✅ Local request map — shows badge immediately after generate (backend-only, no localStorage seed)
+  const [localRequestMap, setLocalRequestMap] = useState({});
 
   // Persisted snoozed students dictionary
   const [snoozedStudentIds, setSnoozedStudentIds] = useState(() => {
@@ -409,14 +405,26 @@ export default function WorkflowStep1Students({
   // ─── Assign Coordinator modal ─────────────────────────────────────────────
   const [assignCoordinatorTarget, setAssignCoordinatorTarget] = useState(null);
 
-  const handleOpenGenRequest = (stu) => {
+  const handleOpenGenRequest = (stu, isChange = false) => {
     const target = stu || selectedStudent || (paginatedStudents.length > 0 ? paginatedStudents[0] : null);
     if (!target) {
       showToast('Please select a student first');
       return;
     }
     setGenTargetStudent(target);
-    setGenPriority('Normal');
+    setIsChangingPlacement(isChange);
+
+    if (isChange) {
+      // Pre-fill with current priority from the merged map — match by ID only
+      const stuId = target.id || target._id || target.studentId;
+      const existing =
+        localRequestMap[stuId] || localRequestMap[target.studentId] ||
+        internshipRequestMap[stuId] || (target.studentId && internshipRequestMap[target.studentId]);
+      setGenPriority(existing && ['Normal', 'Urgent'].includes(existing) ? existing : 'Normal');
+    } else {
+      setGenPriority('Normal');
+    }
+
     setSnoozeReason('');
     setShowGenRequestModal(true);
   };
@@ -460,16 +468,29 @@ export default function WorkflowStep1Students({
     // ✅ Immediately update local badge — no need to wait for backend refresh
     const updatedLocal = { ...localRequestMap };
     if (stuId) updatedLocal[stuId] = genPriority;
-    if (genTargetStudent.name) updatedLocal[genTargetStudent.name] = genPriority;
     if (genTargetStudent.studentId) updatedLocal[genTargetStudent.studentId] = genPriority;
     setLocalRequestMap(updatedLocal);
-    try {
-      localStorage.setItem('portal_workflow_requests', JSON.stringify(updatedLocal));
-    } catch (_) {}
 
-    showToast(`✅ Placement Request generated (${genPriority} priority) for ${genTargetStudent.name}`);
+    if (isChangingPlacement) {
+      // ── Change existing request priority in the backend ──
+      // Find the matching request across internshipRequestMap's backing data
+      // We surface it through onUpdateRequest(reqId, { priority }) if available
+      if (onUpdateRequest) {
+        // Locate reqId: internshipRequestMap values are priorities, not IDs.
+        // WorkflowPage passes the full workflow.requests via internshipRequestMap's memo;
+        // we can't access reqId here directly, so we ask WorkflowPage to search by studentId.
+        // Pass a sentinel object so WorkflowPage can find the right record.
+        onUpdateRequest('__by_student__', { studentId: stuId, studentName: genTargetStudent.name, priority: genPriority })
+          .catch(() => {});
+      }
+      showToast(`✅ Placement priority updated to ${genPriority} for ${genTargetStudent.name}`);
+    } else {
+      // ── Generate new request ──
+      showToast(`✅ Placement Request generated (${genPriority} priority) for ${genTargetStudent.name}`);
+      if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
+    }
+
     setShowGenRequestModal(false);
-    if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
   };
 
   const handleUnsnoozeStudent = (stuId, stuName) => {
@@ -485,7 +506,14 @@ export default function WorkflowStep1Students({
   };
 
   const handleCreateRequest = () => {
-    handleOpenGenRequest(selectedStudent);
+    if (!selectedStudent) return;
+    // Match by ID only — name matching causes false positives
+    const keys = [selectedStudent.id, selectedStudent.studentId].filter(Boolean);
+    const hasReq = keys.some((k) => {
+      const v = localRequestMap[k] || internshipRequestMap[k];
+      return v === 'Normal' || v === 'Urgent';
+    });
+    handleOpenGenRequest(selectedStudent, hasReq);
   };
 
   const hasActiveFilters = searchQuery !== '';
@@ -784,11 +812,15 @@ export default function WorkflowStep1Students({
               {paginatedStudents.map((stu, rowIdx) => {
                 const isSelected = selectedStudent?.id === stu.id;
                 const isRowSelected = selectedRows.includes(stu.id);
-                const reqValue = 
-                  // ✅ Check localRequestMap first (immediate update after generate)
-                  localRequestMap[stu.id] || localRequestMap[stu.studentId] || (stu.name && localRequestMap[stu.name]) ||
-                  // Then check prop from backend
-                  internshipRequestMap[stu.id] || (stu.studentId && internshipRequestMap[stu.studentId]) || (stu.name && internshipRequestMap[stu.name]);
+                const reqValue = (() => {
+                  // Only match by studentId or dbId — never by name (avoids false positives)
+                  const keys = [stu.id, stu.studentId].filter(Boolean);
+                  for (const k of keys) {
+                    const v = localRequestMap[k] || internshipRequestMap[k];
+                    if (v === 'Normal' || v === 'Urgent') return v;
+                  }
+                  return null;
+                })();
                 // Open menu upward for the last 3 rows to avoid viewport clipping
                 const openUpward = rowIdx >= paginatedStudents.length - 3;
                 return (
@@ -900,10 +932,17 @@ export default function WorkflowStep1Students({
                       </button>
                       {showRowMenu === stu.id && (
                         <div className={`absolute right-0 w-56 bg-white rounded-xl border border-slate-200 shadow-xl z-50 p-1.5 space-y-0.5 overflow-y-auto max-h-80 ${openUpward ? 'bottom-10' : 'top-10'}`}>
-                          <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu); }} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
-                            <Plus className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Generate Request</span>
-                          </button>
+                          {reqValue ? (
+                            <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu, true); }} className="w-full text-left px-3 py-2 text-xs text-teal-700 font-semibold hover:bg-teal-50 rounded-lg flex items-center space-x-2">
+                              <Plus className="w-3.5 h-3.5 text-teal-600" />
+                              <span>Change Placement Requirement</span>
+                            </button>
+                          ) : (
+                            <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu); }} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
+                              <Plus className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Generate Request</span>
+                            </button>
+                          )}
                           {snoozedStudentIds[stu.id] ? (
                             <button onClick={() => { setShowRowMenu(null); handleUnsnoozeStudent(stu.id, stu.name); }} className="w-full text-left px-3 py-2 text-xs text-emerald-600 font-semibold hover:bg-emerald-50 rounded-lg flex items-center space-x-2">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -1498,7 +1537,17 @@ export default function WorkflowStep1Students({
                       className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Create Placement Request</span>
+                      <span>
+                        {(() => {
+                          // Match by ID only — name matching causes false positives
+                          const keys = [selectedStudent?.id, selectedStudent?.studentId].filter(Boolean);
+                          const hasReq = keys.some((k) => {
+                            const v = localRequestMap[k] || internshipRequestMap[k];
+                            return v === 'Normal' || v === 'Urgent';
+                          });
+                          return hasReq ? 'Change Placement Requirement' : 'Create Placement Request';
+                        })()}
+                      </span>
                       <ArrowUpRight className="w-3 h-3 text-blue-200" />
                     </button>
                     
@@ -1537,8 +1586,14 @@ export default function WorkflowStep1Students({
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Generate Placement Request</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Moving student to Step 2 – Placement Request</p>
+                <h3 className="text-base font-bold text-slate-900">
+                  {isChangingPlacement ? 'Change Placement Requirement' : 'Generate Placement Request'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {isChangingPlacement
+                    ? 'Update the placement priority for this student'
+                    : 'Moving student to Step 2 – Placement Request'}
+                </p>
               </div>
               <button onClick={() => setShowGenRequestModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -1558,7 +1613,10 @@ export default function WorkflowStep1Students({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-2">Request Action &amp; Priority <span className="text-rose-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-700 mb-2">
+                  {isChangingPlacement ? 'New Priority' : 'Request Action & Priority'}{' '}
+                  <span className="text-rose-500">*</span>
+                </label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
@@ -1667,6 +1725,8 @@ export default function WorkflowStep1Students({
                     <Moon className="w-3.5 h-3.5 text-white" />
                     <span>Snooze Student</span>
                   </>
+                ) : isChangingPlacement ? (
+                  <span>Update Priority</span>
                 ) : (
                   <span>Generate &amp; Continue</span>
                 )}

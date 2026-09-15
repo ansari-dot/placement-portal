@@ -138,12 +138,11 @@ export default function StudentTableRow({
   onRowAction,
   hiddenColumns,
   canAssign = true,
+  hasPlacementRequest = false,
+  isSnoozed = false,
 }) {
   return (
-    <tr 
-      onClick={() => onRowAction && onRowAction('view', student)}
-      className="hover:bg-slate-50/80 transition cursor-pointer"
-    >
+    <tr className="hover:bg-slate-50/80 transition cursor-pointer">
       <td className="p-4" onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
@@ -154,7 +153,16 @@ export default function StudentTableRow({
       </td>
       {allColumns.map(col =>
         !hiddenColumns.includes(col.key) && (
-          <td key={col.key} className="p-4">
+          <td
+            key={col.key}
+            className="p-4"
+            onClick={(e) => {
+              if (col.key === 'student') {
+                e.stopPropagation();
+                onRowAction && onRowAction('view', student);
+              }
+            }}
+          >
             {renderCell(student, col.key)}
           </td>
         )
@@ -172,6 +180,8 @@ export default function StudentTableRow({
             onClose={onToggleActions}
             onAction={onRowAction}
             canAssign={canAssign}
+            hasPlacementRequest={hasPlacementRequest}
+            isSnoozed={isSnoozed}
           />
         )}
       </td>
