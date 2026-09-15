@@ -34,6 +34,13 @@ const selectClass = (hasError) =>
 export default function RtoSourceForm({ formData, updateField, updateFields, errors }) {
   const [selectedDays, setSelectedDays] = useState(formData.availabilityDays || {});
   const [isPlacementSiteOpen, setIsPlacementSiteOpen] = useState(false);
+  const [placementSiteSearch, setPlacementSiteSearch] = useState('');
+
+  const filteredPlacementOptions = (options) => {
+    const query = placementSiteSearch.trim().toLowerCase();
+    if (!query) return options;
+    return options.filter((option) => option.toLowerCase().includes(query));
+  };
 
   // Auto-fill preferredLocation from student's full address whenever address fields change
   useEffect(() => {
@@ -100,19 +107,20 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
                   Placement Sites (Select multiple)
                 </label>
                 <div className="relative">
-                  <div
-                    className={`${selectClass()} flex items-center justify-between cursor-pointer min-h-[38px]`}
-                    onClick={() => setIsPlacementSiteOpen(!isPlacementSiteOpen)}
-                  >
-                    <span className="truncate pr-6">
-                      {Array.isArray(formData.placementSite) && formData.placementSite.length > 0
-                        ? formData.placementSite.join(', ')
-                        : 'Select placement sites'}
-                    </span>
-                    <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                      <ChevronDown size={14} />
-                    </span>
-                  </div>
+                  <input
+                    type="text"
+                    value={placementSiteSearch}
+                    onChange={(e) => {
+                      setPlacementSiteSearch(e.target.value);
+                      setIsPlacementSiteOpen(true);
+                    }}
+                    onFocus={() => setIsPlacementSiteOpen(true)}
+                    placeholder={Array.isArray(formData.placementSite) && formData.placementSite.length > 0 ? formData.placementSite.join(', ') : 'Search placement sites...'}
+                    className={`${selectClass()} pr-8`}
+                  />
+                  <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                    <ChevronDown size={14} />
+                  </span>
 
                   {isPlacementSiteOpen && (
                     <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
@@ -126,32 +134,39 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
                               { label: 'Community care organisations', options: ['Community support centres', 'Community access programs', 'Social support services', 'Day programs for elderly or people with disability'] },
                               { label: 'Wellness / day centres', options: ["Seniors' wellness centres", 'Community wellness centres', 'Day respite centres', 'Adult day programs'] },
                               { label: 'Mental health / psychosocial support services', options: ['Community-based support organisations', 'Psychosocial disability services', "Supported accommodation where the student's qualification requirements can be met"] },
-                            ].map((group) => (
-                              <div key={group.label} className="mb-2">
-                                <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-50 rounded uppercase tracking-wider">{group.label}</div>
-                                {group.options.map((opt) => {
-                                  const currentList = Array.isArray(formData.placementSite) ? formData.placementSite : [];
-                                  const isChecked = currentList.includes(opt);
-                                  return (
-                                    <label key={opt} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs text-slate-700 font-medium">
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            updateField('placementSite', [...currentList, opt]);
-                                          } else {
-                                            updateField('placementSite', currentList.filter(item => item !== opt));
-                                          }
-                                        }}
-                                        className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
-                                      />
-                                      <span>{opt}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            ))}
+                            ].map((group) => {
+                              const visibleOptions = filteredPlacementOptions(group.options);
+                              if (visibleOptions.length === 0) return null;
+
+                              return (
+                                <div key={group.label} className="mb-2">
+                                  <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-50 rounded uppercase tracking-wider">{group.label}</div>
+                                  {visibleOptions.map((opt) => {
+                                    const currentList = Array.isArray(formData.placementSite) ? formData.placementSite : [];
+                                    const isChecked = currentList.includes(opt);
+                                    return (
+                                      <label key={opt} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs text-slate-700 font-medium">
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              updateField('placementSite', [...currentList, opt]);
+                                            } else {
+                                              updateField('placementSite', currentList.filter(item => item !== opt));
+                                            }
+                                            setPlacementSiteSearch('');
+                                            setIsPlacementSiteOpen(false);
+                                          }}
+                                          className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
+                                        />
+                                        <span>{opt}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
                           </>
                         )}
                         {formData.preferredIndustry === 'ECEC' && (
@@ -190,32 +205,39 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
                                   'Unlicensed childcare settings'
                                 ] 
                               }
-                            ].map((group) => (
-                              <div key={group.label} className="mb-2">
-                                <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-50 rounded uppercase tracking-wider">{group.label}</div>
-                                {group.options.map((opt) => {
-                                  const currentList = Array.isArray(formData.placementSite) ? formData.placementSite : [];
-                                  const isChecked = currentList.includes(opt);
-                                  return (
-                                    <label key={opt} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs text-slate-700 font-medium">
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            updateField('placementSite', [...currentList, opt]);
-                                          } else {
-                                            updateField('placementSite', currentList.filter(item => item !== opt));
-                                          }
-                                        }}
-                                        className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
-                                      />
-                                      <span>{opt}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            ))}
+                            ].map((group) => {
+                              const visibleOptions = filteredPlacementOptions(group.options);
+                              if (visibleOptions.length === 0) return null;
+
+                              return (
+                                <div key={group.label} className="mb-2">
+                                  <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-50 rounded uppercase tracking-wider">{group.label}</div>
+                                  {visibleOptions.map((opt) => {
+                                    const currentList = Array.isArray(formData.placementSite) ? formData.placementSite : [];
+                                    const isChecked = currentList.includes(opt);
+                                    return (
+                                      <label key={opt} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs text-slate-700 font-medium">
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              updateField('placementSite', [...currentList, opt]);
+                                            } else {
+                                              updateField('placementSite', currentList.filter(item => item !== opt));
+                                            }
+                                            setPlacementSiteSearch('');
+                                            setIsPlacementSiteOpen(false);
+                                          }}
+                                          className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
+                                        />
+                                        <span>{opt}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
                           </>
                         )}
                       </div>

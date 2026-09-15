@@ -43,7 +43,6 @@ const initialFormData = {
   courseLevel: '',
   studyMode: '',
   studentId: '',
-  enrollmentId: '',
   institute: '',
   campus: '',
   startDate: '',
