@@ -1,6 +1,15 @@
-import { Eye, Pencil, Trash2, UserCheck, FileText, Calendar, Building2 } from 'lucide-react';
+import { Eye, Pencil, Trash2, UserCheck, FileText, Calendar, Building2, Moon, RotateCcw } from 'lucide-react';
 
-export default function StudentActionsMenu({ student, onClose, onAction, canAssign = true }) {
+export default function StudentActionsMenu({
+  student,
+  onClose,
+  onAction,
+  canAssign = true,
+  hasPlacementRequest = false,
+  isSnoozed = false,
+}) {
+  const hasCoordinator = !!(student?.assignedCoordinator || student?.assignedCoordinatorName);
+
   return (
     <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-30">
       <button
@@ -19,13 +28,42 @@ export default function StudentActionsMenu({ student, onClose, onAction, canAssi
         <span>Edit</span>
       </button>
 
-      <button
-        onClick={() => { onClose(); onAction('generateRequest', student); }}
-        className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
-      >
-        <FileText size={14} className="text-teal-500" />
-        <span>Generate Placement Request</span>
-      </button>
+      {hasPlacementRequest ? (
+        <button
+          onClick={() => { onClose(); onAction('changePlacement', student); }}
+          className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
+        >
+          <FileText size={14} className="text-teal-500" />
+          <span>Change Placement Requirement</span>
+        </button>
+      ) : (
+        <button
+          onClick={() => { onClose(); onAction('generateRequest', student); }}
+          className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
+        >
+          <FileText size={14} className="text-teal-500" />
+          <span>Generate Placement Request</span>
+        </button>
+      )}
+
+      {/* Snooze / Unsnooze toggle */}
+      {isSnoozed ? (
+        <button
+          onClick={() => { onClose(); onAction('unsnooze', student); }}
+          className="w-full px-3 py-2 text-left text-xs font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center space-x-2 transition cursor-pointer"
+        >
+          <RotateCcw size={14} className="text-emerald-500" />
+          <span>Unsnooze / Restore</span>
+        </button>
+      ) : (
+        <button
+          onClick={() => { onClose(); onAction('snooze', student); }}
+          className="w-full px-3 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50 flex items-center space-x-2 transition cursor-pointer"
+        >
+          <Moon size={14} className="text-amber-500" />
+          <span>Snooze Student</span>
+        </button>
+      )}
 
       <button
         onClick={() => { onClose(); onAction('contactIndustry', student); }}
@@ -49,7 +87,7 @@ export default function StudentActionsMenu({ student, onClose, onAction, canAssi
           className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center space-x-2 transition cursor-pointer"
         >
           <UserCheck size={14} className="text-blue-500" />
-          <span>Assign Coordinator</span>
+          <span>{hasCoordinator ? 'Change Coordinator' : 'Assign Coordinator'}</span>
         </button>
       )}
 

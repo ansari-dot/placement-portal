@@ -36,12 +36,10 @@ export const btnSecondary = "px-4 py-2 bg-white border border-slate-200 text-sla
 export const allColumns = [
   { key: 'student', label: 'Student' },
   { key: 'studentId', label: 'Student ID' },
-  { key: 'rto', label: 'RTO' },
   { key: 'course', label: 'Course' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
   { key: 'location', label: 'City / Suburb' },
   { key: 'status', label: 'Status' },
-  { key: 'source', label: 'Source' },
-  { key: 'assignedAt', label: 'Assigned At' },
+  { key: 'created', label: 'Created At' },
 ];

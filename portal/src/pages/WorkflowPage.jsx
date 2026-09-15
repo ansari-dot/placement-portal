@@ -542,6 +542,25 @@ export default function WorkflowPage() {
 
   const handleUpdateRequest = useCallback(async (requestId, requestData) => {
     const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+
+    // Step 1 "Change Placement Requirement" passes '__by_student__' because it only
+    // has access to studentId, not the request's _id. WorkflowPage resolves the real reqId here.
+    if (requestId === '__by_student__' && workflow?.requests) {
+      const { studentId, ...rest } = requestData;
+      const match = workflow.requests.find(
+        (r) => r.studentId && studentId && norm(r.studentId) === norm(studentId)
+      );
+      if (match) {
+        const realId = String(match._id || match.reqId || '');
+        if (realId) {
+          const result = await updateInternshipRequest(wfId, realId, rest);
+          await refreshWorkflowData();
+          return result?.data;
+        }
+      }
+      return; // No match — localStorage already updated by Step 1
+    }
+
     try {
       const result = await updateInternshipRequest(wfId, requestId, requestData);
       await refreshWorkflowData();
@@ -812,16 +831,8 @@ export default function WorkflowPage() {
   const internshipRequestMap = React.useMemo(() => {
     const map = {};
 
-    // 1. Check localStorage first so any requests generated from My Students reflect immediately
-    try {
-      const stored = JSON.parse(localStorage.getItem('portal_workflow_requests') || '{}');
-      Object.entries(stored).forEach(([k, v]) => {
-        map[k] = v;
-        map[norm(k)] = v;
-      });
-    } catch (_) {}
-
-    // 2. Check workflow requests from database
+    // Only use backend workflow requests — no localStorage (avoids stale data showing
+    // Urgent/Normal badge on students who never had a request generated)
     if (workflow?.requests && Array.isArray(workflow.requests)) {
       workflow.requests.forEach((req) => {
         const priorityVal = req.priority || 'Normal';
@@ -829,12 +840,8 @@ export default function WorkflowPage() {
           map[req.studentId] = priorityVal;
           map[norm(req.studentId)] = priorityVal;
         }
-        if (req.student) {
-          map[req.student] = priorityVal;
-          map[norm(req.student)] = priorityVal;
-        }
-        if (req.id)        map[req.id]         = priorityVal;
-        if (req._id)       map[String(req._id)] = priorityVal;
+        if (req.id)        map[req.id]          = priorityVal;
+        if (req._id)       map[String(req._id)]  = priorityVal;
       });
     }
     return map;
@@ -874,6 +881,7 @@ export default function WorkflowPage() {
             onToggleStudent={handleToggleStudent}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}
+            onUpdateRequest={handleUpdateRequest}
             onCreateAppointment={handleCreateAppointment}
             appointments={mapAppointmentsForStep3()}
           />
@@ -932,6 +940,7 @@ export default function WorkflowPage() {
             onToggleStudent={handleToggleStudent}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}
+            onUpdateRequest={handleUpdateRequest}
             onCreateAppointment={handleCreateAppointment}
             appointments={mapAppointmentsForStep3()}
           />
