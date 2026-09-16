@@ -238,9 +238,9 @@ export const appointmentSchema = z.object({
     .optional()
     .default(""),
 
-  // ✅ FIX: Added 'Withdrawn' and 'Declined'
+  // ✅ FIX: Added 'Withdrawn', 'Declined', and 'Confirmed'
   status: z
-    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show", "Withdrawn", "Declined"])
+    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show", "Withdrawn", "Declined", "Confirmed"])
     .optional()
     .default("Scheduled"),
 
@@ -335,9 +335,9 @@ export const internshipSchema = z.object({
     .optional()
     .default(""),
 
-  // ✅ FIX: Added 'Declined' and 'Withdrawn'
+  // ✅ FIX: Added 'Declined', 'Withdrawn', and 'Placement Started'
   status: z
-    .enum(["Active", "Joined", "Waiting to Join", "Completed", "Cancelled", "On Hold", "Declined", "Withdrawn"])
+    .enum(["Active", "Joined", "Waiting to Join", "Completed", "Cancelled", "On Hold", "Declined", "Withdrawn", "Placement Started"])
     .optional()
     .default("Active"),
 

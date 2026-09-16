@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+﻿import mongoose from "mongoose";
 import WorkflowModel, {
   InternshipRequestModel,
   AppointmentModel,
@@ -6,6 +6,7 @@ import WorkflowModel, {
 } from "../model/workflow.model.js";
 import StudentModel from "../model/student.model.js";
 import NotificationModel from "../model/notification.model.js";
+import { sendPlacementStartedEmail } from "./email.service.js";
 
 // ===== ID Generators =====
 const generateReqId = async () => {
@@ -179,7 +180,7 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
 
   const { contactedIndustries: newContacts, ...otherFields } = requestData || {};
 
-  // Push new contact records — never overwrite the existing array
+  // Push new contact records â€” never overwrite the existing array
   if (Array.isArray(newContacts) && newContacts.length > 0) {
     matchedRequest.contactedIndustries.push(...newContacts);
   }
@@ -300,8 +301,60 @@ export const createAppointment = async (workflowId, appointmentData) => {
   }
   if (!workflow) return appointment;
 
+  // Dynamically update contacted industry response to 'Appointment Scheduled'
+  if (workflow.requests && workflow.requests.length > 0) {
+    const studentId = appointment.studentId;
+    const studentName = (appointment.student || '').trim().toLowerCase();
+    const companyName = (appointment.company || '').trim().toLowerCase();
+
+    workflow.requests.forEach((req) => {
+      const isStudentMatch =
+        (studentId && (req.studentId === studentId || req.id === studentId)) ||
+        (studentName && req.student && req.student.trim().toLowerCase() === studentName);
+
+      if (isStudentMatch && Array.isArray(req.contactedIndustries)) {
+        req.contactedIndustries.forEach((ci) => {
+          const orgName = (ci.organizationName || '').trim().toLowerCase();
+          if (
+            (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
+            (appointment.industryContactId && (ci._id?.toString() === appointment.industryContactId || ci.id === appointment.industryContactId))
+          ) {
+            ci.response = 'Appointment Scheduled';
+          }
+        });
+      }
+    });
+  }
+
   workflow.appointments.push(appointment);
   await workflow.save({ validateBeforeSave: false });
+
+  try {
+    const studentQuery = [];
+    if (appointment.studentId) {
+      studentQuery.push({ studentId: appointment.studentId });
+      if (mongoose.Types.ObjectId.isValid(appointment.studentId)) {
+        studentQuery.push({ _id: appointment.studentId });
+      }
+    }
+    if (studentQuery.length > 0) {
+      const studentDoc = await StudentModel.findOne({ $or: studentQuery });
+      if (studentDoc && Array.isArray(studentDoc.contactedIndustries)) {
+        const companyName = (appointment.company || '').trim().toLowerCase();
+        let updatedStudent = false;
+        studentDoc.contactedIndustries.forEach((ci) => {
+          const orgName = (ci.organizationName || '').trim().toLowerCase();
+          if (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) {
+            ci.response = 'Appointment Scheduled';
+            updatedStudent = true;
+          }
+        });
+        if (updatedStudent) await studentDoc.save();
+      }
+    }
+  } catch (syncErr) {
+    console.warn('Sync student contactedIndustries skipped:', syncErr.message);
+  }
 
   try {
     await NotificationModel.create({
@@ -348,6 +401,98 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
 
   Object.assign(workflow.appointments[appointmentIndex], appointmentData);
   await workflow.save({ validateBeforeSave: false });
+
+  // â”€â”€ Side-effects when placement is confirmed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  if (
+    appointmentData.status === 'Confirmed' &&
+    appointmentData.appointmentOutcome === 'successful'
+  ) {
+    const studentId = appt.studentId;
+    const studentName = (appt.student || '').trim().toLowerCase();
+    const companyName = (appt.company || '').trim().toLowerCase();
+
+    // 1. Update contactedIndustries response â†’ 'Placement Started' on all matching requests
+    if (workflow.requests && workflow.requests.length > 0) {
+      workflow.requests.forEach((req) => {
+        const isStudentMatch =
+          (studentId && (req.studentId === studentId || req.id === studentId)) ||
+          (studentName && req.student && req.student.trim().toLowerCase() === studentName);
+
+        if (isStudentMatch && Array.isArray(req.contactedIndustries)) {
+          req.contactedIndustries.forEach((ci) => {
+            const orgName = (ci.organizationName || '').trim().toLowerCase();
+            if (
+              (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
+              (appt.industryContactId && (ci._id?.toString() === appt.industryContactId || ci.id === appt.industryContactId))
+            ) {
+              ci.response = 'Placement Started';
+            }
+          });
+        }
+      });
+      await workflow.save({ validateBeforeSave: false });
+    }
+
+    // 2. Update student placementStatus â†’ 'Placement Started'
+    try {
+      const stuQuery = [];
+      if (studentId) {
+        stuQuery.push({ studentId });
+        if (mongoose.Types.ObjectId.isValid(studentId)) stuQuery.push({ _id: studentId });
+      }
+      if (stuQuery.length > 0) {
+        const studentDoc = await StudentModel.findOne({ $or: stuQuery });
+        if (studentDoc) {
+          studentDoc.placementStatus = 'Placement Started';
+          // Also update contactedIndustries on student
+          if (Array.isArray(studentDoc.contactedIndustries)) {
+            studentDoc.contactedIndustries.forEach((ci) => {
+              const orgName = (ci.organizationName || '').trim().toLowerCase();
+              if (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) {
+                ci.response = 'Placement Started';
+              }
+            });
+          }
+          await studentDoc.save();
+
+          // 3. Send placement started email
+          const toEmail = appt.email || studentDoc.emailAddress || studentDoc.email || '';
+          const commDate = appointmentData.commencementDate || appt.commencementDate || '';
+          const endDate = appointmentData.expectedCompletionDate || appt.expectedCompletionDate || '';
+          if (toEmail) {
+            try {
+              await sendPlacementStartedEmail({
+                toEmail,
+                studentName: appt.student || studentDoc.name || 'Student',
+                companyName: appt.company || 'the placement site',
+                commencementDate: commDate,
+                expectedCompletionDate: endDate,
+                studentId: studentId || '',
+              });
+            } catch (emailErr) {
+              console.warn('[Workflow] Placement started email failed:', emailErr.message);
+            }
+          }
+        }
+      }
+    } catch (stuErr) {
+      console.warn('[Workflow] Student placementStatus update skipped:', stuErr.message);
+    }
+
+    // 4. Create in-app notification
+    try {
+      await NotificationModel.create({
+        title: 'Placement Started',
+        desc: `${appt.student} has started placement at ${appt.company}.`,
+        type: 'system',
+        isRead: false,
+        link: '/workflow?step=4',
+      });
+    } catch (notifErr) {
+      console.warn('[Workflow] Placement started notification failed:', notifErr.message);
+    }
+  }
+  // â”€â”€ End of placement confirmation side-effects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   try {
     if (actualDbId && mongoose.Types.ObjectId.isValid(actualDbId)) {
@@ -519,45 +664,67 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
 
   if (appointmentIndex !== -1) {
     const appt = workflow.appointments[appointmentIndex];
+
+    // Map display status back to appointment status without wiping placement-critical fields
     if (internshipData.status) {
-      if (internshipData.status === 'Completed') appt.status = 'Completed';
-      else if (internshipData.status === 'Declined') appt.status = 'Declined';
-      else if (internshipData.status === 'Withdrawn') appt.status = 'Withdrawn';
-      else if (internshipData.status === 'Cancelled') appt.status = 'Cancelled';
-      else appt.status = 'Scheduled';
+      if (internshipData.status === 'Completed')       appt.status = 'Completed';
+      else if (internshipData.status === 'Declined')   appt.status = 'Declined';
+      else if (internshipData.status === 'Withdrawn')  appt.status = 'Withdrawn';
+      else if (internshipData.status === 'Cancelled')  appt.status = 'Cancelled';
+      // For all active/in-progress statuses keep the appointment as Confirmed so
+      // placement-start side-effects (email, student status) are not undone
+      // 'Waiting to Join', 'Joined', 'Active', 'On Hold', 'Placement Started' â†’ keep Confirmed
     }
     if (internshipData.company) appt.company = internshipData.company;
-    if (internshipData.title) appt.position = internshipData.title;
-    if (internshipData.notes) appt.notes = internshipData.notes;
+    if (internshipData.title)   appt.position = internshipData.title;
+    if (internshipData.notes !== undefined) appt.notes = internshipData.notes;
 
-    // Also push a record to workflow.internships to make it directly editable
-    const newInt = {
-      intId: appt.apptId ? `INT-${appt.apptId.substring(4)}` : await generateIntId(),
+    // Sync the AppointmentModel standalone record
+    try {
+      if (appt._id && mongoose.Types.ObjectId.isValid(appt._id)) {
+        await AppointmentModel.findByIdAndUpdate(appt._id, {
+          status:   appt.status,
+          company:  appt.company,
+          position: appt.position,
+          notes:    appt.notes,
+        }, { runValidators: false });
+      }
+    } catch (e) {}
+
+    // Upsert into workflow.internships â€” update existing record if one already exists
+    // for this appointment, otherwise create it once. This prevents duplicates on
+    // repeated saves.
+    const derivedIntId = appt.apptId ? `INT-${appt.apptId.substring(4)}` : null;
+    const existingIntIndex = workflow.internships.findIndex(
+      (i) =>
+        (derivedIntId && i.intId === derivedIntId) ||
+        (appt.studentId && i.studentId === appt.studentId && i.company === (internshipData.company || appt.company))
+    );
+
+    const intRecord = {
+      intId: derivedIntId || (await generateIntId()),
       student: appt.student,
       studentId: appt.studentId,
       company: internshipData.company || appt.company,
       title: internshipData.title || appt.position || 'Internship Placement',
       rto: appt.rto || 'TBD',
-      status: internshipData.status || (appt.status === 'Completed' ? 'Completed' : 'Waiting to Join'),
-      start: appt.date || new Date().toISOString().split('T')[0],
+      // Preserve the display status from the form â€” this is what the coordinator set
+      status: internshipData.status || 'Waiting to Join',
+      // Use placement start/end dates â€” not the appointment interview date
+      start: appt.commencementDate || appt.date || new Date().toISOString().split('T')[0],
+      end: appt.expectedCompletionDate || '',
       duration: '12 weeks',
-      notes: internshipData.notes || appt.notes || '',
+      notes: internshipData.notes !== undefined ? internshipData.notes : (appt.notes || ''),
     };
-    workflow.internships.push(newInt);
+
+    if (existingIntIndex !== -1) {
+      Object.assign(workflow.internships[existingIntIndex], intRecord);
+    } else {
+      workflow.internships.push(intRecord);
+    }
+
     await workflow.save({ validateBeforeSave: false });
-
-    try {
-      if (appt._id && mongoose.Types.ObjectId.isValid(appt._id)) {
-        await AppointmentModel.findByIdAndUpdate(appt._id, {
-          status: appt.status,
-          company: appt.company,
-          position: appt.position,
-          notes: appt.notes,
-        });
-      }
-    } catch (e) {}
-
-    return newInt;
+    return existingIntIndex !== -1 ? workflow.internships[existingIntIndex] : workflow.internships[workflow.internships.length - 1];
   }
 
   return null;
@@ -783,7 +950,7 @@ export const getWorkflowStudents = async (filter = {}) => {
   return await StudentModel.find(filter).sort({ createdAt: -1 });
 };
 
-// ===== Cascade delete — purge a student from ALL workflow data =====
+// ===== Cascade delete â€” purge a student from ALL workflow data =====
 // Removes the student ObjectId from workflow.students array, and
 // pulls every request / appointment / internship where studentId matches
 // either the MongoDB _id string OR the business studentId (e.g. "STU1").
@@ -798,16 +965,18 @@ export const purgeStudentFromWorkflows = async (studentId, studentBizId = '') =>
     ],
   });
 
+  // Collect every company/industry name linked to this student BEFORE removing
+  // their data — needed to check orphan status afterward.
+  const studentCompanyNames = new Set();
+
   for (const workflow of workflows) {
     let changed = false;
-
     // 1. Remove from students array
     const beforeStudentCount = workflow.students.length;
     workflow.students = workflow.students.filter(
       (s) => s.toString() !== String(studentId)
     );
     if (workflow.students.length !== beforeStudentCount) changed = true;
-
     // Helper: does this subdoc belong to the deleted student?
     const matchesStudent = (sub) => {
       const sid = String(sub.studentId || '');
@@ -816,22 +985,88 @@ export const purgeStudentFromWorkflows = async (studentId, studentBizId = '') =>
         (studentBizId && sid === String(studentBizId))
       );
     };
-
-    // 2. Remove matching internship requests
+    // 2. Collect industry names from requests, then remove
+    for (const r of workflow.requests) {
+      if (matchesStudent(r)) {
+        for (const c of (r.contactedIndustries || [])) {
+          const name = (c.organizationName || '').trim().toLowerCase();
+          if (name) studentCompanyNames.add(name);
+        }
+        const co = (r.company || '').trim().toLowerCase();
+        if (co && co !== 'pending assignment' && co !== 'unassigned') {
+          studentCompanyNames.add(co);
+        }
+      }
+    }
     const reqsBefore = workflow.requests.length;
     workflow.requests = workflow.requests.filter((r) => !matchesStudent(r));
     if (workflow.requests.length !== reqsBefore) changed = true;
-
-    // 3. Remove matching appointments
+    // 3. Collect industry names from appointments, then remove
+    for (const a of workflow.appointments) {
+      if (matchesStudent(a)) {
+        const co = (a.company || '').trim().toLowerCase();
+        if (co && co !== 'unknown company' && co !== 'pending assignment') {
+          studentCompanyNames.add(co);
+        }
+      }
+    }
     const apptsBefore = workflow.appointments.length;
     workflow.appointments = workflow.appointments.filter((a) => !matchesStudent(a));
     if (workflow.appointments.length !== apptsBefore) changed = true;
-
-    // 4. Remove matching internships
+    // 4. Collect industry names from internships, then remove
+    for (const i of workflow.internships) {
+      if (matchesStudent(i)) {
+        const co = (i.company || '').trim().toLowerCase();
+        if (co && co !== 'unknown company') studentCompanyNames.add(co);
+      }
+    }
     const intsBefore = workflow.internships.length;
     workflow.internships = workflow.internships.filter((i) => !matchesStudent(i));
     if (workflow.internships.length !== intsBefore) changed = true;
-
     if (changed) await workflow.save({ validateBeforeSave: false });
+  }
+
+  // ── Cascade: delete orphaned industries from the Industries tab ──────────
+  // After removing this student's workflow data, re-scan all remaining workflow
+  // data. Any industry no longer referenced by any other student gets deleted.
+  if (studentCompanyNames.size > 0) {
+    try {
+      const IndustryModel = (await import('../model/industry.model.js')).default;
+
+      // Build set of names still referenced by other students
+      const remainingWorkflows = await WorkflowModel.find();
+      const stillReferenced = new Set();
+      for (const wf of remainingWorkflows) {
+        for (const r of (wf.requests || [])) {
+          const co = (r.company || '').trim().toLowerCase();
+          if (co) stillReferenced.add(co);
+          for (const c of (r.contactedIndustries || [])) {
+            const cn = (c.organizationName || '').trim().toLowerCase();
+            if (cn) stillReferenced.add(cn);
+          }
+        }
+        for (const a of (wf.appointments || [])) {
+          const co = (a.company || '').trim().toLowerCase();
+          if (co) stillReferenced.add(co);
+        }
+        for (const i of (wf.internships || [])) {
+          const co = (i.company || '').trim().toLowerCase();
+          if (co) stillReferenced.add(co);
+        }
+      }
+
+      // Delete from Industry collection only if truly orphaned
+      for (const name of studentCompanyNames) {
+        if (!stillReferenced.has(name)) {
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          await IndustryModel.deleteMany({
+            name: { $regex: new RegExp(`^${escaped}$`, 'i') },
+          });
+        }
+      }
+    } catch (industryPurgeErr) {
+      // Non-fatal — student + workflow data already purged successfully
+      console.error('Industry cascade purge error:', industryPurgeErr.message);
+    }
   }
 };

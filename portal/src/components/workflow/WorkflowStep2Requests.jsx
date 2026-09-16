@@ -1,5 +1,5 @@
 // src/components/workflow/WorkflowStep2Requests.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, Download, Plus, MoreVertical,
@@ -20,7 +20,8 @@ export default function WorkflowStep2Requests({
   onDeleteRequest,
   onAddContact,
   students = [],
-  activeStudent = null
+  activeStudent = null,
+  appointments = []
 }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -72,6 +73,15 @@ export default function WorkflowStep2Requests({
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [showRowMenu, setShowRowMenu] = useState(null);
+  const [rowMenuPos, setRowMenuPos] = useState({ top: 0, left: 0 });
+
+  // Close row menu on outside click
+  useEffect(() => {
+    if (!showRowMenu) return;
+    const handler = () => setShowRowMenu(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [showRowMenu]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [showDrawer, setShowDrawer] = useState(false);
@@ -102,8 +112,8 @@ export default function WorkflowStep2Requests({
   // â”€â”€â”€ Delete Confirm Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [deleteConfirmReq, setDeleteConfirmReq] = useState(null);
   const [isDeletingReq, setIsDeletingReq] = useState(false);
-  // â”€â”€â”€ Assign Coordinator Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [assignCoordinatorTarget, setAssignCoordinatorTarget] = useState(null);
+  // â”€â”€â”€ Assign Coordinator Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [orgForm, setOrgForm] = useState({
     organizationName: '',
     email: '',
@@ -285,6 +295,22 @@ export default function WorkflowStep2Requests({
         requestedOn: `${item.date} at 10:24 AM`
       });
       setShowDrawer(true);
+    } else if (action === 'addIndustry') {
+      // ── Open Add Industry modal scoped to THIS student's request ──
+      setSelectedRequest({
+        id: item.reqId,
+        dbId: item.id || item.reqId,
+        title: item.title,
+        student: item.student,
+        studentId: item.studentId,
+        company: item.company,
+        rto: item.rto,
+        status: item.status,
+        requestedOn: `${item.date} at 10:24 AM`,
+        contactedIndustries: item.contactedIndustries || [],
+      });
+      setActiveTab('Contact History');
+      setShowAddOrgModal(true);
     } else if (action === 'edit') {
       const matchedStudent = students.find(s =>
         (s.id && (s.id === item.studentId || s.id === item.id)) ||
@@ -607,24 +633,10 @@ export default function WorkflowStep2Requests({
           <div className="w-px h-6 bg-slate-200 shrink-0"></div>
 
           <div className="relative shrink-0">
-            <button
-              onClick={() => setShowExportMenu(!showExportMenu)}
-              className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
-            >
-              <Download className="w-3 h-3 text-slate-500" />
-              <span>Export</span>
-            </button>
-            {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-36 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
-                <button onClick={() => handleExport('csv')} className="w-full text-left px-3 py-2 text-[11px] text-slate-700 hover:bg-slate-50 rounded-lg">
-                  CSV
-                </button>
-                <button onClick={() => handleExport('excel')} className="w-full text-left px-3 py-2 text-[11px] text-slate-700 hover:bg-slate-50 rounded-lg">
-                  Excel
-                </button>
-              </div>
-            )}
+            {/* Export button removed — use 3-dot menu per request instead */}
           </div>
+
+          {/* New Industry Button removed — moved to per-row 3-dot Actions menu */}
         </div>
 
         <div className="flex justify-between items-center px-1">
@@ -674,7 +686,7 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-visible">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
@@ -688,9 +700,7 @@ export default function WorkflowStep2Requests({
                 </th>
                 <th className="p-4">Request</th>
                 <th className="p-4">Student</th>
-                <th className="p-4">Company</th>
-                <th className="p-4">RTO / Institute</th>
-                <th className="p-4">Status</th>
+                <th className="p-4">RTO / College</th>
                 <th className="p-4">Contacted Industries</th>
                 <th className="p-4">Requested On</th>
                 <th className="p-4 text-right">Actions</th>
@@ -704,21 +714,7 @@ export default function WorkflowStep2Requests({
                 return (
                   <tr
                     key={i}
-                    onClick={() => {
-                      setSelectedRequest({
-                        id: item.reqId,
-                        dbId: item.id || item.reqId,
-                        title: item.title,
-                        student: item.student,
-                        studentId: item.studentId || 'STU-0002453',
-                        company: item.company,
-                        rto: item.rto,
-                        status: item.status,
-                        requestedOn: `${item.date} at 10:24 AM`
-                      });
-                      setShowDrawer(true);
-                    }}
-                    className={`cursor-pointer transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
+                    className={`transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : ''}`}
                   >
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <input
@@ -741,31 +737,97 @@ export default function WorkflowStep2Requests({
                         <p className="text-[11px] text-slate-400">ST{paginatedRequests.indexOf(item) + 1 + (currentPage - 1) * pageSize}</p>
                       </div>
                     </td>
-                    <td className="p-4 text-slate-600 font-medium flex items-center space-x-1.5 pt-5">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>{item.company}</span>
-                    </td>
                     <td className="p-4 text-slate-600">{item.rto}</td>
                     <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getStatusColor(item.status)}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${contactCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-400'}`}>
-                        {contactCount} contacted
-                      </span>
+                      {contactCount === 0 ? (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">
+                          None
+                        </span>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          {(item.contactedIndustries || []).map((ci, idx) => {
+                            const orgName = (ci.organizationName || '').trim().toLowerCase();
+                            const studentName = (item.student || '').trim().toLowerCase();
+                            const studentId = (item.studentId || item.id || '').trim().toLowerCase();
+
+                            // Find the matching appointment (if any)
+                            const matchedAppt = (appointments || []).find((a) => {
+                              const aCompany = (a.company || '').trim().toLowerCase();
+                              const aStudent = (a.student || '').trim().toLowerCase();
+                              const aStudentId = (a.studentId || '').trim().toLowerCase();
+                              const isMatchStudent =
+                                (studentId && aStudentId === studentId) ||
+                                (studentName && aStudent === studentName);
+                              const isMatchOrg =
+                                orgName && aCompany && (aCompany === orgName || aCompany.includes(orgName) || orgName.includes(aCompany));
+                              const isMatchContactId =
+                                a.industryContactId && (a.industryContactId === ci.id || a.industryContactId === ci._id);
+                              const isActive = !['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status);
+                              return isMatchStudent && (isMatchOrg || isMatchContactId) && isActive;
+                            });
+
+                            // If appointment is Confirmed → Placement Started; if just scheduled → Appointment Scheduled
+                            const resp = matchedAppt
+                              ? (matchedAppt.status === 'Confirmed' ? 'Placement Started' : 'Appointment Scheduled')
+                              : (ci.response || 'In Discussion');
+
+                            const styleMap = {
+                              'Approved': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+                              'Rejected': 'bg-rose-50 text-rose-600 border border-rose-200',
+                              'Pending': 'bg-amber-50 text-amber-700 border border-amber-200',
+                              'In Discussion': 'bg-blue-50 text-blue-700 border border-blue-200',
+                              'Appointment Scheduled': 'bg-purple-50 text-purple-700 border border-purple-200',
+                              'Placement Started': 'bg-emerald-50 text-emerald-700 border border-emerald-300',
+                            };
+                            const iconMap = {
+                              'Approved': '✓',
+                              'Rejected': '✗',
+                              'Pending': '⏳',
+                              'In Discussion': '💬',
+                              'Appointment Scheduled': '📅',
+                              'Placement Started': '🚀',
+                            };
+                            const cls = styleMap[resp] || 'bg-blue-50 text-blue-700 border border-blue-200';
+                            const icon = iconMap[resp] || '💬';
+                            return (
+                              <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}`}>
+                                <span>{icon}</span>
+                                <span className="max-w-[100px] truncate" title={ci.organizationName}>
+                                  {ci.organizationName || 'Industry'}
+                                </span>
+                                <span className="opacity-80">· {resp}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </td>
                     <td className="p-4 text-slate-500">{item.date}</td>
                     <td className="p-4 text-right relative" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => setShowRowMenu(showRowMenu === item.reqId ? null : item.reqId)}
-                        className="p-1 hover:bg-slate-100 rounded-lg inline-flex"
-                      >
-                        <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            if (showRowMenu === item.reqId) {
+                              setShowRowMenu(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setRowMenuPos({
+                                top: rect.bottom + window.scrollY + 4,
+                                left: rect.right + window.scrollX - 176, // 176 = w-44
+                              });
+                              setShowRowMenu(item.reqId);
+                            }
+                          }}
+                          className="p-1 hover:bg-slate-100 rounded-lg inline-flex"
+                        >
+                          <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+                        </button>
+                      </div>
                       {showRowMenu === item.reqId && (
-                        <div className="absolute right-4 top-10 w-40 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
+                        <div
+                          style={{ position: 'fixed', top: rowMenuPos.top, left: rowMenuPos.left, zIndex: 9999 }}
+                          className="w-44 bg-white rounded-xl border border-slate-200 shadow-xl p-1.5 space-y-0.5"
+                        >
                           <button onClick={() => handleRowAction('view', item)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                             <Eye className="w-3.5 h-3.5 text-slate-400" />
                             <span>View Details</span>
@@ -774,9 +836,9 @@ export default function WorkflowStep2Requests({
                             <Edit className="w-3.5 h-3.5 text-slate-400" />
                             <span>Edit</span>
                           </button>
-                          <button onClick={() => handleRowAction('assignCoordinator', item)} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
-                            <UserCheck className="w-3.5 h-3.5 text-blue-500" />
-                            <span>Assign Coordinator</span>
+                          <button onClick={() => handleRowAction('addIndustry', item)} className="w-full text-left px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 rounded-lg flex items-center space-x-2">
+                            <Plus className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Add Industry</span>
                           </button>
                           <div className="my-0.5 border-t border-slate-100" />
                           <button onClick={() => handleRowAction('delete', item)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
@@ -791,7 +853,7 @@ export default function WorkflowStep2Requests({
               })}
               {paginatedRequests.length === 0 && (
                 <tr>
-                  <td colSpan="9" className="p-8 text-center text-slate-400 text-sm">
+                  <td colSpan="8" className="p-8 text-center text-slate-400 text-sm">
                     No requests found matching your filters
                   </td>
                 </tr>
@@ -977,7 +1039,29 @@ export default function WorkflowStep2Requests({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {currentContacts.map((rec, index) => (
+                    {currentContacts.map((rec, index) => {
+                      const orgName = (rec.organizationName || '').trim().toLowerCase();
+                      const studentName = (selectedRequest?.student || '').trim().toLowerCase();
+                      const studentId = (selectedRequest?.studentId || selectedRequest?.id || '').trim().toLowerCase();
+
+                      const hasAppt = (appointments || []).some((a) => {
+                        const aCompany = (a.company || '').trim().toLowerCase();
+                        const aStudent = (a.student || '').trim().toLowerCase();
+                        const aStudentId = (a.studentId || '').trim().toLowerCase();
+                        const isMatchStudent =
+                          (studentId && aStudentId === studentId) ||
+                          (studentName && aStudent === studentName);
+                        const isMatchOrg =
+                          orgName && aCompany && (aCompany === orgName || aCompany.includes(orgName) || orgName.includes(aCompany));
+                        const isMatchContactId =
+                          a.industryContactId && (a.industryContactId === rec.id || a.industryContactId === rec._id);
+                        const isActive = !['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status);
+                        return isMatchStudent && (isMatchOrg || isMatchContactId) && isActive;
+                      });
+
+                      const displayResponse = hasAppt ? 'Appointment Scheduled' : (rec.response || 'In Discussion');
+
+                      return (
                       <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
                         <div className="flex items-start justify-between">
                           <div>
@@ -988,11 +1072,11 @@ export default function WorkflowStep2Requests({
                             {rec.industryType}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-600 font-mono truncate">âœ‰ {rec.email}</p>
-                        <p className="text-[10px] text-slate-500">ðŸ“ {rec.address}</p>
+                        <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>
+                        <p className="text-[10px] text-slate-500">📍 {rec.address}</p>
                         {rec.appointmentDate && (
                           <div className="text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-md">
-                            ðŸ“… Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
+                            📅 Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
                           </div>
                         )}
                         <div className="pt-1.5 border-t border-slate-200/60 mt-1 space-y-1">
@@ -1000,17 +1084,17 @@ export default function WorkflowStep2Requests({
                             <span className="font-bold text-slate-900">Notes/Discussion: </span>
                             {rec.notes}
                           </p>
-                          {rec.response && (
-                            <p className={`text-[10px] font-bold px-2 py-0.5 rounded-md inline-block ${
-                              rec.response.toLowerCase().includes('approv') || rec.response.toLowerCase().includes('positive')
-                                ? 'text-emerald-700 bg-emerald-50'
-                                : rec.response.toLowerCase().includes('reject') || rec.response.toLowerCase().includes('declin')
-                                ? 'text-rose-700 bg-rose-50'
-                                : 'text-amber-700 bg-amber-50'
-                            }`}>
-                              Response: {rec.response}
-                            </p>
-                          )}
+                          <p className={`text-[10px] font-bold px-2 py-0.5 rounded-md inline-block ${
+                            displayResponse.toLowerCase().includes('appointment')
+                              ? 'text-purple-700 bg-purple-50 border border-purple-200'
+                              : displayResponse.toLowerCase().includes('approv') || displayResponse.toLowerCase().includes('positive')
+                              ? 'text-emerald-700 bg-emerald-50'
+                              : displayResponse.toLowerCase().includes('reject') || displayResponse.toLowerCase().includes('declin')
+                              ? 'text-rose-700 bg-rose-50'
+                              : 'text-amber-700 bg-amber-50'
+                          }`}>
+                            Response: {displayResponse}
+                          </p>
                           {(rec.contactedDate || rec.date) && (
                             <p className="text-[9px] text-slate-400">Date: {rec.contactedDate || rec.date}</p>
                           )}
@@ -1029,7 +1113,8 @@ export default function WorkflowStep2Requests({
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1097,7 +1182,11 @@ export default function WorkflowStep2Requests({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Add Industry / Organisation Contact</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Record organisation contacted for student's placement</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {selectedRequest?.student
+                    ? <>For <span className="font-semibold text-slate-600">{selectedRequest.student}</span> · {selectedRequest.title || selectedRequest.company || ''}</>
+                    : 'Record organisation contacted for student\'s placement'}
+                </p>
               </div>
               <button onClick={() => { setShowAddOrgModal(false); setOrgFormErrors({}); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />

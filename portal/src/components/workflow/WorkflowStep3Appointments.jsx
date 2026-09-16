@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
+import { calculatePlacementEndDate, getCalculationSummary } from '../../utils/dateCalculation';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
   FileText, CheckCircle2, UserX, Clock, Plus, Filter,
@@ -478,11 +479,30 @@ export default function WorkflowStep3Appointments({
     }
   };
 
+
   const handleOpenOutcomeModal = () => {
     if (!selectedAppointment) return;
     setAppointmentOutcome('successful');
-    setCommencementDate(selectedAppointment.date || new Date().toISOString().split('T')[0]);
-    setExpectedCompletionDate('');
+    const defaultStart = selectedAppointment.commencementDate || selectedAppointment.date || new Date().toISOString().split('T')[0];
+    setCommencementDate(defaultStart);
+
+    // Find matching student for hours & availability
+    const stuMatch = (students || []).find((s) => {
+      const sId = (s.id || s._id || '').toString().trim().toLowerCase();
+      const sName = (s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim()).toLowerCase();
+      const aId = (selectedAppointment.studentId || '').trim().toLowerCase();
+      const aName = (selectedAppointment.student || '').trim().toLowerCase();
+      return (sId && aId && sId === aId) || (sName && aName && sName === aName);
+    });
+
+    const calcEnd = calculatePlacementEndDate(
+      defaultStart,
+      stuMatch?.placementHours,
+      stuMatch?.availabilityDays,
+      stuMatch?.availabilityFrom,
+      stuMatch?.availabilityTo
+    );
+    setExpectedCompletionDate(calcEnd || selectedAppointment.expectedCompletionDate || '');
     setOutcomeNotes(selectedAppointment.notes || '');
     setShowOutcomeModal(true);
   };
@@ -494,7 +514,7 @@ export default function WorkflowStep3Appointments({
 
     try {
       let payload = { notes: outcomeNotes || selectedAppointment.notes || '' };
-      let status = 'Completed';
+      let status = 'Confirmed';
       let cancellationReason = '';
       let cancellationType = '';
 
@@ -505,7 +525,7 @@ export default function WorkflowStep3Appointments({
         }
         payload = {
           ...payload,
-          status: 'Completed',
+          status: 'Confirmed',
           appointmentOutcome: 'successful',
           commencementDate,
           expectedCompletionDate: expectedCompletionDate || '',
@@ -639,7 +659,7 @@ export default function WorkflowStep3Appointments({
     if (onUpdateAppointment && dbId) {
       try {
         const payload = {
-          status: 'Completed',
+          status: 'Confirmed',
           appointmentOutcome: 'successful',
           confirmedAt: new Date().toISOString(),
           notes: selectedAppointment.notes || 'Appointment confirmed and student placed successfully.'
@@ -647,7 +667,7 @@ export default function WorkflowStep3Appointments({
         await onUpdateAppointment(dbId, payload);
         setSelectedAppointment(prev => ({
           ...prev,
-          status: 'Completed',
+          status: 'Confirmed',
           appointmentOutcome: 'successful',
           cancellationReason: '',
           cancellationType: '',
@@ -1662,51 +1682,59 @@ export default function WorkflowStep3Appointments({
                     <span>Quick Status Actions</span>
                   </h5>
 
-                  {/* Confirm Appointment & Move to Placement Button */}
-                  <button
-                    onClick={handleConfirmAppointmentDirect}
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer shadow-xs text-xs"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-white" />
-                    <span>Confirm Appointment &amp; Placement</span>
-                  </button>
+                  {/* Once placement is confirmed, show a "Placement Started" badge instead of action buttons */}
+                  {selectedAppointment.status === 'Confirmed' && selectedAppointment.appointmentOutcome === 'successful' ? (
+                    <div className="w-full py-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span className="text-xs font-bold text-emerald-700">Placement Started</span>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Confirm Appointment & Move to Placement Button */}
+                      <button
+                        onClick={handleConfirmAppointmentDirect}
+                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer shadow-xs text-xs"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-white" />
+                        <span>Confirm Appointment &amp; Placement</span>
+                      </button>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        setIsRescheduling(!isRescheduling);
-                        setRescheduleDate(selectedAppointment.date || '');
-                        setRescheduleTime(selectedAppointment.time || '');
-                      }}
-                      className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-                    >
-                      <CalendarClock className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Reschedule</span>
-                    </button>
-                    <button
-                      onClick={handleCancelClick}
-                      className="py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      <span>Cancel Appt</span>
-                    </button>
-                  </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            setIsRescheduling(!isRescheduling);
+                            setRescheduleDate(selectedAppointment.date || '');
+                            setRescheduleTime(selectedAppointment.time || '');
+                          }}
+                          className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                        >
+                          <CalendarClock className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Reschedule</span>
+                        </button>
+                        <button
+                          onClick={handleCancelClick}
+                          className="py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Cancel Appt</span>
+                        </button>
+                      </div>
 
-                  <button
-                    onClick={handleOpenOutcomeModal}
-                    className={`w-full py-2 font-semibold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer text-[11px]
-                      ${selectedAppointment.appointmentOutcome === 'successful'
-                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                        : selectedAppointment.appointmentOutcome
-                          ? 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>
-                      {selectedAppointment.appointmentOutcome ? 'Edit Outcome Details' : 'Set Outcome Details'}
-                    </span>
-                  </button>
+                      <button
+                        onClick={handleOpenOutcomeModal}
+                        className={`w-full py-2 font-semibold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer text-[11px]
+                          ${selectedAppointment.appointmentOutcome
+                            ? 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>
+                          {selectedAppointment.appointmentOutcome ? 'Edit Outcome Details' : 'Set Outcome Details'}
+                        </span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -1959,13 +1987,36 @@ export default function WorkflowStep3Appointments({
                       <input
                         type="date"
                         value={commencementDate}
-                        onChange={(e) => setCommencementDate(e.target.value)}
+                        onChange={(e) => {
+                          const newDate = e.target.value;
+                          setCommencementDate(newDate);
+                          // Auto-recalculate end date when commencement date changes
+                          if (newDate && selectedAppointment && appointmentOutcome === 'successful') {
+                            const stuMatch = (students || []).find((s) => {
+                              const sId = (s.id || s._id || '').toString().trim().toLowerCase();
+                              const sName = (s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim()).toLowerCase();
+                              const aId = (selectedAppointment.studentId || '').trim().toLowerCase();
+                              const aName = (selectedAppointment.student || '').trim().toLowerCase();
+                              return (sId && aId && sId === aId) || (sName && aName && sName === aName);
+                            });
+                            if (stuMatch) {
+                              const calcEnd = calculatePlacementEndDate(
+                                newDate,
+                                stuMatch.placementHours,
+                                stuMatch.availabilityDays,
+                                stuMatch.availabilityFrom,
+                                stuMatch.availabilityTo
+                              );
+                              if (calcEnd) setExpectedCompletionDate(calcEnd);
+                            }
+                          }
+                        }}
                         className="w-full px-3 py-2 text-xs border border-emerald-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-emerald-700 mb-1">
-                        Expected Completion
+                        Expected Completion <span className="text-emerald-500 font-normal">(auto-calculated)</span>
                       </label>
                       <input
                         type="date"
@@ -1973,6 +2024,28 @@ export default function WorkflowStep3Appointments({
                         onChange={(e) => setExpectedCompletionDate(e.target.value)}
                         className="w-full px-3 py-2 text-xs border border-emerald-300 rounded-lg bg-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
                       />
+                      {/* Calculation summary hint */}
+                      {expectedCompletionDate && commencementDate && (() => {
+                        const stuMatch = (students || []).find((s) => {
+                          const sId = (s.id || s._id || '').toString().trim().toLowerCase();
+                          const sName = (s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim()).toLowerCase();
+                          const aId = (selectedAppointment?.studentId || '').trim().toLowerCase();
+                          const aName = (selectedAppointment?.student || '').trim().toLowerCase();
+                          return (sId && aId && sId === aId) || (sName && aName && sName === aName);
+                        });
+                        const summary = stuMatch ? getCalculationSummary(
+                          commencementDate,
+                          stuMatch.placementHours,
+                          stuMatch.availabilityDays,
+                          stuMatch.availabilityFrom,
+                          stuMatch.availabilityTo
+                        ) : null;
+                        return summary ? (
+                          <p className="mt-1 text-[9px] text-emerald-600 flex items-center gap-1">
+                            <span>🧮</span> {summary}
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 </div>

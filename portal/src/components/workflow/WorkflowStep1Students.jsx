@@ -33,6 +33,7 @@ export default function WorkflowStep1Students({
   onCreateAppointment,
   appointments = [],
   onUpdateRequest, // Used when changing priority of an existing placement request
+  onCoordinatorAssigned, // Called after coordinator is assigned/changed — updates parent state
 }) {
   const navigate = useNavigate();
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -759,7 +760,7 @@ export default function WorkflowStep1Students({
                 {showColumns && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Toggle Columns</p>
-                    {['Student', 'Student ID', 'RTO / Institute', 'Status', 'Placement Status', 'Added On'].map((col, i) => (
+                    {['Student', 'Student ID', 'RTO / College', 'Placement Status', 'Added On'].map((col, i) => (
                       <label key={i} className="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer">
                         <input type="checkbox" defaultChecked className="rounded accent-blue-600" />
                         <span>{col}</span>
@@ -800,8 +801,7 @@ export default function WorkflowStep1Students({
                 </th>
                 <th className="py-4 px-2">Student</th>
                 <th className="p-4">Student ID</th>
-                <th className="p-4">RTO / Institute</th>
-                <th className="p-4">Status</th>
+                <th className="p-4">RTO / College</th>
                 <th className="p-4">Placement Status</th>
                 <th className="p-4">Placement Request</th>
                 <th className="p-4">Added On</th>
@@ -826,22 +826,7 @@ export default function WorkflowStep1Students({
                 return (
                   <tr 
                     key={rowIdx} 
-                    onClick={() => {
-                      setSelectedStudent({
-                        ...stu,
-                        name: stu.name,
-                        email: stu.email,
-                        id: stu.id,
-                        studentId: stu.studentId || stu.enrollmentId || stu.id,
-                        institute: stu.rto,
-                        status: stu.status,
-                        addedOn: stu.addedOn,
-                        contactedIndustries: stu.contactedIndustries || []
-                      });
-                      setShowDrawer(true);
-                      setShowAppointmentForm(false);
-                    }}
-                    className={`cursor-pointer transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
+                    className={`transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
                   >
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <input 
@@ -878,23 +863,42 @@ export default function WorkflowStep1Students({
                     <td className="p-4 font-medium text-slate-700">
                       {stu.studentId || stu.enrollmentId || (stu.id ? `ST${stu.id.slice(-4).toUpperCase()}` : `ST${paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}`)}
                     </td>
-                    <td className="p-4 text-slate-600">{stu.rto}</td>
                     <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        stu.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {stu.status}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-slate-700 font-medium text-[11px]">{stu.rto || '—'}</span>
+                        {(stu.institute || stu.campus) && (
+                          <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                            <GraduationCap className="w-2.5 h-2.5 shrink-0" />
+                            {stu.institute || stu.campus}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        reqValue || stu.placementStatus?.includes('Progress') ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                        stu.placementStatus === 'Ready' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 
-                        stu.placementStatus === 'Pending Info' ? 'bg-amber-50 text-amber-600 border border-amber-200' : 
-                        'bg-blue-50 text-blue-600 border border-blue-200'
-                      }`}>
-                        {reqValue ? 'In Progress' : (stu.placementStatus || 'Ready')}
-                      </span>
+                      {(() => {
+                        const statusVal = stu.placementStatus || 'None';
+                        let badgeClass = 'bg-blue-50 text-blue-700 border border-blue-200';
+                        if (statusVal === 'Placement Started') {
+                          badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-300';
+                        } else if (statusVal === 'Appointment Scheduled') {
+                          badgeClass = 'bg-purple-50 text-purple-700 border border-purple-200';
+                        } else if (statusVal === 'Industry Contacted') {
+                          badgeClass = 'bg-cyan-50 text-cyan-700 border border-cyan-200';
+                        } else if (statusVal === 'In Progress') {
+                          badgeClass = 'bg-blue-50 text-blue-700 border border-blue-200';
+                        } else if (statusVal === 'Ready') {
+                          badgeClass = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
+                        } else if (statusVal === 'Pending Info') {
+                          badgeClass = 'bg-amber-50 text-amber-600 border border-amber-200';
+                        } else if (statusVal === 'None') {
+                          badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200';
+                        }
+                        return (
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${badgeClass}`}>
+                            {statusVal}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="p-4">
                       {snoozedStudentIds[stu.id] ? (
@@ -965,7 +969,7 @@ export default function WorkflowStep1Students({
                           </button>
                           <button onClick={() => handleRowAction('assignCoordinator', stu)} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
                             <UserCheck className="w-3.5 h-3.5 text-blue-500" />
-                            <span>Assign Coordinator</span>
+                            <span>{stu.assignedCoordinator ? 'Change Coordinator' : 'Assign Coordinator'}</span>
                           </button>
                           <div className="my-0.5 border-t border-slate-100" />
                           <button onClick={() => handleRowAction('delete', stu)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
@@ -1916,6 +1920,14 @@ export default function WorkflowStep1Students({
                 ? `${assignCoordinatorTarget.name} assigned to ${coordinatorName}`
                 : `Coordinator removed from ${assignCoordinatorTarget.name}`
             );
+            // Notify parent so workflowStudents state is updated (fixes Assign/Change toggle)
+            if (onCoordinatorAssigned) {
+              onCoordinatorAssigned({
+                studentId: assignCoordinatorTarget.id,
+                coordinatorId: coordinatorId || null,
+                coordinatorName: coordinatorName || '',
+              });
+            }
             setAssignCoordinatorTarget(null);
           }}
         />
