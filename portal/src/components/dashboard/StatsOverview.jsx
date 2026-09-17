@@ -77,7 +77,7 @@ export default function StatsOverview({ stats }) {
         </div>
       </div>
 
-      {/* Card 4: Active Internships */}
+      {/* Card 4: Active Placements */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-[auto_1fr] gap-4 items-center">
         <div className="p-3 bg-teal-50 text-teal-600 rounded-xl self-start">
           <Briefcase size={22} />
@@ -85,7 +85,7 @@ export default function StatsOverview({ stats }) {
         <div className="flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] text-slate-400 font-medium block leading-tight">Total Internships</span>
+              <span className="text-[11px] text-slate-400 font-medium block leading-tight">Total Placements</span>
               <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none mt-1">{totalInternships}</h3>
             </div>
           </div>

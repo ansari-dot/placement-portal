@@ -71,7 +71,7 @@ const internshipRequestSchema = new mongoose.Schema(
     },
     priority: {
       type: String,
-      enum: ["Normal", "Urgent"],
+      enum: ["Normal", "Urgent", "Inactive"],
       default: "Normal",
     },
     contactedIndustries: [

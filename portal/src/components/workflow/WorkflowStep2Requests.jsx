@@ -151,6 +151,17 @@ export default function WorkflowStep2Requests({
       return;
     }
 
+    // ── Duplicate check — same org name already on this request ──────────────
+    const existingContacts = contactRecordsMap[targetKey] || [];
+    const newOrgNorm = orgForm.organizationName.trim().toLowerCase();
+    const isDuplicate = existingContacts.some(
+      (c) => (c.organizationName || '').trim().toLowerCase() === newOrgNorm
+    );
+    if (isDuplicate) {
+      showToast(`"${orgForm.organizationName.trim()}" is already added to this placement request.`);
+      return;
+    }
+
     const newRecord = {
       id: `c_${Date.now()}`,
       ...orgForm,
@@ -750,7 +761,7 @@ export default function WorkflowStep2Requests({
                             const studentName = (item.student || '').trim().toLowerCase();
                             const studentId = (item.studentId || item.id || '').trim().toLowerCase();
 
-                            // Find the matching appointment (if any)
+                            // Find the matching appointment (if any) — including outcome appointments
                             const matchedAppt = (appointments || []).find((a) => {
                               const aCompany = (a.company || '').trim().toLowerCase();
                               const aStudent = (a.student || '').trim().toLowerCase();
@@ -762,36 +773,59 @@ export default function WorkflowStep2Requests({
                                 orgName && aCompany && (aCompany === orgName || aCompany.includes(orgName) || orgName.includes(aCompany));
                               const isMatchContactId =
                                 a.industryContactId && (a.industryContactId === ci.id || a.industryContactId === ci._id);
-                              const isActive = !['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status);
-                              return isMatchStudent && (isMatchOrg || isMatchContactId) && isActive;
+                              return isMatchStudent && (isMatchOrg || isMatchContactId);
                             });
 
-                            // If appointment is Confirmed → Placement Started; if just scheduled → Appointment Scheduled
-                            const resp = matchedAppt
-                              ? (matchedAppt.status === 'Confirmed' ? 'Placement Started' : 'Appointment Scheduled')
-                              : (ci.response || 'In Discussion');
+                            // Derive display label from the real appointment status / outcome
+                            let resp;
+                            if (!matchedAppt) {
+                              // No appointment at all — show Industry Contacted if org is recorded
+                              resp = ci.organizationName ? 'Industry Contacted' : (ci.response || 'In Discussion');
+                            } else if (matchedAppt.status === 'Confirmed' || matchedAppt.appointmentOutcome === 'successful') {
+                              resp = 'Placement Started';
+                            } else if (matchedAppt.status === 'Completed') {
+                              resp = 'Placement Completed';
+                            } else if (
+                              matchedAppt.status === 'Declined' &&
+                              matchedAppt.appointmentOutcome === 'not_suitable_site'
+                            ) {
+                              resp = 'Not Suitable Site';
+                            } else if (
+                              matchedAppt.status === 'Declined' ||
+                              matchedAppt.appointmentOutcome === 'industry_rejected'
+                            ) {
+                              resp = 'Industry Rejected';
+                            } else if (
+                              matchedAppt.status === 'Withdrawn' ||
+                              matchedAppt.appointmentOutcome === 'student_withdrawal'
+                            ) {
+                              resp = 'Student Withdrew';
+                            } else if (matchedAppt.status === 'No Show') {
+                              resp = 'Student Missed Appointment';
+                            } else if (matchedAppt.status === 'Cancelled') {
+                              resp = 'Cancelled';
+                            } else {
+                              resp = 'Appointment Scheduled';
+                            }
 
                             const styleMap = {
-                              'Approved': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-                              'Rejected': 'bg-rose-50 text-rose-600 border border-rose-200',
-                              'Pending': 'bg-amber-50 text-amber-700 border border-amber-200',
-                              'In Discussion': 'bg-blue-50 text-blue-700 border border-blue-200',
-                              'Appointment Scheduled': 'bg-purple-50 text-purple-700 border border-purple-200',
-                              'Placement Started': 'bg-emerald-50 text-emerald-700 border border-emerald-300',
-                            };
-                            const iconMap = {
-                              'Approved': '✓',
-                              'Rejected': '✗',
-                              'Pending': '⏳',
-                              'In Discussion': '💬',
-                              'Appointment Scheduled': '📅',
-                              'Placement Started': '🚀',
+                              'Approved':                    'bg-emerald-50 text-emerald-700 border border-emerald-200',
+                              'Rejected':                    'bg-rose-50 text-rose-600 border border-rose-200',
+                              'Pending':                     'bg-amber-50 text-amber-700 border border-amber-200',
+                              'In Discussion':               'bg-blue-50 text-blue-700 border border-blue-200',
+                              'Industry Contacted':          'bg-cyan-50 text-cyan-700 border border-cyan-200',
+                              'Appointment Scheduled':       'bg-purple-50 text-purple-700 border border-purple-200',
+                              'Placement Started':           'bg-emerald-50 text-emerald-700 border border-emerald-300',
+                              'Placement Completed':         'bg-emerald-100 text-emerald-800 border border-emerald-400',
+                              'Industry Rejected':           'bg-rose-50 text-rose-700 border border-rose-200',
+                              'Not Suitable Site':           'bg-amber-50 text-amber-800 border border-amber-400',
+                              'Student Withdrew':            'bg-orange-50 text-orange-700 border border-orange-200',
+                              'Student Missed Appointment':  'bg-slate-100 text-slate-600 border border-slate-300',
+                              'Cancelled':                   'bg-slate-100 text-slate-500 border border-slate-300',
                             };
                             const cls = styleMap[resp] || 'bg-blue-50 text-blue-700 border border-blue-200';
-                            const icon = iconMap[resp] || '💬';
                             return (
                               <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}`}>
-                                <span>{icon}</span>
                                 <span className="max-w-[100px] truncate" title={ci.organizationName}>
                                   {ci.organizationName || 'Industry'}
                                 </span>
@@ -1044,7 +1078,7 @@ export default function WorkflowStep2Requests({
                       const studentName = (selectedRequest?.student || '').trim().toLowerCase();
                       const studentId = (selectedRequest?.studentId || selectedRequest?.id || '').trim().toLowerCase();
 
-                      const hasAppt = (appointments || []).some((a) => {
+                      const matchedDrawerAppt = (appointments || []).find((a) => {
                         const aCompany = (a.company || '').trim().toLowerCase();
                         const aStudent = (a.student || '').trim().toLowerCase();
                         const aStudentId = (a.studentId || '').trim().toLowerCase();
@@ -1055,11 +1089,29 @@ export default function WorkflowStep2Requests({
                           orgName && aCompany && (aCompany === orgName || aCompany.includes(orgName) || orgName.includes(aCompany));
                         const isMatchContactId =
                           a.industryContactId && (a.industryContactId === rec.id || a.industryContactId === rec._id);
-                        const isActive = !['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status);
-                        return isMatchStudent && (isMatchOrg || isMatchContactId) && isActive;
+                        return isMatchStudent && (isMatchOrg || isMatchContactId);
                       });
 
-                      const displayResponse = hasAppt ? 'Appointment Scheduled' : (rec.response || 'In Discussion');
+                      let displayResponse;
+                      if (!matchedDrawerAppt) {
+                        displayResponse = ci.organizationName ? 'Industry Contacted' : (rec.response || 'In Discussion');
+                      } else if (matchedDrawerAppt.status === 'Confirmed' || matchedDrawerAppt.appointmentOutcome === 'successful') {
+                        displayResponse = 'Placement Started';
+                      } else if (matchedDrawerAppt.status === 'Completed') {
+                        displayResponse = 'Placement Completed';
+                      } else if (matchedDrawerAppt.status === 'Declined' && matchedDrawerAppt.appointmentOutcome === 'not_suitable_site') {
+                        displayResponse = 'Not Suitable Site';
+                      } else if (matchedDrawerAppt.status === 'Declined' || matchedDrawerAppt.appointmentOutcome === 'industry_rejected') {
+                        displayResponse = 'Industry Rejected';
+                      } else if (matchedDrawerAppt.status === 'Withdrawn' || matchedDrawerAppt.appointmentOutcome === 'student_withdrawal') {
+                        displayResponse = 'Student Withdrew';
+                      } else if (matchedDrawerAppt.status === 'No Show') {
+                        displayResponse = 'Student Missed Appointment';
+                      } else if (matchedDrawerAppt.status === 'Cancelled') {
+                        displayResponse = 'Cancelled';
+                      } else {
+                        displayResponse = 'Appointment Scheduled';
+                      }
 
                       return (
                       <div key={rec.id || index} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
@@ -1072,11 +1124,11 @@ export default function WorkflowStep2Requests({
                             {rec.industryType}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>
-                        <p className="text-[10px] text-slate-500">📍 {rec.address}</p>
+                        <p className="text-[10px] text-slate-600 truncate">{rec.email}</p>
+                        <p className="text-[10px] text-slate-500">{rec.address}</p>
                         {rec.appointmentDate && (
                           <div className="text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-md">
-                            📅 Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
+                            Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
                           </div>
                         )}
                         <div className="pt-1.5 border-t border-slate-200/60 mt-1 space-y-1">
@@ -1085,13 +1137,29 @@ export default function WorkflowStep2Requests({
                             {rec.notes}
                           </p>
                           <p className={`text-[10px] font-bold px-2 py-0.5 rounded-md inline-block ${
-                            displayResponse.toLowerCase().includes('appointment')
+                            displayResponse === 'Placement Started'
+                              ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
+                              : displayResponse === 'Placement Completed'
+                              ? 'text-emerald-800 bg-emerald-100 border border-emerald-300'
+                              : displayResponse === 'Appointment Scheduled'
                               ? 'text-purple-700 bg-purple-50 border border-purple-200'
-                              : displayResponse.toLowerCase().includes('approv') || displayResponse.toLowerCase().includes('positive')
-                              ? 'text-emerald-700 bg-emerald-50'
+                              : displayResponse === 'Industry Contacted'
+                              ? 'text-cyan-700 bg-cyan-50 border border-cyan-200'
+                              : displayResponse === 'Industry Rejected'
+                              ? 'text-rose-700 bg-rose-50 border border-rose-200'
+                              : displayResponse === 'Not Suitable Site'
+                              ? 'text-amber-800 bg-amber-50 border border-amber-400'
+                              : displayResponse === 'Student Withdrew'
+                              ? 'text-orange-700 bg-orange-50 border border-orange-200'
+                              : displayResponse === 'Student Missed Appointment'
+                              ? 'text-slate-600 bg-slate-100 border border-slate-300'
+                              : displayResponse === 'Cancelled'
+                              ? 'text-slate-500 bg-slate-100 border border-slate-300'
+                              : displayResponse.toLowerCase().includes('approv')
+                              ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
                               : displayResponse.toLowerCase().includes('reject') || displayResponse.toLowerCase().includes('declin')
-                              ? 'text-rose-700 bg-rose-50'
-                              : 'text-amber-700 bg-amber-50'
+                              ? 'text-rose-700 bg-rose-50 border border-rose-200'
+                              : 'text-amber-700 bg-amber-50 border border-amber-200'
                           }`}>
                             Response: {displayResponse}
                           </p>

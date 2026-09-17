@@ -19,7 +19,7 @@ export default function RequestsChartCard({ chartData = [], loading }) {
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between h-full">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-base font-bold text-slate-900">Internship Requests & Placements Overview</h3>
+        <h3 className="text-base font-bold text-slate-900">Placement Requests & Placements Overview</h3>
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-6 text-xs font-medium text-slate-600">
             <div className="flex items-center space-x-2">

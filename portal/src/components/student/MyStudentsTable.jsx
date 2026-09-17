@@ -579,7 +579,7 @@ export default function MyStudentsTable() {
       let currentPriority = 'Normal';
       for (const key of stuKeys) {
         const val = workflowRequestMap[key];
-        if (val && ['Urgent', 'Normal'].includes(val)) {
+        if (val && ['Urgent', 'Normal', 'Inactive'].includes(val)) {
           currentPriority = val;
           break;
         }
@@ -646,7 +646,7 @@ export default function MyStudentsTable() {
     ].filter(Boolean);
     return keys.some((k) => {
       const val = workflowRequestMap[k];
-      return val === 'Normal' || val === 'Urgent';
+      return val === 'Normal' || val === 'Urgent' || val === 'Inactive';
     });
   };
 
@@ -867,7 +867,7 @@ export default function MyStudentsTable() {
                 {isChangingPlacement ? 'New Priority' : 'Request Action & Priority'}{' '}
                 <span className="text-rose-500">*</span>
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
 
                 {/* Normal */}
                 <button
@@ -903,6 +903,23 @@ export default function MyStudentsTable() {
                     <input type="radio" name="myStudentPriority" checked={genPriority === 'Urgent'} onChange={() => {}} className="accent-rose-600" />
                   </div>
                   <span className="text-[10px] text-slate-500 font-normal mt-1">Urgent Priority</span>
+                </button>
+
+                {/* Inactive */}
+                <button
+                  type="button"
+                  onClick={() => setGenPriority('Inactive')}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition cursor-pointer ${
+                    genPriority === 'Inactive'
+                      ? 'bg-violet-50/70 border-violet-500 ring-2 ring-violet-500/20 text-violet-900'
+                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-bold">Inactive</span>
+                    <input type="radio" name="myStudentPriority" checked={genPriority === 'Inactive'} onChange={() => {}} className="accent-violet-600" />
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-normal mt-1">Inactive Student</span>
                 </button>
 
                 {/* Snooze */}

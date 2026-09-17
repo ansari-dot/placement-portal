@@ -116,7 +116,7 @@ export const internshipRequestSchema = z.object({
     .default(""),
 
   priority: z
-    .enum(["Normal", "Urgent"])
+    .enum(["Normal", "Urgent", "Inactive"])
     .optional()
     .default("Normal"),
 
@@ -238,9 +238,9 @@ export const appointmentSchema = z.object({
     .optional()
     .default(""),
 
-  // ✅ FIX: Added 'Withdrawn', 'Declined', and 'Confirmed'
+  // ✅ FIX: Added 'Withdrawn', 'Declined', 'Confirmed', and 'Not Suitable Site'
   status: z
-    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show", "Withdrawn", "Declined", "Confirmed"])
+    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show", "Withdrawn", "Declined", "Confirmed", "Not Suitable Site"])
     .optional()
     .default("Scheduled"),
 
@@ -335,9 +335,9 @@ export const internshipSchema = z.object({
     .optional()
     .default(""),
 
-  // ✅ FIX: Added 'Declined', 'Withdrawn', and 'Placement Started'
+  // ✅ FIX: Added 'Declined', 'Withdrawn', 'Placement Started', and 'Not Suitable Site'
   status: z
-    .enum(["Active", "Joined", "Waiting to Join", "Completed", "Cancelled", "On Hold", "Declined", "Withdrawn", "Placement Started"])
+    .enum(["Active", "Joined", "Waiting to Join", "Completed", "Cancelled", "On Hold", "Declined", "Withdrawn", "Placement Started", "Not Suitable Site"])
     .optional()
     .default("Active"),
 

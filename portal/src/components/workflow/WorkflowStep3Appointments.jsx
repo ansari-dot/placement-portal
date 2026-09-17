@@ -151,7 +151,8 @@ export default function WorkflowStep3Appointments({
     Rescheduled: true,
     Cancelled: true,
     Withdrawn: true,
-    Declined: true
+    Declined: true,
+    'Not Suitable Site': true
   });
 
   const showToast = (message) => {
@@ -312,6 +313,12 @@ export default function WorkflowStep3Appointments({
   // Color helper based on status
   const getStatusBadgeStyle = (status) => {
     switch (status) {
+      case 'Confirmed':
+        return {
+          bg: 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100',
+          sub: 'text-emerald-600',
+          badge: 'bg-emerald-100 text-emerald-700 border-emerald-300'
+        };
       case 'Completed':
         return {
           bg: 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100',
@@ -347,6 +354,12 @@ export default function WorkflowStep3Appointments({
           bg: 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100',
           sub: 'text-rose-600',
           badge: 'bg-rose-100 text-rose-700 border-rose-300'
+        };
+      case 'Not Suitable Site':
+        return {
+          bg: 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100',
+          sub: 'text-amber-700',
+          badge: 'bg-amber-100 text-amber-800 border-amber-400'
         };
       default:
         return {
@@ -561,7 +574,7 @@ export default function WorkflowStep3Appointments({
           expectedCompletionDate: '',
         };
       } else if (appointmentOutcome === 'not_suitable_site') {
-        status = 'Declined';
+        status = 'Not Suitable Site';
         cancellationType = 'student';
         cancellationReason = outcomeNotes || 'Placement site was not suitable for the student';
         payload = {
@@ -971,7 +984,7 @@ export default function WorkflowStep3Appointments({
                   <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-2">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status Filters</p>
                     <div className="space-y-1.5">
-                      {['Scheduled', 'Completed', 'No Show', 'Rescheduled', 'Cancelled', 'Withdrawn', 'Declined'].map(st => (
+                      {['Scheduled', 'Completed', 'No Show', 'Rescheduled', 'Cancelled', 'Withdrawn', 'Declined', 'Not Suitable Site'].map(st => (
                         <label key={st} className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
                           <input
                             type="checkbox"
@@ -986,7 +999,7 @@ export default function WorkflowStep3Appointments({
                     <div className="pt-2 border-t border-slate-100 flex justify-between">
                       <button
                         onClick={() => {
-                          setStatusFilters({ Scheduled: true, Completed: true, 'No Show': true, Rescheduled: true, Cancelled: true, Withdrawn: true, Declined: true });
+                          setStatusFilters({ Scheduled: true, Completed: true, 'No Show': true, Rescheduled: true, Cancelled: true, Withdrawn: true, Declined: true, 'Not Suitable Site': true });
                           showToast('Reset status filters');
                         }}
                         className="text-[10px] font-bold text-slate-500 hover:underline"
@@ -1434,6 +1447,7 @@ export default function WorkflowStep3Appointments({
           <div className={`relative bg-gradient-to-br from-slate-900 via-slate-800 to-${
             selectedAppointment.status === 'Completed' ? 'emerald' :
             selectedAppointment.status === 'Declined' ? 'rose' :
+            selectedAppointment.status === 'Not Suitable Site' ? 'amber' :
             selectedAppointment.status === 'Withdrawn' ? 'orange' :
             selectedAppointment.status === 'Cancelled' ? 'slate' :
             'cyan'
@@ -2062,7 +2076,7 @@ export default function WorkflowStep3Appointments({
                   <span>
                     {appointmentOutcome === 'industry_rejected' && 'Appointment will be marked as Declined. Student returns to workflow for re-placement.'}
                     {appointmentOutcome === 'student_withdrawal' && 'Appointment will be marked as Withdrawn. Student returns to workflow for re-placement.'}
-                    {appointmentOutcome === 'not_suitable_site' && 'Appointment will be marked as Declined. Student returns to workflow — site deemed not appropriate.'}
+                    {appointmentOutcome === 'not_suitable_site' && 'Appointment will be marked as Not Suitable Site. Student returns to workflow — site deemed not appropriate.'}
                   </span>
                 </div>
               )}
@@ -2179,7 +2193,7 @@ export default function WorkflowStep3Appointments({
               {cancelType === 'industry' && (
                 <div className="bg-rose-50 p-3 rounded-xl border border-rose-200">
                   <p className="text-[10px] text-rose-800 font-medium">
-                    ⚠️ Industry rejected the student. This will be marked as "Declined" in placements.
+                    Industry rejected the student. This will be marked as "Declined" in placements.
                   </p>
                 </div>
               )}
@@ -2187,7 +2201,7 @@ export default function WorkflowStep3Appointments({
               {cancelType === 'student' && (
                 <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
                   <p className="text-[10px] text-blue-800 font-medium">
-                    ℹ️ Student requested cancellation. This will be marked as "Declined" in placements.
+                    Student requested cancellation. This will be marked as "Declined" in placements.
                   </p>
                 </div>
               )}
