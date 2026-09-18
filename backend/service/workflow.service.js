@@ -6,7 +6,7 @@ import WorkflowModel, {
 } from "../model/workflow.model.js";
 import StudentModel from "../model/student.model.js";
 import NotificationModel from "../model/notification.model.js";
-import { sendPlacementStartedEmail } from "./email.service.js";
+import { sendPlacementStartedEmail, sendPlacementOutcomeEmail } from "./email.service.js";
 
 // ===== ID Generators =====
 const generateReqId = async () => {
@@ -180,7 +180,7 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
 
   const { contactedIndustries: newContacts, ...otherFields } = requestData || {};
 
-  // Push new contact records â€” never overwrite the existing array
+  // Push new contact records — never overwrite the existing array
   if (Array.isArray(newContacts) && newContacts.length > 0) {
     matchedRequest.contactedIndustries.push(...newContacts);
   }
@@ -370,6 +370,33 @@ export const createAppointment = async (workflowId, appointmentData) => {
   return appointment;
 };
 
+/**
+ * Resolve the student's email + Mongo document for a given appointment.
+ * Tries: appointment's own email field first, then looks up the Student
+ * collection by studentId (business ID or Mongo _id).
+ * Never throws — returns { studentDoc: null, email: '' } on any failure.
+ */
+const resolveStudentAndEmail = async (appt) => {
+  const studentId = appt.studentId;
+  let studentDoc = null;
+
+  try {
+    const stuQuery = [];
+    if (studentId) {
+      stuQuery.push({ studentId });
+      if (mongoose.Types.ObjectId.isValid(studentId)) stuQuery.push({ _id: studentId });
+    }
+    if (stuQuery.length > 0) {
+      studentDoc = await StudentModel.findOne({ $or: stuQuery });
+    }
+  } catch (findErr) {
+    console.warn('[Workflow] Student lookup failed:', findErr.message);
+  }
+
+  const email = appt.email || studentDoc?.emailAddress || studentDoc?.email || '';
+  return { studentDoc, email };
+};
+
 export const updateAppointment = async (workflowId, appointmentId, appointmentData) => {
   const normalizedId = String(appointmentId || '').trim();
   let workflow = null;
@@ -402,7 +429,7 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
   Object.assign(workflow.appointments[appointmentIndex], appointmentData);
   await workflow.save({ validateBeforeSave: false });
 
-  // â”€â”€ Side-effects when placement is confirmed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Side-effects: PLACEMENT STARTED (outcome = successful) ─────────────────
   if (
     appointmentData.status === 'Confirmed' &&
     appointmentData.appointmentOutcome === 'successful'
@@ -411,7 +438,7 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
     const studentName = (appt.student || '').trim().toLowerCase();
     const companyName = (appt.company || '').trim().toLowerCase();
 
-    // 1. Update contactedIndustries response â†’ 'Placement Started' on all matching requests
+    // 1. Update contactedIndustries response → 'Placement Started' on all matching requests
     if (workflow.requests && workflow.requests.length > 0) {
       workflow.requests.forEach((req) => {
         const isStudentMatch =
@@ -433,53 +460,73 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
       await workflow.save({ validateBeforeSave: false });
     }
 
-    // 2. Update student placementStatus â†’ 'Placement Started'
-    try {
-      const stuQuery = [];
-      if (studentId) {
-        stuQuery.push({ studentId });
-        if (mongoose.Types.ObjectId.isValid(studentId)) stuQuery.push({ _id: studentId });
-      }
-      if (stuQuery.length > 0) {
-        const studentDoc = await StudentModel.findOne({ $or: stuQuery });
-        if (studentDoc) {
-          studentDoc.placementStatus = 'Placement Started';
-          // Also update contactedIndustries on student
-          if (Array.isArray(studentDoc.contactedIndustries)) {
-            studentDoc.contactedIndustries.forEach((ci) => {
-              const orgName = (ci.organizationName || '').trim().toLowerCase();
-              if (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) {
-                ci.response = 'Placement Started';
-              }
-            });
-          }
-          await studentDoc.save();
+    // 2. Look up the student record — used for both status update AND the email address.
+    //    IMPORTANT: this lookup + the email send are NOT nested inside the same
+    //    try/catch as studentDoc.save(). If the save() fails for any reason
+    //    (validation, cast error, etc.) the email must still be attempted —
+    //    a DB write failure should never silently block a notification.
+    const { studentDoc, email: toEmail } = await resolveStudentAndEmail(appt);
 
-          // 3. Send placement started email
-          const toEmail = appt.email || studentDoc.emailAddress || studentDoc.email || '';
-          const commDate = appointmentData.commencementDate || appt.commencementDate || '';
-          const endDate = appointmentData.expectedCompletionDate || appt.expectedCompletionDate || '';
-          if (toEmail) {
-            try {
-              await sendPlacementStartedEmail({
-                toEmail,
-                studentName: appt.student || studentDoc.name || 'Student',
-                companyName: appt.company || 'the placement site',
-                commencementDate: commDate,
-                expectedCompletionDate: endDate,
-                studentId: studentId || '',
-              });
-            } catch (emailErr) {
-              console.warn('[Workflow] Placement started email failed:', emailErr.message);
+    if (studentDoc) {
+      // 2a. Sync contactedIndustries responses on the Student doc — failure here
+      //     is logged but does NOT stop the email below
+      try {
+        if (Array.isArray(studentDoc.contactedIndustries)) {
+          studentDoc.contactedIndustries.forEach((ci) => {
+            const orgName = (ci.organizationName || '').trim().toLowerCase();
+            if (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) {
+              ci.response = 'Placement Started';
             }
-          }
+          });
         }
+        await studentDoc.save();
+      } catch (saveErr) {
+        console.error(
+          '[Workflow] Student contactedIndustries save FAILED (email will still be attempted):',
+          saveErr.message
+        );
       }
-    } catch (stuErr) {
-      console.warn('[Workflow] Student placementStatus update skipped:', stuErr.message);
+    } else {
+      console.warn(
+        '[Workflow] No student record found for placement-started email — studentId:',
+        studentId,
+        'studentName:',
+        appt.student
+      );
     }
 
-    // 4. Create in-app notification
+    // 2b. Send placement started email — always attempted regardless of the save() result above
+    const commDate = appointmentData.commencementDate || appt.commencementDate || '';
+    const endDate = appointmentData.expectedCompletionDate || appt.expectedCompletionDate || '';
+
+    console.log('[Workflow] Placement-started email attempt →', {
+      student: appt.student,
+      company: appt.company,
+      toEmail: toEmail || '(missing)',
+    });
+
+    if (toEmail) {
+      try {
+        const emailResult = await sendPlacementStartedEmail({
+          toEmail,
+          studentName: appt.student || studentDoc?.name || 'Student',
+          companyName: appt.company || 'the placement site',
+          commencementDate: commDate,
+          expectedCompletionDate: endDate,
+          studentId: studentId || '',
+        });
+        console.log('[Workflow] Placement-started email result:', emailResult);
+      } catch (emailErr) {
+        console.error('[Workflow] Placement-started email FAILED to send:', emailErr.message);
+      }
+    } else {
+      console.warn(
+        '[Workflow] Skipped placement-started email — no email address available for',
+        appt.student
+      );
+    }
+
+    // 3. Create in-app notification
     try {
       await NotificationModel.create({
         title: 'Placement Started',
@@ -492,7 +539,97 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
       console.warn('[Workflow] Placement started notification failed:', notifErr.message);
     }
   }
-  // â”€â”€ End of placement confirmation side-effects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── End of PLACEMENT STARTED side-effects ───────────────────────────────
+
+  // ── Side-effects: PLACEMENT OUTCOME = REJECTED / WITHDRAWN / NOT SUITABLE ──
+  else if (
+    ['industry_rejected', 'student_withdrawal', 'not_suitable_site'].includes(
+      appointmentData.appointmentOutcome
+    )
+  ) {
+    const outcome = appointmentData.appointmentOutcome;
+    const studentName = (appt.student || '').trim().toLowerCase();
+    const companyName = (appt.company || '').trim().toLowerCase();
+
+    // 1. Update contactedIndustries response label on matching requests (so Step 2 UI reflects it too)
+    const OUTCOME_RESPONSE_LABEL = {
+      industry_rejected: 'Industry Rejected',
+      student_withdrawal: 'Student Withdrew',
+      not_suitable_site: 'Not Suitable Site',
+    };
+    if (workflow.requests && workflow.requests.length > 0) {
+      const studentId = appt.studentId;
+      workflow.requests.forEach((req) => {
+        const isStudentMatch =
+          (studentId && (req.studentId === studentId || req.id === studentId)) ||
+          (studentName && req.student && req.student.trim().toLowerCase() === studentName);
+
+        if (isStudentMatch && Array.isArray(req.contactedIndustries)) {
+          req.contactedIndustries.forEach((ci) => {
+            const orgName = (ci.organizationName || '').trim().toLowerCase();
+            if (
+              (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
+              (appt.industryContactId && (ci._id?.toString() === appt.industryContactId || ci.id === appt.industryContactId))
+            ) {
+              ci.response = OUTCOME_RESPONSE_LABEL[outcome] || 'Update';
+            }
+          });
+        }
+      });
+      await workflow.save({ validateBeforeSave: false });
+    }
+
+    // 2. Look up student + email (does not save/change the student's placementStatus —
+    //    the student stays in the workflow to be re-placed, so we don't overwrite their status here)
+    const { studentDoc, email: toEmail } = await resolveStudentAndEmail(appt);
+
+    console.log('[Workflow] Placement-outcome email attempt →', {
+      outcome,
+      student: appt.student,
+      company: appt.company,
+      toEmail: toEmail || '(missing)',
+    });
+
+    if (toEmail) {
+      try {
+        const emailResult = await sendPlacementOutcomeEmail({
+          toEmail,
+          studentName: appt.student || studentDoc?.name || 'Student',
+          companyName: appt.company || 'the placement site',
+          outcome,
+          reason: appointmentData.cancellationReason || appt.cancellationReason || '',
+          studentId: appt.studentId || '',
+        });
+        console.log('[Workflow] Placement-outcome email result:', emailResult);
+      } catch (emailErr) {
+        console.error('[Workflow] Placement-outcome email FAILED to send:', emailErr.message);
+      }
+    } else {
+      console.warn(
+        '[Workflow] Skipped placement-outcome email — no email address available for',
+        appt.student
+      );
+    }
+
+    // 3. In-app notification
+    try {
+      const OUTCOME_TITLE = {
+        industry_rejected: 'Industry Rejected Student',
+        student_withdrawal: 'Student Withdrew from Placement',
+        not_suitable_site: 'Placement Site Not Suitable',
+      };
+      await NotificationModel.create({
+        title: OUTCOME_TITLE[outcome] || 'Placement Update',
+        desc: `${appt.student}'s placement at ${appt.company}: ${OUTCOME_RESPONSE_LABEL[outcome] || 'Updated'}.`,
+        type: 'system',
+        isRead: false,
+        link: '/workflow?step=4',
+      });
+    } catch (notifErr) {
+      console.warn('[Workflow] Placement outcome notification failed:', notifErr.message);
+    }
+  }
+  // ── End of PLACEMENT OUTCOME side-effects ───────────────────────────────
 
   try {
     if (actualDbId && mongoose.Types.ObjectId.isValid(actualDbId)) {
@@ -673,7 +810,7 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
       else if (internshipData.status === 'Cancelled')  appt.status = 'Cancelled';
       // For all active/in-progress statuses keep the appointment as Confirmed so
       // placement-start side-effects (email, student status) are not undone
-      // 'Waiting to Join', 'Joined', 'Active', 'On Hold', 'Placement Started' â†’ keep Confirmed
+      // 'Waiting to Join', 'Joined', 'Active', 'On Hold', 'Placement Started' → keep Confirmed
     }
     if (internshipData.company) appt.company = internshipData.company;
     if (internshipData.title)   appt.position = internshipData.title;
@@ -691,7 +828,7 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
       }
     } catch (e) {}
 
-    // Upsert into workflow.internships â€” update existing record if one already exists
+    // Upsert into workflow.internships — update existing record if one already exists
     // for this appointment, otherwise create it once. This prevents duplicates on
     // repeated saves.
     const derivedIntId = appt.apptId ? `INT-${appt.apptId.substring(4)}` : null;
@@ -708,9 +845,9 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
       company: internshipData.company || appt.company,
       title: internshipData.title || appt.position || 'Internship Placement',
       rto: appt.rto || 'TBD',
-      // Preserve the display status from the form â€” this is what the coordinator set
+      // Preserve the display status from the form — this is what the coordinator set
       status: internshipData.status || 'Waiting to Join',
-      // Use placement start/end dates â€” not the appointment interview date
+      // Use placement start/end dates — not the appointment interview date
       start: appt.commencementDate || appt.date || new Date().toISOString().split('T')[0],
       end: appt.expectedCompletionDate || '',
       duration: '12 weeks',
@@ -950,7 +1087,7 @@ export const getWorkflowStudents = async (filter = {}) => {
   return await StudentModel.find(filter).sort({ createdAt: -1 });
 };
 
-// ===== Cascade delete â€” purge a student from ALL workflow data =====
+// ===== Cascade delete — purge a student from ALL workflow data =====
 // Removes the student ObjectId from workflow.students array, and
 // pulls every request / appointment / internship where studentId matches
 // either the MongoDB _id string OR the business studentId (e.g. "STU1").

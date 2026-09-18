@@ -33,7 +33,7 @@ const getTransporter = () => {
   return _transporter;
 };
 
-// ─── HTML Email Template ──────────────────────────────────────────────────────
+// ─── HTML Email Template: Placement Ending Soon ──────────────────────────────
 
 const buildHtml = ({ studentName, companyName, endDate, daysLeft, coordinatorName }) => `
 <!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -93,7 +93,7 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:#f0f4f8;margin:0;padding
 const buildText = ({ studentName, companyName, endDate, daysLeft }) =>
   `Dear ${studentName},\n\nYour placement at ${companyName} ends in ${daysLeft} day(s).\nEnd Date: ${new Date(endDate).toLocaleDateString('en-AU')}\n\nNext steps:\n- Confirm end date with supervisor\n- Submit timesheet & logbook\n- Collect reference letters\n- Contact coordinator if needed\n\nRegards,\nPlacement Portal`;
 
-// ─── In-App Notification Fallback ─────────────────────────────────────────────
+// ─── In-App Notification Fallback: Ending Soon ───────────────────────────────
 
 const saveInAppNotification = async (payload) => {
   try {
@@ -200,7 +200,7 @@ const saveStartedInAppNotification = async (payload) => {
 
 /**
  * sendPlacementStartedEmail
- * Called when an appointment is confirmed and placement begins.
+ * Called when an appointment outcome is set to 'successful' and placement begins.
  * @param {Object} options
  * @param {string} options.toEmail
  * @param {string} options.studentName
@@ -213,8 +213,13 @@ export const sendPlacementStartedEmail = async (options) => {
   const { toEmail, studentName, companyName, commencementDate, expectedCompletionDate, studentId } = options;
   const payload = { studentName, companyName, commencementDate, expectedCompletionDate, studentId };
 
-  // Always save in-app notification
+  // Always save in-app notification (non-blocking for the email attempt below)
   await saveStartedInAppNotification(payload);
+
+  if (!toEmail) {
+    console.warn('[EmailService] sendPlacementStartedEmail called with NO toEmail — cannot send. Student:', studentName);
+    return { sent: false, method: 'none', message: 'No recipient email address was provided.' };
+  }
 
   if (!isSmtpConfigured()) {
     console.log('\n[EmailService] SMTP not configured. Would send placement started email:');
@@ -240,47 +245,148 @@ export const sendPlacementStartedEmail = async (options) => {
   }
 };
 
-// ─── Send Placement Ending Soon Email ─────────────────────────────────────────
+// ─── HTML Template: Placement Outcome (Rejected / Withdrawn / Not Suitable) ──
+
+const OUTCOME_META = {
+  industry_rejected: {
+    label: 'Industry Did Not Proceed With Placement',
+    theme: { grad: '#e11d48,#be123c', bg: '#fff1f2', border: '#fecdd3', label: '#9f1239' },
+    emoji: '&#x1F4EC;',
+  },
+  student_withdrawal: {
+    label: 'Placement Withdrawn',
+    theme: { grad: '#ea580c,#c2410c', bg: '#fff7ed', border: '#fed7aa', label: '#9a3412' },
+    emoji: '&#x21A9;&#xFE0F;',
+  },
+  not_suitable_site: {
+    label: 'Placement Site Not Suitable',
+    theme: { grad: '#d97706,#b45309', bg: '#fffbeb', border: '#fcd34d', label: '#92400e' },
+    emoji: '&#x26A0;&#xFE0F;',
+  },
+};
+
+const buildOutcomeHtml = ({ studentName, companyName, outcome, reason }) => {
+  const meta = OUTCOME_META[outcome] || {
+    label: 'Placement Update',
+    theme: { grad: '#64748b,#475569', bg: '#f8fafc', border: '#cbd5e1', label: '#334155' },
+    emoji: '&#x2139;&#xFE0F;',
+  };
+  const { grad, bg, border, label } = meta.theme;
+
+  return `
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+body{font-family:"Segoe UI",Arial,sans-serif;background:#f0f4f8;margin:0;padding:0}
+.wrap{max-width:580px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.hdr{background:linear-gradient(135deg,${grad});padding:32px 36px}
+.hdr h1{color:#fff;margin:0;font-size:22px}
+.hdr p{color:rgba(255,255,255,.85);margin:6px 0 0;font-size:13px}
+.body{padding:32px 36px}
+.card{background:${bg};border:1px solid ${border};border-radius:10px;padding:20px 24px;margin:0 0 24px}
+.lbl{color:${label};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.val{color:#1e293b;font-size:14px;font-weight:700;margin-top:4px}
+.reason{color:#334155;font-size:13px;margin-top:4px;line-height:1.6}
+.acts{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px 24px;margin-bottom:24px}
+.acts h3{color:#1e293b;font-size:13px;font-weight:700;margin:0 0 8px}
+.acts ul{color:#64748b;font-size:13px;margin:0;padding-left:18px;line-height:2}
+.ftr{background:#f8fafc;padding:20px 36px;border-top:1px solid #e2e8f0}
+.ftr p{color:#94a3b8;font-size:11px;margin:0;line-height:1.6}
+</style></head><body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>${meta.emoji} Placement Update</h1>
+    <p>${meta.label}</p>
+  </div>
+  <div class="body">
+    <p style="color:#1e293b;font-size:15px;font-weight:600">Dear ${studentName},</p>
+    <p style="color:#475569;font-size:14px;line-height:1.7">
+      We're writing to update you on your placement application at <strong>${companyName}</strong>.
+    </p>
+    <div class="card">
+      <p class="lbl">Status</p>
+      <p class="val">${meta.label}</p>
+      ${reason ? `<p class="lbl" style="margin-top:14px">Details</p><p class="reason">${reason}</p>` : ''}
+    </div>
+    <div class="acts">
+      <h3>&#x1F4CB; What happens next:</h3>
+      <ul>
+        <li>Your placement coordinator has been notified automatically</li>
+        <li>They will follow up with you regarding alternative placement options</li>
+        <li>Please check your student portal for updates on your placement status</li>
+        <li>Contact your placement coordinator if you have any questions</li>
+      </ul>
+    </div>
+  </div>
+  <div class="ftr"><p><strong>Placement Portal</strong> &mdash; Automated notification. Do not reply.</p></div>
+</div></body></html>`;
+};
+
+const buildOutcomeText = ({ studentName, companyName, outcome, reason }) => {
+  const meta = OUTCOME_META[outcome] || { label: 'Placement Update' };
+  return `Dear ${studentName},\n\nUpdate on your placement at ${companyName}: ${meta.label}\n${reason ? `\nDetails: ${reason}\n` : ''}\nYour placement coordinator will follow up with next steps.\n\nRegards,\nPlacement Portal`;
+};
+
+const saveOutcomeInAppNotification = async ({ studentName, companyName, outcome }) => {
+  try {
+    const meta = OUTCOME_META[outcome] || { label: 'Placement Update' };
+    await NotificationModel.create({
+      title: `Placement Update — ${studentName}`,
+      desc: `${studentName}'s placement at ${companyName}: ${meta.label}`,
+      type: 'system',
+      isRead: false,
+      link: '/workflow?step=4',
+    });
+  } catch (err) {
+    console.warn('[EmailService] Could not save outcome in-app notification:', err.message);
+  }
+};
 
 /**
- * sendPlacementEndingSoonEmail
+ * sendPlacementOutcomeEmail
+ * Called when an appointment outcome is set to:
+ *   - 'industry_rejected'   → Industry declined the student
+ *   - 'student_withdrawal'  → Student withdrew from placement
+ *   - 'not_suitable_site'   → Placement site deemed not suitable
+ *
  * @param {Object} options
  * @param {string} options.toEmail
  * @param {string} options.studentName
  * @param {string} options.companyName
- * @param {string} options.endDate      - ISO date string
- * @param {number} options.daysLeft
- * @param {string} [options.coordinatorName]
+ * @param {string} options.outcome - one of 'industry_rejected' | 'student_withdrawal' | 'not_suitable_site'
+ * @param {string} [options.reason]
  * @param {string} [options.studentId]
- * @param {string} [options.internshipId]
  */
-export const sendPlacementEndingSoonEmail = async (options) => {
-  const { toEmail, studentName, companyName, endDate, daysLeft, coordinatorName, studentId, internshipId } = options;
-  const payload = { studentName, companyName, endDate, daysLeft, coordinatorName, studentId, internshipId };
+export const sendPlacementOutcomeEmail = async (options) => {
+  const { toEmail, studentName, companyName, outcome, reason, studentId } = options;
+  const payload = { studentName, companyName, outcome, reason, studentId };
 
-  // Always save in-app notification
-  await saveInAppNotification(payload);
+  await saveOutcomeInAppNotification(payload);
+
+  if (!toEmail) {
+    console.warn('[EmailService] sendPlacementOutcomeEmail called with NO toEmail — cannot send. Student:', studentName, 'Outcome:', outcome);
+    return { sent: false, method: 'none', message: 'No recipient email address was provided.' };
+  }
 
   if (!isSmtpConfigured()) {
-    console.log('\n[EmailService] SMTP not configured. Would send:');
-    console.log(`  To: ${toEmail} | Subject: Placement ending soon (${daysLeft} days)`);
+    console.log(`\n[EmailService] SMTP not configured. Would send outcome email (${outcome}) to ${toEmail}`);
     return { sent: false, method: 'console', message: 'SMTP not configured. In-app notification saved.' };
   }
 
   try {
     const transporter = getTransporter();
     const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const meta = OUTCOME_META[outcome] || { label: 'Placement Update' };
     const info = await transporter.sendMail({
       from: `"Placement Portal" <${from}>`,
       to: toEmail,
-      subject: `⏰ Your placement at ${companyName} ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`,
-      text: buildText(payload),
-      html: buildHtml(payload),
+      subject: `Placement Update: ${meta.label} — ${companyName}`,
+      text: buildOutcomeText(payload),
+      html: buildOutcomeHtml(payload),
     });
-    console.log(`[EmailService] Email sent to ${toEmail} (${info.messageId})`);
+    console.log(`[EmailService] Outcome email (${outcome}) sent to ${toEmail} (${info.messageId})`);
     return { sent: true, method: 'smtp', message: `Email sent to ${toEmail}`, messageId: info.messageId };
   } catch (err) {
-    console.error('[EmailService] Send failed:', err.message);
+    console.error('[EmailService] Outcome email send failed:', err.message);
     return { sent: false, method: 'in-app', message: `Email failed: ${err.message}. In-app notification saved.` };
   }
 };
@@ -308,7 +414,7 @@ export const checkAndSendPlacementAlerts = async () => {
         // Only active / placed appointments
         if (
           !appt.commencementDate ||
-          ['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(appt.status)
+          ['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site'].includes(appt.status)
         ) {
           continue;
         }
@@ -409,6 +515,51 @@ export const checkAndSendPlacementAlerts = async () => {
   } catch (err) {
     console.error('[PlacementAlerts] Check failed:', err.message);
     return { alertsSent: 0, error: err.message };
+  }
+};
+
+// ─── Send Placement Ending Soon Email ─────────────────────────────────────────
+
+/**
+ * sendPlacementEndingSoonEmail
+ * @param {Object} options
+ * @param {string} options.toEmail
+ * @param {string} options.studentName
+ * @param {string} options.companyName
+ * @param {string} options.endDate      - ISO date string
+ * @param {number} options.daysLeft
+ * @param {string} [options.coordinatorName]
+ * @param {string} [options.studentId]
+ * @param {string} [options.internshipId]
+ */
+export const sendPlacementEndingSoonEmail = async (options) => {
+  const { toEmail, studentName, companyName, endDate, daysLeft, coordinatorName, studentId, internshipId } = options;
+  const payload = { studentName, companyName, endDate, daysLeft, coordinatorName, studentId, internshipId };
+
+  // Always save in-app notification
+  await saveInAppNotification(payload);
+
+  if (!isSmtpConfigured()) {
+    console.log('\n[EmailService] SMTP not configured. Would send:');
+    console.log(`  To: ${toEmail} | Subject: Placement ending soon (${daysLeft} days)`);
+    return { sent: false, method: 'console', message: 'SMTP not configured. In-app notification saved.' };
+  }
+
+  try {
+    const transporter = getTransporter();
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const info = await transporter.sendMail({
+      from: `"Placement Portal" <${from}>`,
+      to: toEmail,
+      subject: `⏰ Your placement at ${companyName} ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`,
+      text: buildText(payload),
+      html: buildHtml(payload),
+    });
+    console.log(`[EmailService] Email sent to ${toEmail} (${info.messageId})`);
+    return { sent: true, method: 'smtp', message: `Email sent to ${toEmail}`, messageId: info.messageId };
+  } catch (err) {
+    console.error('[EmailService] Send failed:', err.message);
+    return { sent: false, method: 'in-app', message: `Email failed: ${err.message}. In-app notification saved.` };
   }
 };
 

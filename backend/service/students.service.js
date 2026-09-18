@@ -1,56 +1,59 @@
 import mongoose from "mongoose";
 import StudentModel from "../model/student.model.js";
 
-// Helper to derive uppercase initials from RTO or College name
-const getCollegeInitials = (name) => {
-    if (!name || typeof name !== 'string') return "STU";
-    const clean = name.trim();
-    if (!clean) return "STU";
-    const words = clean.split(/\s+/).filter(Boolean);
-    if (words.length >= 2) {
-        return words.map((w) => w[0].toUpperCase()).join("");
-    } else if (words.length === 1) {
-        return words[0].slice(0, 2).toUpperCase();
-    }
-    return "STU";
-};
+// ─── Sequential Student ID Generator ───────────────────────────────────────
+// Generates plain sequential IDs: STU1, STU2, STU3... regardless of RTO/college
+// name. This replaces the old initials-based scheme (e.g. "AC1", "XY1") which
+// was confusing because it looked like an RTO name rather than a student ID.
+//
+// Finds the highest existing "STU<number>" and increments by 1. If no student
+// with this prefix exists yet, starts at STU1.
+const STUDENT_ID_PREFIX = "STU";
 
-// Generate a unique student ID based on college/RTO initials + sequential number (e.g. CE1, AC1)
-// Fix: uses $regex with $options to avoid the RegExp object issue with Mongoose,
-// strips the prefix to extract the trailing number so STU10 → 10 (not 1 from /\d+/ first match).
-const generateStudentId = async (rtoName) => {
-    const initials = getCollegeInitials(rtoName);
+const generateStudentId = async () => {
+    const escapedPrefix = STUDENT_ID_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regexPattern = `^${escapedPrefix}\\d+$`;
 
-    // Escape the initials so any special chars in RTO name don't break the regex
-    const escapedInitials = initials.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // Query MongoDB using $regex string + $options (avoids Mongoose RegExp quirks)
-    const regexPattern = `^${escapedInitials}\\d+$`;
     const existingStudents = await StudentModel.find(
         { studentId: { $regex: regexPattern, $options: 'i' } },
         { studentId: 1 }
     ).lean();
 
     let maxNum = 0;
+    const prefixRegex = new RegExp(`^${escapedPrefix}`, 'i');
 
     existingStudents.forEach((stu) => {
         if (stu.studentId) {
-            // Strip the initials prefix (case-insensitive) then parse the remaining digits
-            const prefixRegex = new RegExp(`^${escapedInitials}`, 'i');
             const suffix = stu.studentId.replace(prefixRegex, '');
             const num = parseInt(suffix, 10);
             if (!isNaN(num) && num > maxNum) maxNum = num;
         }
     });
 
-    return `${initials}${maxNum + 1}`;
+    return `${STUDENT_ID_PREFIX}${maxNum + 1}`;
 };
 
 export const createStudent = async (studentData) => {
-    if (!studentData.studentId) {
-        const collegeName = studentData.institute || studentData.assignedRto || studentData.rto || "";
-        studentData.studentId = await generateStudentId(collegeName);
+    // Normalize: treat whitespace-only ("   ") the same as empty, so it doesn't
+    // accidentally get saved as a "manual" ID and skip auto-generation.
+    const manualId = (studentData.studentId || '').trim();
+
+    if (manualId) {
+        // ── Manual path: user typed an ID — respect it, but verify it's unique
+        // first so we return a clean error instead of a raw MongoDB E11000
+        // duplicate-key crash.
+        const existing = await StudentModel.findOne({ studentId: manualId }).lean();
+        if (existing) {
+            const err = new Error(`Student ID "${manualId}" is already in use. Please choose a different ID or leave it blank to auto-generate one.`);
+            err.isDuplicateStudentId = true;
+            throw err;
+        }
+        studentData.studentId = manualId;
+    } else {
+        // ── Auto path: nothing entered — generate the next sequential ID
+        studentData.studentId = await generateStudentId();
     }
+
     const student = await StudentModel.create(studentData);
     return student;
 };
