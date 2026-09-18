@@ -1,18 +1,11 @@
 ﻿export const defaultStudents = [];
 
 export const emptyFilters = {
-  firstName: '',
-  lastName: '',
-  studentId: '',
-  rto: '',
-  course: '',
-  status: '',
-  fromDate: '',
-  toDate: '',
+  assignedDate: '',
+  placementRequest: '',
+  placementStatus: '',
   city: '',
-  source: '',
-  ageFrom: '',
-  ageTo: '',
+  course: '',
 };
 
 // Parse "22 years" => 22

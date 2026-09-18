@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Download, Columns, Users, UserCheck, Moon, X, Building2, Calendar, FileText, RotateCcw } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { defaultStudents, emptyFilters, parseAge, parseDate, btnSecondary } from './studentData';
+import { defaultStudents, emptyFilters, parseDate, btnSecondary } from './studentData';
 import { downloadStudentsCSV } from './csvUtils';
 import { fetchStudents, deleteStudent } from '../../api/studentsApi';
 import { fetchUsers } from '../../api/userApi';
@@ -402,10 +402,7 @@ export default function MyStudentsTable() {
 
   const [filters, setFilters] = useState(emptyFilters);
 
-  const rtoOptions = useMemo(() => [...new Set(students.map(s => s.rto).filter(Boolean))].sort(), [students]);
   const courseOptions = useMemo(() => [...new Set(students.map(s => s.course).filter(Boolean))].sort(), [students]);
-  const statusOptions = useMemo(() => [...new Set(students.map(s => s.status).filter(Boolean))].sort(), [students]);
-  const sourceOptions = useMemo(() => [...new Set(students.map(s => s.source).filter(Boolean))].sort(), [students]);
 
   const updateFilter = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setCurrentPage(1); };
   const clearFilters = () => { setFilters(emptyFilters); setCurrentPage(1); };
@@ -439,37 +436,34 @@ export default function MyStudentsTable() {
         }
       }
 
-      if (filters.firstName && !(s.name || '').toLowerCase().includes(filters.firstName.toLowerCase())) return false;
-      if (filters.lastName) {
-        const parts = (s.name || '').split(' ');
-        const lastName = parts[parts.length - 1] || '';
-        if (!lastName.toLowerCase().includes(filters.lastName.toLowerCase())) return false;
-      }
-      if (filters.studentId && !(s.id || '').toLowerCase().includes(filters.studentId.toLowerCase())) return false;
-      if (filters.rto && s.rto !== filters.rto) return false;
       if (filters.course && s.course !== filters.course) return false;
-      if (filters.status && s.status !== filters.status) return false;
       if (filters.city && !(s.location || '').toLowerCase().includes(filters.city.toLowerCase())) return false;
-      if (filters.source && s.source !== filters.source) return false;
-      const age = parseAge(s.age);
-      if (filters.ageFrom && (age === null || age < parseInt(filters.ageFrom, 10))) return false;
-      if (filters.ageTo && (age === null || age > parseInt(filters.ageTo, 10))) return false;
-      const createdTime = parseDate(s.created);
-      if (filters.fromDate) {
-        const from = new Date(filters.fromDate);
-        if (isNaN(from.getTime())) return false;
-        const fromTime = from.setHours(0, 0, 0, 0);
-        if (createdTime === null || createdTime < fromTime) return false;
+      // Placement Request type filter (matches workflowRequestMap or snooze)
+      if (filters.placementRequest) {
+        if (filters.placementRequest === 'Snooze') {
+          const isSnoozed = !!(snoozedStudentIds[s.id] || snoozedStudentIds[s.studentId] || snoozedStudentIds[s.dbId]);
+          if (!isSnoozed) return false;
+        } else {
+          const keys = [s.id, s.studentId, s.dbId, norm(s.id), norm(s.studentId), norm(s.dbId)].filter(Boolean);
+          const reqPriority = keys.map(k => workflowRequestMap[k]).find(Boolean);
+          if (!reqPriority || reqPriority !== filters.placementRequest) return false;
+        }
       }
-      if (filters.toDate) {
-        const to = new Date(filters.toDate);
-        if (isNaN(to.getTime())) return false;
-        const toTime = to.setHours(23, 59, 59, 999);
-        if (createdTime === null || createdTime > toTime) return false;
+      // Placement Status filter — matches s.placementStatus; exclude 'Ready' status in My Progress
+      if (s.placementStatus === 'Ready') return false;
+      if (filters.placementStatus && (s.placementStatus || '') !== filters.placementStatus) return false;
+      // Assigned Date filter
+      const assignedTime = parseDate(s.assignedAt);
+      if (filters.assignedDate) {
+        const day = new Date(filters.assignedDate);
+        if (isNaN(day.getTime())) return false;
+        const dayStart = new Date(filters.assignedDate).setHours(0, 0, 0, 0);
+        const dayEnd   = new Date(filters.assignedDate).setHours(23, 59, 59, 999);
+        if (assignedTime === null || assignedTime < dayStart || assignedTime > dayEnd) return false;
       }
       return true;
     });
-  }, [students, filters, isAdmin, authUser, selectedCoordinator, coordinators]);
+  }, [students, filters, isAdmin, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
 
   const sortedStudents = useMemo(() => {
     if (!sortField) return filteredStudents;
@@ -556,6 +550,8 @@ export default function MyStudentsTable() {
       setAssignTarget(student);
 
     } else if (action === 'generateRequest') {
+      // Generate Placement Request — admin only; coordinators should not reach this
+      if (!isAdmin) return;
       // Fresh request — no existing placement request for this student
       setIsChangingPlacement(false);
       setGenTargetStudent(student);
@@ -724,7 +720,7 @@ export default function MyStudentsTable() {
             onFilterChange={updateFilter}
             onClear={clearFilters}
             onApply={() => { setCurrentPage(1); toast.success(`Found ${filteredStudents.length} student(s)`); }}
-            options={{ rtoOptions, courseOptions, statusOptions, sourceOptions }}
+            options={{ courseOptions }}
             resultCount={filteredStudents.length}
             selectedCount={selectedRows.length}
           />
@@ -782,6 +778,7 @@ export default function MyStudentsTable() {
                       canAssign={isAdmin}
                       hasPlacementRequest={getStudentHasRequest(student)}
                       isSnoozed={!!(snoozedStudentIds[student.id] || snoozedStudentIds[student.studentId] || snoozedStudentIds[student.dbId])}
+                      isAdmin={isAdmin}
                     />
                   ))}
                 </tbody>

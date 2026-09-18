@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import {
   ArrowLeft, Pencil, Loader2, User, GraduationCap, Building2,
   Phone, Mail, MapPin, Info, AlertTriangle, Clock, FileText,
@@ -62,6 +63,8 @@ export default function StudentViewEditPage() {
   const { id, mode } = useParams();
   const navigate = useNavigate();
   const isEdit = mode === 'edit';
+  const authUser = useSelector((state) => state.auth.user);
+  const isAdmin = authUser?.role === 'Administrator';
 
   const [student, setStudent]                     = useState(null);
   const [formData, setFormData]                   = useState({});
@@ -671,63 +674,68 @@ export default function StudentViewEditPage() {
                       </p>
                     )}
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">College / RTO (optional)</label>
-                    {isEdit ? (
-                      <div className="relative">
-                        <select
-                          value={formData.institute || formData.assignedRto || ''}
-                          onChange={e => { updateField('institute', e.target.value); updateField('assignedRto', e.target.value); }}
-                          className={selectCls}>
-                          <option value="">Select College / RTO</option>
-                          {(formData.institute || formData.assignedRto) &&
-                            !activeRtos.includes(formData.institute || formData.assignedRto) &&
-                            (formData.institute || formData.assignedRto) !== 'Other' && (
-                              <option value={formData.institute || formData.assignedRto}>{formData.institute || formData.assignedRto}</option>
-                            )}
-                          {activeRtos.map(rto => <option key={rto} value={rto}>{rto}</option>)}
-                          <option value="Other">Other</option>
-                        </select>
-                        <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
-                      </div>
-                    ) : (
-                      <input type="text" value={formData.institute || formData.assignedRto || ''} disabled className={fieldClass(false)} />
-                    )}
-                  </div>
-
-                  {/* Student Source — only shown when College = Other */}
-                  {isOtherCollege && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">Student Source (optional)</label>
-                      {isEdit ? (
-                        isOtherSource || (formData.studentSource && !studentSources.slice(0, -1).includes(formData.studentSource)) ? (
+                  {/* College / RTO + Student Source — hidden from coordinators (admin only) */}
+                  {isAdmin && (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">College / RTO (optional)</label>
+                        {isEdit ? (
                           <div className="relative">
-                            <input type="text" placeholder="Type source (e.g. Referral, Website...)"
-                              value={formData.studentSource === 'Other' ? '' : formData.studentSource || ''}
-                              onChange={e => updateField('studentSource', e.target.value)}
-                              className={`${inputClass} pr-8`} autoFocus />
-                            <button type="button" onClick={() => { setIsOtherSource(false); updateField('studentSource', ''); }}
-                              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition">
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="relative">
-                            <select value={formData.studentSource || ''}
-                              onChange={e => {
-                                if (e.target.value === 'Other') { setIsOtherSource(true); updateField('studentSource', ''); }
-                                else { setIsOtherSource(false); updateField('studentSource', e.target.value); }
-                              }} className={selectCls}>
-                              <option value="">Select source</option>
-                              {studentSources.map(src => <option key={src} value={src}>{src}</option>)}
+                            <select
+                              value={formData.institute || formData.assignedRto || ''}
+                              onChange={e => { updateField('institute', e.target.value); updateField('assignedRto', e.target.value); }}
+                              className={selectCls}>
+                              <option value="">Select College / RTO</option>
+                              {(formData.institute || formData.assignedRto) &&
+                                !activeRtos.includes(formData.institute || formData.assignedRto) &&
+                                (formData.institute || formData.assignedRto) !== 'Other' && (
+                                  <option value={formData.institute || formData.assignedRto}>{formData.institute || formData.assignedRto}</option>
+                                )}
+                              {activeRtos.map(rto => <option key={rto} value={rto}>{rto}</option>)}
+                              <option value="Other">Other</option>
                             </select>
                             <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
                           </div>
-                        )
-                      ) : (
-                        <input type="text" value={formData.studentSource || ''} disabled className={fieldClass(false)} />
+                        ) : (
+                          <input type="text" value={formData.institute || formData.assignedRto || ''} disabled className={fieldClass(false)} />
+                        )}
+                      </div>
+
+                      {/* Student Source — only shown when College = Other */}
+                      {isOtherCollege && (
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Student Source (optional)</label>
+                          {isEdit ? (
+                            isOtherSource || (formData.studentSource && !studentSources.slice(0, -1).includes(formData.studentSource)) ? (
+                              <div className="relative">
+                                <input type="text" placeholder="Type source (e.g. Referral, Website...)"
+                                  value={formData.studentSource === 'Other' ? '' : formData.studentSource || ''}
+                                  onChange={e => updateField('studentSource', e.target.value)}
+                                  className={`${inputClass} pr-8`} autoFocus />
+                                <button type="button" onClick={() => { setIsOtherSource(false); updateField('studentSource', ''); }}
+                                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition">
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="relative">
+                                <select value={formData.studentSource || ''}
+                                  onChange={e => {
+                                    if (e.target.value === 'Other') { setIsOtherSource(true); updateField('studentSource', ''); }
+                                    else { setIsOtherSource(false); updateField('studentSource', e.target.value); }
+                                  }} className={selectCls}>
+                                  <option value="">Select source</option>
+                                  {studentSources.map(src => <option key={src} value={src}>{src}</option>)}
+                                </select>
+                                <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
+                              </div>
+                            )
+                          ) : (
+                            <input type="text" value={formData.studentSource || ''} disabled className={fieldClass(false)} />
+                          )}
+                        </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
 
