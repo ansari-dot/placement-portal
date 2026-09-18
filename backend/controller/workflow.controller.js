@@ -19,6 +19,7 @@ import {
   getWorkflowDashboardData,
   getWorkflowStudents,
 } from "../service/workflow.service.js";
+import { checkAndSendPlacementAlerts } from "../service/email.service.js";
 import {
   workflowSchema,
   internshipRequestSchema,
@@ -519,6 +520,23 @@ export const getWorkflowStudentsController = async (req, res) => {
       message: "Workflow students fetched successfully",
       success: true,
       data: students,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message, success: false });
+  }
+};
+
+// ─── Placement Ending-Soon Alert Controller ───────────────────────────────────
+// POST /workflows/check-placement-alerts
+// Manually triggers (or is called by the scheduler) to scan all placements
+// whose expectedCompletionDate is within 7 days and send email + in-app alerts.
+export const checkPlacementAlertsController = async (req, res) => {
+  try {
+    const result = await checkAndSendPlacementAlerts();
+    res.status(200).json({
+      message: "Placement alert check completed",
+      success: true,
+      data: result,
     });
   } catch (error) {
     res.status(500).json({ message: error.message, success: false });

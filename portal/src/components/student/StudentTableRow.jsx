@@ -106,18 +106,6 @@ const renderCell = (student, colKey) => {
           <p className="text-[11px] text-slate-400">{student.state}</p>
         </>
       );
-    case 'status':
-      return (
-        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-block ${
-          student.status === 'Active'
-            ? 'bg-emerald-50 text-emerald-600'
-            : student.status === 'Pending'
-              ? 'bg-amber-50 text-amber-600'
-              : 'bg-rose-50 text-rose-600'
-        }`}>
-          {student.status}
-        </span>
-      );
     case 'source':
       return <span className="text-slate-600">{student.source || '—'}</span>;
     case 'assignedAt':

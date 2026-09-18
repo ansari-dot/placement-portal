@@ -223,6 +223,13 @@ const appointmentSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    // ── Alert tracking — persists across server restarts ──────────────────
+    // Stores the ISO timestamp of the last "ending soon" email that was sent
+    // so the scheduler never sends duplicate alerts within the same 24h window.
+    endingAlertSentAt: {
+      type: Date,
+      default: null,
+    },
     // ─────────────────────────────────────────────────────────────────────
     notes: {
       type: String,

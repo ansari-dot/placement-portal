@@ -40,6 +40,5 @@ export const allColumns = [
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
   { key: 'location', label: 'City / Suburb' },
-  { key: 'status', label: 'Status' },
   { key: 'created', label: 'Created At' },
 ];

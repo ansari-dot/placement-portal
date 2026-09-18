@@ -19,8 +19,9 @@ import {
   deleteInternshipController,
   getWorkflowDashboardDataController,
   getWorkflowStudentsController,
+  checkPlacementAlertsController,
 } from "../controller/workflow.controller.js";
-import { softAuth } from "../middlewares/auth.middleware.js";
+import { softAuth, protectRoute } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -28,7 +29,9 @@ const router = express.Router();
 router.post("/", createWorkflowController);
 router.get("/", getAllWorkflowsController);
 router.get("/dashboard", getWorkflowDashboardDataController);
-router.get("/students", softAuth, getWorkflowStudentsController);
+router.get("/students", protectRoute, getWorkflowStudentsController);
+// ── Placement alert check (can be called manually or by scheduler) ──
+router.post("/check-placement-alerts", checkPlacementAlertsController);
 router.get("/:id", getWorkflowByIdController);
 router.put("/:id", updateWorkflowController);
 router.delete("/:id", deleteWorkflowController);

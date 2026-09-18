@@ -43,7 +43,7 @@ const mapBackendStudent = (s) => ({
   location: s.location || s.suburb || '',
   state: s.state || '',
   status: s.status || 'Active',
-  placementStatus: s.placementStatus || 'Ready',
+  placementStatus: s.placementStatus || 'None',
   placementHours: s.placementHours ?? null,
   source: s.source || s.studentSource || '',
   created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),

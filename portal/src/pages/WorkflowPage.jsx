@@ -27,6 +27,7 @@ import {
   updateInternship,
   deleteInternship,
 } from '../api/workflowApi';
+import { calculatePlacementEndDate } from '../utils/dateCalculation';
 
 const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements'];
 
@@ -148,6 +149,18 @@ export default function WorkflowPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Re-fetch students when user returns to this tab/window ──────────────
+  useEffect(() => {
+    const refreshStudents = async () => {
+      try {
+        const result = await fetchWorkflowStudents();
+        setWorkflowStudents(result.data || []);
+      } catch (_) {}
+    };
+    window.addEventListener('focus', refreshStudents);
+    return () => window.removeEventListener('focus', refreshStudents);
+  }, []);
+
   useEffect(() => {
     if (stepParam >= 1 && stepParam <= 4) {
       setActiveStep(stepParam);
@@ -222,30 +235,49 @@ export default function WorkflowPage() {
   // ─── Filter students based on coordinator role / selected coordinator ────
   const visibleWorkflowStudents = useMemo(() => {
     if (!workflowStudents || workflowStudents.length === 0) return [];
-    const currentUserId = authUser?._id || authUser?.id;
-    const currentUserName = authUser?.name;
+
+    if (!isAdmin) {
+      // Coordinator: must be authenticated to see any students
+      if (!authUser) return [];
+
+      // Normalise current user identity to plain strings for safe ObjectId comparison
+      const currentUserId   = String(authUser._id || authUser.id || '').trim();
+      const currentUserName = String(authUser.name || '').trim().toLowerCase();
+
+      return workflowStudents.filter((stu) => {
+        const assignedId   = String(stu.assignedCoordinator   || '').trim();
+        const assignedName = String(stu.assignedCoordinatorName || '').trim().toLowerCase();
+
+        // Match by ObjectId string OR coordinator name (fallback)
+        return (
+          (currentUserId   && assignedId   && assignedId   === currentUserId) ||
+          (currentUserName && assignedName && assignedName === currentUserName)
+        );
+      });
+    }
+
+    // ── Admin path ──
+    if (selectedCoordinator === 'All') return workflowStudents;
+
+    if (selectedCoordinator === 'unassigned') {
+      return workflowStudents.filter(
+        (stu) => !stu.assignedCoordinator && !stu.assignedCoordinatorName
+      );
+    }
+
+    const selectedCoord = coordinators.find(
+      (c) => String(c._id || c.id) === String(selectedCoordinator)
+    );
+    const coordId   = String(selectedCoord?._id || selectedCoord?.id || selectedCoordinator).trim();
+    const coordName = String(selectedCoord?.name || '').trim().toLowerCase();
 
     return workflowStudents.filter((stu) => {
-      if (!isAdmin) {
-        // Coordinator sees ONLY their assigned students
-        const isAssignedToMe =
-          (stu.assignedCoordinator && currentUserId && norm(stu.assignedCoordinator) === norm(currentUserId)) ||
-          (stu.assignedCoordinatorName && currentUserName && norm(stu.assignedCoordinatorName) === norm(currentUserName));
-        return isAssignedToMe;
-      } else {
-        // Admin filter
-        if (selectedCoordinator === 'All') return true;
-        if (selectedCoordinator === 'unassigned') {
-          return !stu.assignedCoordinator && !stu.assignedCoordinatorName;
-        }
-        const selectedCoord = coordinators.find((c) => (c._id || c.id) === selectedCoordinator);
-        const coordId = selectedCoord?._id || selectedCoord?.id || selectedCoordinator;
-        const coordName = selectedCoord?.name;
-        return (
-          (stu.assignedCoordinator && norm(stu.assignedCoordinator) === norm(coordId)) ||
-          (stu.assignedCoordinatorName && coordName && norm(stu.assignedCoordinatorName) === norm(coordName))
-        );
-      }
+      const assignedId   = String(stu.assignedCoordinator   || '').trim();
+      const assignedName = String(stu.assignedCoordinatorName || '').trim().toLowerCase();
+      return (
+        (assignedId   && assignedId   === coordId) ||
+        (coordName && assignedName && assignedName === coordName)
+      );
     });
   }, [workflowStudents, isAdmin, authUser, selectedCoordinator, coordinators]);
 
@@ -281,24 +313,86 @@ export default function WorkflowPage() {
     });
   }, [workflow]);
 
+  const findAppointmentsForStudent = useCallback((stu) => {
+    const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
+    const stuDbId = norm(stu.id || stu._id);
+    const stuBizId = norm(stu.studentId);
+    const stuName = norm(stu.name || stuFullName);
+
+    return (workflow?.appointments || []).filter((a) => {
+      const apptStudentId = norm(a.studentId);
+      const apptStudentName = norm(a.student);
+      return (
+        (apptStudentId && stuDbId && apptStudentId === stuDbId) ||
+        (apptStudentId && stuBizId && apptStudentId === stuBizId) ||
+        (apptStudentName && stuName && (apptStudentName === stuName || apptStudentName.includes(stuName) || stuName.includes(apptStudentName)))
+      );
+    });
+  }, [workflow]);
+
   const mapStudentsForStep1 = useCallback(() => {
     if (!visibleWorkflowStudents || visibleWorkflowStudents.length === 0) return [];
 
     return visibleWorkflowStudents.map((stu) => {
       const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
+      const stuDbId = norm(stu.id || stu._id);
+      const stuBizId = norm(stu.studentId);
+      const stuName = norm(stu.name || stuFullName);
+
       const matchingRequests = findRequestsForStudent(stu);
+      const matchingAppointments = findAppointmentsForStudent(stu);
+      const contactedIndustries = matchingRequests.flatMap((r) => r.contactedIndustries || []);
 
-      // Check if student has an internship request (from workflow requests or localStorage)
-      let storedPriority = null;
-      try {
-        const stored = JSON.parse(localStorage.getItem('portal_workflow_requests') || '{}');
-        const stuKey = norm(stu.id || stu._id);
-        const bizKey = norm(stu.studentId);
-        const nameKey = norm(stu.name || stuFullName);
-        storedPriority = stored[stuKey] || stored[bizKey] || stored[nameKey] || stored[stu.id] || stored[stu.studentId] || stored[stu.name];
-      } catch (_) {}
+      const hasRequest = matchingRequests.length > 0;
+      const hasContacted = contactedIndustries.length > 0;
 
-      const hasRequest = matchingRequests.length > 0 || Boolean(storedPriority);
+      // hasScheduledAppt — only count active appointments (not cancelled/withdrawn/declined)
+      const hasScheduledAppt = matchingAppointments.some(
+        (a) =>
+          !['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status) &&
+          (a.status === 'Scheduled' || a.status === 'Confirmed' || Boolean(a.date))
+      );
+
+      const now = new Date();
+      // hasStartedPlacement — commencementDate has passed on an active appointment
+      const hasStartedPlacement =
+        matchingAppointments.some((a) => {
+          if (['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status)) return false;
+          if (a.commencementDate) {
+            const cDate = new Date(a.commencementDate);
+            return !isNaN(cDate.getTime()) && cDate <= now;
+          }
+          return false;
+        }) ||
+        (workflow?.internships || []).some((i) => {
+          const iStuId = norm(i.studentId);
+          const iStuName = norm(i.student);
+          const isMatch =
+            (iStuId && stuDbId && iStuId === stuDbId) ||
+            (iStuId && stuBizId && iStuId === stuBizId) ||
+            (iStuName && stuName && iStuName === stuName);
+          if (isMatch) {
+            if (i.status === 'Placement Started' || i.status === 'Active') return true;
+            if (i.start && !['Declined', 'Withdrawn', 'Cancelled'].includes(i.status)) {
+              const sDate = new Date(i.start);
+              return !isNaN(sDate.getTime()) && sDate <= now;
+            }
+          }
+          return false;
+        });
+
+      let dynamicPlacementStatus = 'None';
+      if (hasStartedPlacement) {
+        dynamicPlacementStatus = 'Placement Started';
+      } else if (hasScheduledAppt) {
+        dynamicPlacementStatus = 'Appointment Scheduled';
+      } else if (hasContacted) {
+        dynamicPlacementStatus = 'Industry Contacted';
+      } else if (hasRequest) {
+        dynamicPlacementStatus = 'In Progress';
+      } else {
+        dynamicPlacementStatus = 'None';
+      }
 
       return {
         ...stu,
@@ -308,30 +402,33 @@ export default function WorkflowPage() {
         studentId: stu.studentId || '',
         rto: stu.assignedRto || stu.rto || '',
         status: stu.status || 'Active',
-        // ✅ DYNAMIC PLACEMENT STATUS: Automatically changes to 'In Progress' when request is generated!
-        placementStatus: hasRequest ? 'In Progress' : (stu.placementStatus || 'Ready'),
+        placementStatus: dynamicPlacementStatus,
+        // ── Placement calculation fields — needed by Step3 outcome modal & Step4 end-date calc
         placementHours: stu.placementHours ?? null,
+        availabilityDays: stu.availabilityDays ?? null,
+        availabilityFrom: stu.availabilityFrom || '09:00 AM',
+        availabilityTo: stu.availabilityTo || '05:00 PM',
         assignedCoordinator: stu.assignedCoordinator || null,
         assignedCoordinatorName: stu.assignedCoordinatorName || '',
         addedOn: stu.createdAt
           ? new Date(stu.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
           : '',
-        contactedIndustries: matchingRequests.flatMap((r) => r.contactedIndustries || []),
+        contactedIndustries,
       };
     });
-  }, [visibleWorkflowStudents, findRequestsForStudent]);
+  }, [visibleWorkflowStudents, findRequestsForStudent, findAppointmentsForStudent, workflow]);
 
   const mapRequestsForStep2 = useCallback(() => {
     if (!workflow?.requests || workflow.requests.length === 0) return [];
 
     return workflow.requests
       .filter((req) => {
-        if (!isAdmin || selectedCoordinator !== 'All') {
-          const reqStuId = norm(req.studentId);
-          const reqStuName = norm(req.student);
-          return visibleStudentKeySet.has(reqStuId) || visibleStudentKeySet.has(reqStuName);
-        }
-        return true;
+        // Coordinators always see only their students; admins filter only when a coordinator is selected
+        const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
+        if (!shouldFilter) return true;
+        const reqStuId   = norm(req.studentId);
+        const reqStuName = norm(req.student);
+        return visibleStudentKeySet.has(reqStuId) || visibleStudentKeySet.has(reqStuName);
       })
       .map((req) => ({
         id: req.id || req._id || '',
@@ -363,12 +460,11 @@ export default function WorkflowPage() {
 
     return workflow.appointments
       .filter((appt) => {
-        if (!isAdmin || selectedCoordinator !== 'All') {
-          const apptStuId = norm(appt.studentId);
-          const apptStuName = norm(appt.student);
-          return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
-        }
-        return true;
+        const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
+        if (!shouldFilter) return true;
+        const apptStuId   = norm(appt.studentId);
+        const apptStuName = norm(appt.student);
+        return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
       })
       .map((appt) => ({
         id: appt.id || appt._id || '',
@@ -389,6 +485,10 @@ export default function WorkflowPage() {
         linkedReqStatus: appt.linkedReqStatus || '',
         industryContactId: appt.industryContactId || '',
         status: appt.status || 'Scheduled',
+        // ── Needed by Step2 hasAppt check, Step3 outcome modal, Step4 status & end-date
+        commencementDate: appt.commencementDate || '',
+        expectedCompletionDate: appt.expectedCompletionDate || '',
+        appointmentOutcome: appt.appointmentOutcome || '',
         notes: appt.notes || '',
         cancellationReason: appt.cancellationReason || '',
         cancellationType: appt.cancellationType || '',
@@ -402,18 +502,51 @@ export default function WorkflowPage() {
     const allAppointments = workflow?.appointments || [];
 
     const filteredAppointments = allAppointments.filter((appt) => {
-      if (!isAdmin || selectedCoordinator !== 'All') {
-        const apptStuId = norm(appt.studentId);
-        const apptStuName = norm(appt.student);
-        return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
-      }
-      return true;
+      const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
+      if (!shouldFilter) return true;
+      const apptStuId   = norm(appt.studentId);
+      const apptStuName = norm(appt.student);
+      return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
     });
 
     filteredAppointments.forEach((appt, index) => {
       const studentName = appt.student || 'Unknown Student';
       const studentId = appt.studentId || '';
-      
+
+      const stuMatch = (visibleWorkflowStudents || []).find((s) => {
+        const sDbId = norm(s.id || s._id);
+        const sBizId = norm(s.studentId);
+        const sName = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim());
+        const targetId = norm(studentId);
+        const targetName = norm(studentName);
+        return (
+          (sDbId && targetId && sDbId === targetId) ||
+          (sBizId && targetId && sBizId === targetId) ||
+          (sName && targetName && sName === targetName)
+        );
+      });
+
+      const startDate = appt.commencementDate || appt.date || new Date().toISOString().split('T')[0];
+      let calculatedEnd = appt.expectedCompletionDate || '';
+      if (!calculatedEnd && startDate) {
+        calculatedEnd = calculatePlacementEndDate(
+          startDate,
+          stuMatch?.placementHours,
+          stuMatch?.availabilityDays,
+          stuMatch?.availabilityFrom,
+          stuMatch?.availabilityTo
+        );
+      }
+      if (!calculatedEnd && startDate) {
+        const start = new Date(startDate);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 12 * 7);
+        calculatedEnd = end.toISOString().split('T')[0];
+      }
+
+      const now = new Date();
+      const hasCommenced = appt.commencementDate && new Date(appt.commencementDate) <= now;
+
       // ✅ Check if student already has an internship
       const existingForStudent = result.find(item => 
         item.studentId === studentId || 
@@ -436,17 +569,19 @@ export default function WorkflowPage() {
         } else if (appt.status === 'Cancelled') {
           existingForStudent.status = 'Cancelled';
           existingForStudent.cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
+        } else if (hasCommenced || appt.status === 'Confirmed') {
+          existingForStudent.status = 'Placement Started';
         } else if (appt.status === 'Scheduled') {
           existingForStudent.status = 'Waiting to Join';
         }
         
-        // ✅ Update date if appointment date is newer
-        if (appt.date && new Date(appt.date) > new Date(existingForStudent.start)) {
+        // ✅ Update date if commencement date or appointment date is newer
+        if (appt.commencementDate) {
+          existingForStudent.start = appt.commencementDate;
+          existingForStudent.end = calculatedEnd;
+        } else if (appt.date && new Date(appt.date) > new Date(existingForStudent.start)) {
           existingForStudent.start = appt.date;
-          const start = new Date(appt.date);
-          const end = new Date(start);
-          end.setDate(end.getDate() + (12 * 7));
-          existingForStudent.end = end.toISOString().split('T')[0];
+          existingForStudent.end = calculatedEnd;
         }
         
         // ✅ Update company if changed
@@ -458,22 +593,13 @@ export default function WorkflowPage() {
       }
 
       // ✅ Create new internship if no existing
-      const startDate = appt.date || new Date().toISOString().split('T')[0];
       const duration = '12 weeks';
-      
-      const start = new Date(startDate);
-      const end = new Date(start);
-      end.setDate(end.getDate() + (12 * 7));
-      const endDate = end.toISOString().split('T')[0];
-
       let status = 'Waiting to Join';
       let cancellationReason = '';
       let cancellationType = '';
       
       if (appt.status === 'Completed') {
         status = 'Completed';
-      } else if (appt.status === 'Scheduled') {
-        status = 'Waiting to Join';
       } else if (appt.status === 'Declined') {
         status = 'Declined';
         cancellationReason = appt.cancellationReason || 'Industry rejected the student';
@@ -489,6 +615,10 @@ export default function WorkflowPage() {
         status = 'Declined';
         cancellationReason = 'Student did not show up for appointment';
         cancellationType = 'student';
+      } else if (hasCommenced || appt.status === 'Confirmed') {
+        status = 'Placement Started';
+      } else if (appt.status === 'Scheduled') {
+        status = 'Waiting to Join';
       }
 
       const newItem = {
@@ -501,7 +631,7 @@ export default function WorkflowPage() {
         rto: appt.rto || 'TBD',
         status: status,
         start: startDate,
-        end: endDate,
+        end: calculatedEnd,
         duration: duration,
         workType: appt.meetingType || 'In-Person',
         location: appt.location || 'TBD',
@@ -808,6 +938,17 @@ export default function WorkflowPage() {
     }
   }, [workflowId, workflow, refreshWorkflowData]);
 
+  // ─── Coordinator assigned from Step1 — update local student list ────────
+  const handleCoordinatorAssigned = useCallback(({ studentId, coordinatorId, coordinatorName }) => {
+    setWorkflowStudents(prev =>
+      prev.map(s =>
+        (s.id === studentId || s._id === studentId)
+          ? { ...s, assignedCoordinator: coordinatorId || null, assignedCoordinatorName: coordinatorName || '' }
+          : s
+      )
+    );
+  }, []);
+
   const handleToggleStudent = useCallback(async (studentId, isSelected) => {
     if (!workflowId) return;
     try {
@@ -884,6 +1025,7 @@ export default function WorkflowPage() {
             onUpdateRequest={handleUpdateRequest}
             onCreateAppointment={handleCreateAppointment}
             appointments={mapAppointmentsForStep3()}
+            onCoordinatorAssigned={handleCoordinatorAssigned}
           />
         );
       case 2:
@@ -898,6 +1040,7 @@ export default function WorkflowPage() {
             onAddContact={handleAddContactToRequest}
             students={mapStudentsForStep1()}
             activeStudent={activeWorkflowStudent}
+            appointments={mapAppointmentsForStep3()}
           />
         );
       case 3:
@@ -943,6 +1086,7 @@ export default function WorkflowPage() {
             onUpdateRequest={handleUpdateRequest}
             onCreateAppointment={handleCreateAppointment}
             appointments={mapAppointmentsForStep3()}
+            onCoordinatorAssigned={handleCoordinatorAssigned}
           />
         );
     }
