@@ -82,13 +82,17 @@ export default function WorkflowPage() {
   const refreshWorkflowData = useCallback(async () => {
     if (!workflowId) return;
     try {
-      console.log('🔄 Refreshing workflow data...');
-      const updated = await fetchWorkflowById(workflowId);
+      const [updated, studentsResult] = await Promise.all([
+        fetchWorkflowById(workflowId),
+        fetchWorkflowStudents(),
+      ]);
       if (updated && updated.data) {
-        console.log('✅ Workflow refreshed:', updated.data);
         setWorkflow(updated.data);
-        return updated.data;
       }
+      if (studentsResult) {
+        setWorkflowStudents(studentsResult.data || []);
+      }
+      return updated?.data ?? null;
     } catch (err) {
       console.error('Failed to refresh workflow:', err);
     }
@@ -346,44 +350,143 @@ export default function WorkflowPage() {
       const hasRequest = matchingRequests.length > 0;
       const hasContacted = contactedIndustries.length > 0;
 
-      // hasScheduledAppt — only count active appointments (not cancelled/withdrawn/declined)
-      const hasScheduledAppt = matchingAppointments.some(
-        (a) =>
-          !['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status) &&
-          (a.status === 'Scheduled' || a.status === 'Confirmed' || Boolean(a.date))
-      );
-
       const now = new Date();
-      // hasStartedPlacement — commencementDate has passed on an active appointment
-      const hasStartedPlacement =
-        matchingAppointments.some((a) => {
-          if (['Cancelled', 'Withdrawn', 'Declined', 'No Show'].includes(a.status)) return false;
-          if (a.commencementDate) {
-            const cDate = new Date(a.commencementDate);
-            return !isNaN(cDate.getTime()) && cDate <= now;
-          }
-          return false;
-        }) ||
-        (workflow?.internships || []).some((i) => {
-          const iStuId = norm(i.studentId);
-          const iStuName = norm(i.student);
-          const isMatch =
-            (iStuId && stuDbId && iStuId === stuDbId) ||
-            (iStuId && stuBizId && iStuId === stuBizId) ||
-            (iStuName && stuName && iStuName === stuName);
-          if (isMatch) {
-            if (i.status === 'Placement Started' || i.status === 'Active') return true;
-            if (i.start && !['Declined', 'Withdrawn', 'Cancelled'].includes(i.status)) {
-              const sDate = new Date(i.start);
-              return !isNaN(sDate.getTime()) && sDate <= now;
-            }
-          }
-          return false;
-        });
 
+      // ── Internship records for this student ──────────────────────────────
+      const matchingInternships = (workflow?.internships || []).filter((i) => {
+        const iStuId = norm(i.studentId);
+        const iStuName = norm(i.student);
+        return (
+          (iStuId && stuDbId && iStuId === stuDbId) ||
+          (iStuId && stuBizId && iStuId === stuBizId) ||
+          (iStuName && stuName && iStuName === stuName)
+        );
+      });
+
+      // ── Sort appointments newest-first so the latest outcome wins ────────
+      const sortedAppointments = [...matchingAppointments].sort((a, b) => {
+        const aDate = new Date(a.updatedAt || a.createdAt || a.date || 0);
+        const bDate = new Date(b.updatedAt || b.createdAt || b.date || 0);
+        return bDate - aDate;
+      });
+
+      const TERMINAL_APPT_STATUSES = ['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site'];
+      const ACTIVE_APPT_STATUSES   = ['Scheduled', 'Confirmed'];
+
+      // The most recent NON-terminal appointment wins over any terminal one.
+      // If there is any active (Scheduled/Confirmed) appointment, that takes precedence
+      // over any Withdrawn/Declined appointment regardless of date order.
+      const hasAnyActive    = sortedAppointments.some((a) => ACTIVE_APPT_STATUSES.includes(a.status));
+      const mostRecentAppt  = hasAnyActive
+        ? sortedAppointments.find((a) => ACTIVE_APPT_STATUSES.includes(a.status))
+        : sortedAppointments[0];
+      const mostRecentIsTerminal = !hasAnyActive && mostRecentAppt && TERMINAL_APPT_STATUSES.includes(mostRecentAppt.status);
+
+      // ── Terminal / outcome statuses — highest precedence first ───────────
+
+      // Placement Completed
+      const hasCompleted =
+        matchingInternships.some((i) => i.status === 'Completed') ||
+        sortedAppointments.some(
+          (a) => a.appointmentOutcome === 'successful' && a.status === 'Completed'
+        );
+
+      const hasStartedPlacement =
+        !hasCompleted && !mostRecentIsTerminal && (
+          matchingInternships.some((i) =>
+            i.status === 'Placement Started' ||
+            i.status === 'Active' ||
+            (
+              i.start &&
+              !['Declined', 'Withdrawn', 'Cancelled', 'Completed', 'Not Suitable Site'].includes(i.status) &&
+              !isNaN(new Date(i.start).getTime()) &&
+              new Date(i.start) <= now
+            )
+          ) ||
+          sortedAppointments.some((a) => {
+            if (TERMINAL_APPT_STATUSES.includes(a.status)) return false;
+            // Confirmed = placement outcome successful, treat as started
+            if (a.status === 'Confirmed') return true;
+            if (a.commencementDate) {
+              const cDate = new Date(a.commencementDate);
+              return !isNaN(cDate.getTime()) && cDate <= now;
+            }
+            return false;
+          })
+        );
+
+      // Student Withdraw — most recent appointment or any internship is withdrawn
+      const hasStudentWithdraw =
+        !hasCompleted && !hasStartedPlacement && (
+          sortedAppointments.some((a) =>
+            a.status === 'Withdrawn' ||
+            a.cancellationType === 'withdrawn'
+          ) ||
+          matchingInternships.some((i) => i.status === 'Withdrawn')
+        );
+
+      // Not Suitable Site — site was deemed inappropriate
+      const hasNotSuitableSite =
+        !hasCompleted && !hasStartedPlacement && !hasStudentWithdraw && (
+          sortedAppointments.some((a) =>
+            a.status === 'Not Suitable Site' ||
+            a.appointmentOutcome === 'not_suitable_site' ||
+            (a.status === 'Declined' && a.cancellationTypeLabel === 'Not Suitable Site')
+          )
+        );
+
+      // Industry Rejected — industry declined the student
+      const hasIndustryRejected =
+        !hasCompleted && !hasStartedPlacement && !hasStudentWithdraw && !hasNotSuitableSite && (
+          sortedAppointments.some((a) =>
+            (a.status === 'Declined' && a.appointmentOutcome !== 'not_suitable_site') ||
+            a.appointmentOutcome === 'industry_rejected' ||
+            (a.cancellationType === 'industry' && a.status === 'Cancelled')
+          ) ||
+          matchingInternships.some((i) => i.status === 'Declined')
+        );
+
+      // Student Missed Appointment — No Show
+      const hasStudentMissed =
+        !hasCompleted && !hasStartedPlacement &&
+        !hasNotSuitableSite && !hasStudentWithdraw && !hasIndustryRejected &&
+        sortedAppointments.some((a) => a.status === 'No Show');
+
+      // Appointment Successful — outcome confirmed, not yet commenced
+      const hasApptSuccessful =
+        !hasCompleted && !hasStartedPlacement &&
+        !hasNotSuitableSite && !hasStudentWithdraw && !hasIndustryRejected && !hasStudentMissed &&
+        sortedAppointments.some((a) =>
+          a.appointmentOutcome === 'successful' ||
+          a.status === 'Confirmed'
+        );
+
+      // Appointment Scheduled — active upcoming appointment
+      const hasScheduledAppt =
+        !hasCompleted && !hasStartedPlacement &&
+        !hasNotSuitableSite && !hasStudentWithdraw && !hasIndustryRejected &&
+        !hasStudentMissed && !hasApptSuccessful &&
+        sortedAppointments.some((a) =>
+          a.status === 'Scheduled' ||
+          (a.date && !['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site'].includes(a.status))
+        );
+
+      // ── Derive final status ───────────────────────────────────────────────
       let dynamicPlacementStatus = 'None';
-      if (hasStartedPlacement) {
+      if (hasCompleted) {
+        dynamicPlacementStatus = 'Placement Completed';
+      } else if (hasStartedPlacement) {
         dynamicPlacementStatus = 'Placement Started';
+      } else if (hasNotSuitableSite) {
+        dynamicPlacementStatus = 'Not Suitable Site';
+      } else if (hasStudentWithdraw) {
+        dynamicPlacementStatus = 'Student Withdraw';
+      } else if (hasIndustryRejected) {
+        dynamicPlacementStatus = 'Industry Rejected';
+      } else if (hasStudentMissed) {
+        dynamicPlacementStatus = 'Student Missed Appointment';
+      } else if (hasApptSuccessful) {
+        dynamicPlacementStatus = 'Appointment Successful';
       } else if (hasScheduledAppt) {
         dynamicPlacementStatus = 'Appointment Scheduled';
       } else if (hasContacted) {
@@ -492,7 +595,10 @@ export default function WorkflowPage() {
         notes: appt.notes || '',
         cancellationReason: appt.cancellationReason || '',
         cancellationType: appt.cancellationType || '',
+        cancellationTypeLabel: appt.cancellationTypeLabel || '',
         cancelledAt: appt.cancelledAt || '',
+        updatedAt: appt.updatedAt || '',
+        createdAt: appt.createdAt || '',
       }));
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet]);
 
@@ -547,79 +653,32 @@ export default function WorkflowPage() {
       const now = new Date();
       const hasCommenced = appt.commencementDate && new Date(appt.commencementDate) <= now;
 
-      // ✅ Check if student already has an internship
-      const existingForStudent = result.find(item => 
-        item.studentId === studentId || 
-        (item.student && item.student.toLowerCase() === studentName.toLowerCase())
-      );
-      
-      if (existingForStudent) {
-        // ✅ Update status based on appointment
-        if (appt.status === 'Completed') {
-          existingForStudent.status = 'Completed';
-          existingForStudent.progress = 100;
-        } else if (appt.status === 'Declined') {
-          existingForStudent.status = 'Declined';
-          existingForStudent.cancellationReason = appt.cancellationReason || 'Industry rejected the student';
-          existingForStudent.cancellationType = appt.cancellationType || 'industry';
-        } else if (appt.status === 'Withdrawn') {
-          existingForStudent.status = 'Withdrawn';
-          existingForStudent.cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
-          existingForStudent.cancellationType = appt.cancellationType || 'withdrawn';
-        } else if (appt.status === 'Cancelled') {
-          existingForStudent.status = 'Cancelled';
-          existingForStudent.cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
-        } else if (hasCommenced || appt.status === 'Confirmed') {
-          existingForStudent.status = 'Placement Started';
-        } else if (appt.status === 'Scheduled') {
-          existingForStudent.status = 'Waiting to Join';
+      // ── Resolve the correct status from appointment fields ─────────────────
+      const resolveApptStatus = (a) => {
+        if (a.status === 'Completed') return { status: 'Completed', cancellationReason: '', cancellationType: '' };
+        if (a.status === 'Not Suitable Site' || (a.status === 'Declined' && a.appointmentOutcome === 'not_suitable_site')) {
+          return {
+            status: 'Not Suitable Site',
+            cancellationReason: a.cancellationReason || 'Placement site was not suitable for the student',
+            cancellationType: a.cancellationType || 'student',
+          };
         }
-        
-        // ✅ Update date if commencement date or appointment date is newer
-        if (appt.commencementDate) {
-          existingForStudent.start = appt.commencementDate;
-          existingForStudent.end = calculatedEnd;
-        } else if (appt.date && new Date(appt.date) > new Date(existingForStudent.start)) {
-          existingForStudent.start = appt.date;
-          existingForStudent.end = calculatedEnd;
-        }
-        
-        // ✅ Update company if changed
-        if (appt.company && appt.company !== existingForStudent.company) {
-          existingForStudent.company = appt.company;
-        }
-        
-        return;
-      }
+        if (a.status === 'Declined') return { status: 'Declined', cancellationReason: a.cancellationReason || 'Industry rejected the student', cancellationType: a.cancellationType || 'industry' };
+        if (a.status === 'Withdrawn') return { status: 'Withdrawn', cancellationReason: a.cancellationReason || 'Student withdrew from placement', cancellationType: a.cancellationType || 'withdrawn' };
+        if (a.status === 'Cancelled') return { status: 'Cancelled', cancellationReason: a.cancellationReason || 'Appointment was cancelled', cancellationType: '' };
+        if (a.status === 'No Show') return { status: 'Declined', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
+        if (a.status === 'Confirmed' || (a.commencementDate && new Date(a.commencementDate) <= new Date())) return { status: 'Placement Started', cancellationReason: '', cancellationType: '' };
+        return { status: 'Waiting to Join', cancellationReason: '', cancellationType: '' };
+      };
 
-      // ✅ Create new internship if no existing
+      // ── Every appointment gets its own row — never overwrite an existing one.
+      // If a student has multiple appointments (e.g. first site declined, new site scheduled)
+      // each appears as a separate placement row so history is preserved.
+      const resolved = resolveApptStatus(appt);
+      const status = resolved.status;
+      const cancellationReason = resolved.cancellationReason;
+      const cancellationType = resolved.cancellationType;
       const duration = '12 weeks';
-      let status = 'Waiting to Join';
-      let cancellationReason = '';
-      let cancellationType = '';
-      
-      if (appt.status === 'Completed') {
-        status = 'Completed';
-      } else if (appt.status === 'Declined') {
-        status = 'Declined';
-        cancellationReason = appt.cancellationReason || 'Industry rejected the student';
-        cancellationType = appt.cancellationType || 'industry';
-      } else if (appt.status === 'Withdrawn') {
-        status = 'Withdrawn';
-        cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
-        cancellationType = appt.cancellationType || 'withdrawn';
-      } else if (appt.status === 'Cancelled') {
-        status = 'Cancelled';
-        cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
-      } else if (appt.status === 'No Show') {
-        status = 'Declined';
-        cancellationReason = 'Student did not show up for appointment';
-        cancellationType = 'student';
-      } else if (hasCommenced || appt.status === 'Confirmed') {
-        status = 'Placement Started';
-      } else if (appt.status === 'Scheduled') {
-        status = 'Waiting to Join';
-      }
 
       const newItem = {
         id: appt.id || appt._id || `INT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -683,6 +742,10 @@ export default function WorkflowPage() {
       if (match) {
         const realId = String(match._id || match.reqId || '');
         if (realId) {
+          // When marking a student inactive, also set the request status to On Hold
+          if (rest.priority === 'Inactive') {
+            rest.status = 'On Hold';
+          }
           const result = await updateInternshipRequest(wfId, realId, rest);
           await refreshWorkflowData();
           return result?.data;
@@ -729,10 +792,33 @@ export default function WorkflowPage() {
 
   const handleCreateAppointment = useCallback(async (appointmentData) => {
     const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+
+    // ── Block if student already has an active placement ─────────────────────
+    // A student can only have one active placement at a time.
+    // Active = appointment is Scheduled, Confirmed, or commencement date has passed.
+    const studentId = appointmentData.studentId || '';
+    const studentName = (appointmentData.student || '').trim().toLowerCase();
+    const ACTIVE_STATUSES = ['Scheduled', 'Confirmed'];
+    const hasActivePlacement = (workflow?.appointments || []).some((a) => {
+      if (!ACTIVE_STATUSES.includes(a.status)) return false;
+      const aStuId = (a.studentId || '').trim();
+      const aStuName = (a.student || '').trim().toLowerCase();
+      return (
+        (studentId && aStuId && aStuId === studentId) ||
+        (studentName && aStuName && aStuName === studentName)
+      );
+    });
+    if (hasActivePlacement) {
+      const err = new Error(
+        `${appointmentData.student || 'This student'} already has an active placement. ` +
+        `The current placement must be completed, declined, or withdrawn before a new one can be created.`
+      );
+      err.isActiveplacementBlock = true;
+      throw err;
+    }
+
     try {
-      console.log('📤 Creating appointment with data:', appointmentData);
       const result = await createAppointment(wfId, appointmentData);
-      console.log('✅ Appointment created:', result);
       await refreshWorkflowData();
       return result.data;
     } catch (err) {

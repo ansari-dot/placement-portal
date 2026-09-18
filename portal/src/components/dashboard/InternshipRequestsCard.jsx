@@ -16,7 +16,7 @@ export default function InternshipRequestsCard({ stats, loading }) {
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between w-full max-w-7xl mx-auto h-full">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-bold text-slate-900 tracking-tight">Internship Requests</h3>
+        <h3 className="text-base font-bold text-slate-900 tracking-tight">Placement Requests</h3>
         <Link to="/workflow?step=2" className="text-xs font-semibold text-blue-600 hover:underline">View All &rsaquo;</Link>
       </div>
       <div className="grid grid-cols-7 gap-3">

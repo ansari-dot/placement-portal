@@ -14,7 +14,7 @@ export default function MyStudentsPage() {
       {/* MAIN CONTENT WRAPPER */}
       <div className="flex-1 ml-52 flex flex-col min-w-0 overflow-hidden">
         {/* TOP HEADER */}
-        <Header title="My Students" breadcrumbs={['Dashboard', 'My List', 'My Students']} />
+        <Header title="My Progress" breadcrumbs={['Dashboard', 'My List', 'My Progress']} />
 
         {/* PAGE CONTENT CONTAINER */}
         <main className="flex-1 overflow-y-auto p-4 max-w-[1600px] w-full mx-auto">

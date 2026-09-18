@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
-  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, Moon
+  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, PauseCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { deleteStudent } from '../../api/studentsApi';
@@ -357,7 +357,7 @@ export default function WorkflowStep1Students({
 
   const [showGenRequestModal, setShowGenRequestModal] = useState(false);
   const [isChangingPlacement, setIsChangingPlacement] = useState(false); // true = Change Placement Requirement mode
-  const [genPriority, setGenPriority] = useState('Normal'); // 'Normal' | 'Urgent' | 'Snooze'
+  const [genPriority, setGenPriority] = useState('Normal'); // 'Normal' | 'Urgent' | 'Inactive' | 'Snooze'
   const [genTargetStudent, setGenTargetStudent] = useState(null);
   const [snoozeDuration, setSnoozeDuration] = useState('7_days');
   const [snoozeReason, setSnoozeReason] = useState('');
@@ -421,7 +421,7 @@ export default function WorkflowStep1Students({
       const existing =
         localRequestMap[stuId] || localRequestMap[target.studentId] ||
         internshipRequestMap[stuId] || (target.studentId && internshipRequestMap[target.studentId]);
-      setGenPriority(existing && ['Normal', 'Urgent'].includes(existing) ? existing : 'Normal');
+      setGenPriority(existing && ['Normal', 'Urgent', 'Inactive'].includes(existing) ? existing : 'Normal');
     } else {
       setGenPriority('Normal');
     }
@@ -484,10 +484,10 @@ export default function WorkflowStep1Students({
         onUpdateRequest('__by_student__', { studentId: stuId, studentName: genTargetStudent.name, priority: genPriority })
           .catch(() => {});
       }
-      showToast(`✅ Placement priority updated to ${genPriority} for ${genTargetStudent.name}`);
+      showToast(`Placement priority updated to ${genPriority} for ${genTargetStudent.name}`);
     } else {
       // ── Generate new request ──
-      showToast(`✅ Placement Request generated (${genPriority} priority) for ${genTargetStudent.name}`);
+      showToast(`Placement Request generated (${genPriority} priority) for ${genTargetStudent.name}`);
       if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
     }
 
@@ -512,7 +512,7 @@ export default function WorkflowStep1Students({
     const keys = [selectedStudent.id, selectedStudent.studentId].filter(Boolean);
     const hasReq = keys.some((k) => {
       const v = localRequestMap[k] || internshipRequestMap[k];
-      return v === 'Normal' || v === 'Urgent';
+      return v === 'Normal' || v === 'Urgent' || v === 'Inactive';
     });
     handleOpenGenRequest(selectedStudent, hasReq);
   };
@@ -627,20 +627,14 @@ export default function WorkflowStep1Students({
             </button>
             {showFilters && (
               <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Filter Options</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Placement Request</p>
                 <div className="space-y-1.5">
-                  <label className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
-                    <input type="checkbox" defaultChecked className="rounded accent-blue-600" />
-                    <span>Active Students</span>
-                  </label>
-                  <label className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
-                    <input type="checkbox" defaultChecked className="rounded accent-blue-600" />
-                    <span>Ready for Placement</span>
-                  </label>
-                  <label className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
-                    <input type="checkbox" className="rounded accent-blue-600" />
-                    <span>Pending Info</span>
-                  </label>
+                  {['Urgent', 'Normal', 'Inactive Students', 'Snooze'].map((label) => (
+                    <label key={label} className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
+                      <input type="checkbox" defaultChecked className="rounded accent-blue-600" />
+                      <span>{label}</span>
+                    </label>
+                  ))}
                 </div>
                 <button 
                   onClick={() => { setShowFilters(false); showToast('Filters applied'); }}
@@ -709,7 +703,7 @@ export default function WorkflowStep1Students({
             onClick={() => setShowSnoozedModal(true)}
             className="px-3 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-[11px] font-semibold rounded-xl flex items-center space-x-1.5 transition cursor-pointer whitespace-nowrap shadow-xs"
           >
-            <Moon className="w-3.5 h-3.5 text-amber-600" />
+            <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
             <span>Snoozed Students</span>
             <span className="px-1.5 py-0.2 bg-amber-200 text-amber-950 rounded-full text-[10px] font-bold">
               {Object.keys(snoozedStudentIds).length}
@@ -760,7 +754,7 @@ export default function WorkflowStep1Students({
                 {showColumns && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Toggle Columns</p>
-                    {['Student', 'Student ID', 'RTO / College', 'Placement Status', 'Added On'].map((col, i) => (
+                    {['Student', 'RTO / College', 'Placement Status', 'Assigned At'].map((col, i) => (
                       <label key={i} className="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer">
                         <input type="checkbox" defaultChecked className="rounded accent-blue-600" />
                         <span>{col}</span>
@@ -800,11 +794,10 @@ export default function WorkflowStep1Students({
                   />
                 </th>
                 <th className="py-4 px-2">Student</th>
-                <th className="p-4">Student ID</th>
                 <th className="p-4">RTO / College</th>
                 <th className="p-4">Placement Status</th>
                 <th className="p-4">Placement Request</th>
-                <th className="p-4">Added On</th>
+                <th className="p-4">Assigned At</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -817,7 +810,7 @@ export default function WorkflowStep1Students({
                   const keys = [stu.id, stu.studentId].filter(Boolean);
                   for (const k of keys) {
                     const v = localRequestMap[k] || internshipRequestMap[k];
-                    if (v === 'Normal' || v === 'Urgent') return v;
+                    if (v === 'Normal' || v === 'Urgent' || v === 'Inactive') return v;
                   }
                   return null;
                 })();
@@ -857,11 +850,10 @@ export default function WorkflowStep1Students({
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-400">{stu.email}</p>
+                        <p className="text-[11px] text-slate-400 font-mono">
+                          {stu.studentId || stu.enrollmentId || (stu.id ? `ST${stu.id.slice(-4).toUpperCase()}` : `ST${paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}`)}
+                        </p>
                       </div>
-                    </td>
-                    <td className="p-4 font-medium text-slate-700">
-                      {stu.studentId || stu.enrollmentId || (stu.id ? `ST${stu.id.slice(-4).toUpperCase()}` : `ST${paginatedStudents.indexOf(stu) + 1 + (currentPage - 1) * pageSize}`)}
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col gap-0.5">
@@ -877,24 +869,22 @@ export default function WorkflowStep1Students({
                     <td className="p-4">
                       {(() => {
                         const statusVal = stu.placementStatus || 'None';
-                        let badgeClass = 'bg-blue-50 text-blue-700 border border-blue-200';
-                        if (statusVal === 'Placement Started') {
-                          badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-300';
-                        } else if (statusVal === 'Appointment Scheduled') {
-                          badgeClass = 'bg-purple-50 text-purple-700 border border-purple-200';
-                        } else if (statusVal === 'Industry Contacted') {
-                          badgeClass = 'bg-cyan-50 text-cyan-700 border border-cyan-200';
-                        } else if (statusVal === 'In Progress') {
-                          badgeClass = 'bg-blue-50 text-blue-700 border border-blue-200';
-                        } else if (statusVal === 'Ready') {
-                          badgeClass = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
-                        } else if (statusVal === 'Pending Info') {
-                          badgeClass = 'bg-amber-50 text-amber-600 border border-amber-200';
-                        } else if (statusVal === 'None') {
-                          badgeClass = 'bg-gray-50 text-gray-500 border border-gray-200';
-                        }
+                        const statusConfig = {
+                          'Placement Completed':        { bg: 'bg-emerald-100',  text: 'text-emerald-800',  border: 'border-emerald-300' },
+                          'Placement Started':          { bg: 'bg-emerald-50',   text: 'text-emerald-700',  border: 'border-emerald-300' },
+                          'Appointment Successful':     { bg: 'bg-teal-50',      text: 'text-teal-700',     border: 'border-teal-200'    },
+                          'Appointment Scheduled':      { bg: 'bg-purple-50',    text: 'text-purple-700',   border: 'border-purple-200'  },
+                          'Industry Contacted':         { bg: 'bg-cyan-50',      text: 'text-cyan-700',     border: 'border-cyan-200'    },
+                          'In Progress':                { bg: 'bg-blue-50',      text: 'text-blue-700',     border: 'border-blue-200'    },
+                          'Student Withdraw':           { bg: 'bg-amber-50',     text: 'text-amber-700',    border: 'border-amber-300'   },
+                          'Student Missed Appointment': { bg: 'bg-orange-50',    text: 'text-orange-700',   border: 'border-orange-300'  },
+                          'Industry Rejected':          { bg: 'bg-rose-50',      text: 'text-rose-700',     border: 'border-rose-200'    },
+                          'Not Suitable Site':          { bg: 'bg-amber-50',     text: 'text-amber-800',    border: 'border-amber-400'   },
+                          'None':                       { bg: 'bg-slate-50',     text: 'text-slate-400',    border: 'border-slate-200'   },
+                        };
+                        const cfg = statusConfig[statusVal] || statusConfig['None'];
                         return (
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${badgeClass}`}>
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
                             {statusVal}
                           </span>
                         );
@@ -908,17 +898,19 @@ export default function WorkflowStep1Students({
                           title={`Snoozed: ${snoozedStudentIds[stu.id].reason || 'Deferred'}`}
                           className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition cursor-pointer"
                         >
-                          <span>💤</span>
                           <span>Snoozed ({snoozedStudentIds[stu.id].durationLabel || '7 Days'})</span>
                         </button>
                       ) : reqValue ? (
                         <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
                           reqValue === 'Urgent'
                             ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                            : reqValue === 'Inactive'
+                            ? 'bg-slate-100 text-slate-500 border border-slate-300'
                             : 'bg-blue-50 text-blue-600 border border-blue-200'
                         }`}>
-                          {reqValue === 'Urgent' && <span>🔥</span>}
-                          <span>{reqValue} Priority</span>
+                          {reqValue === 'Urgent' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>}
+                          {reqValue === 'Inactive' && <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>}
+                          <span>{reqValue === 'Inactive' ? 'Inactive' : `${reqValue} Priority`}</span>
                         </span>
                       ) : (
                         <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">
@@ -954,7 +946,7 @@ export default function WorkflowStep1Students({
                             </button>
                           ) : (
                             <button onClick={() => { setShowRowMenu(null); setGenTargetStudent(stu); setGenPriority('Snooze'); setShowGenRequestModal(true); }} className="w-full text-left px-3 py-2 text-xs text-amber-700 font-semibold hover:bg-amber-50 rounded-lg flex items-center space-x-2">
-                              <Moon className="w-3.5 h-3.5 text-amber-600" />
+                              <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
                               <span>Snooze Student</span>
                             </button>
                           )}
@@ -984,7 +976,7 @@ export default function WorkflowStep1Students({
               })}
               {paginatedStudents.length === 0 && (
                 <tr>
-                  <td colSpan="9" className="p-8 text-center text-slate-400 text-sm">
+                  <td colSpan="8" className="p-8 text-center text-slate-400 text-sm">
                     No students found matching your search
                   </td>
                 </tr>
@@ -1375,8 +1367,8 @@ export default function WorkflowStep1Students({
                               {rec.response || 'In Discussion'}
                             </span>
                           </div>
-                          {rec.email && <p className="text-[10px] text-slate-600 font-mono truncate">✉ {rec.email}</p>}
-                          {rec.address && <p className="text-[10px] text-slate-500">📍 {rec.address}</p>}
+                          {rec.email && <p className="text-[10px] text-slate-600 font-mono truncate">{rec.email}</p>}
+                          {rec.address && <p className="text-[10px] text-slate-500">{rec.address}</p>}
                           {rec.notes && (
                             <div className="pt-1.5 border-t border-slate-200/60 mt-1">
                               <p className="text-[10px] text-slate-700 font-medium">
@@ -1621,7 +1613,7 @@ export default function WorkflowStep1Students({
                   {isChangingPlacement ? 'New Priority' : 'Request Action & Priority'}{' '}
                   <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setGenPriority('Normal')}
@@ -1648,13 +1640,26 @@ export default function WorkflowStep1Students({
                     }`}
                   >
                     <div className="flex items-center justify-between w-full">
-                      <span className="text-xs flex items-center space-x-1">
-                        <span>🔥</span>
-                        <span>Urgent</span>
-                      </span>
+                      <span className="text-xs">Urgent</span>
                       <input type="radio" name="priority" checked={genPriority === 'Urgent'} onChange={() => {}} className="accent-rose-600" />
                     </div>
                     <span className="text-[10px] text-slate-500 font-normal mt-1">Urgent Priority</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setGenPriority('Inactive')}
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
+                      genPriority === 'Inactive'
+                        ? 'bg-violet-50 border-violet-600 text-violet-700 font-bold shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs">Inactive</span>
+                      <input type="radio" name="priority" checked={genPriority === 'Inactive'} onChange={() => {}} className="accent-violet-600" />
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal mt-1">Inactive Student</span>
                   </button>
 
                   <button
@@ -1668,7 +1673,7 @@ export default function WorkflowStep1Students({
                   >
                     <div className="flex items-center justify-between w-full">
                       <span className="text-xs flex items-center space-x-1">
-                        <Moon className="w-3.5 h-3.5 text-amber-600" />
+                        <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
                         <span>Snooze</span>
                       </span>
                       <input type="radio" name="priority" checked={genPriority === 'Snooze'} onChange={() => {}} className="accent-amber-600" />
@@ -1726,7 +1731,7 @@ export default function WorkflowStep1Students({
               >
                 {genPriority === 'Snooze' ? (
                   <>
-                    <Moon className="w-3.5 h-3.5 text-white" />
+                    <PauseCircle className="w-3.5 h-3.5 text-white" />
                     <span>Snooze Student</span>
                   </>
                 ) : isChangingPlacement ? (
@@ -1747,7 +1752,7 @@ export default function WorkflowStep1Students({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center space-x-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                  <Moon className="w-5 h-5" />
+                  <PauseCircle className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
@@ -1834,7 +1839,7 @@ export default function WorkflowStep1Students({
 
               {Object.keys(snoozedStudentIds).length === 0 && (
                 <div className="py-12 text-center text-slate-400">
-                  <Moon className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                  <PauseCircle className="w-10 h-10 mx-auto text-slate-300 mb-2" />
                   <p className="font-semibold text-xs text-slate-600">No Snoozed Students</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">You can snooze a student from the Generate Placement Request modal.</p>
                 </div>

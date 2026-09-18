@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { logoutThunk } from '../../redux/authSlice';
 import logo1 from '../../assets/logo1.png';
 import {
@@ -20,6 +20,8 @@ import {
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const authUser = useSelector((state) => state.auth?.user);
+  const isAdmin = authUser?.role === 'Administrator';
 
   const pathname = location.pathname;
 
@@ -235,7 +237,7 @@ export default function Sidebar() {
 
           <div className="space-y-0.5">
 
-            {/* My Students */}
+            {/* My Progress */}
 
             <Link
               to="/my-students"
@@ -247,32 +249,14 @@ export default function Sidebar() {
               />
 
               <span className="truncate">
-                My Students
+                My Progress
               </span>
 
             </Link>
 
 
-            {/* Student Search */}
-
-            <Link
-              to="/students"
-              className={navLinkClass('/students')}
-            >
-
-              <Search
-                className={iconClass('/students')}
-              />
-
-              <span className="truncate">
-                Student Search...
-              </span>
-
-            </Link>
-
-
-            {/* Add Student */}
-
+            {/* Add Student — Admin only */}
+            {isAdmin && (
             <Link
               to="/add-student"
               className={navLinkClass('/add-student')}
@@ -287,6 +271,7 @@ export default function Sidebar() {
               </span>
 
             </Link>
+            )}
 
           </div>
 

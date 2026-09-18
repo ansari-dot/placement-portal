@@ -5,7 +5,7 @@ import { UserPlus, FileText, Calendar, Building2, Briefcase } from 'lucide-react
 export default function QuickActions() {
   const actions = [
     { label: 'Add New Student', icon: <UserPlus size={16} className="text-blue-600" />, to: '/add-student' },
-    { label: 'New Internship Request', icon: <FileText size={16} className="text-teal-600" />, to: '/workflow?step=2' },
+    { label: 'New Placement Request', icon: <FileText size={16} className="text-teal-600" />, to: '/workflow?step=2' },
     { label: 'Schedule Appointment', icon: <Calendar size={16} className="text-indigo-600" />, to: '/workflow?step=3' },
     { label: 'Add New RTO', icon: <Building2 size={16} className="text-blue-600" />, to: '/rto' },
     { label: 'Add New Industry', icon: <Building2 size={16} className="text-emerald-600" />, to: '/industry' },
