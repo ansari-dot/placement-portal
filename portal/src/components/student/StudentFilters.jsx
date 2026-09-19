@@ -1,86 +1,34 @@
 import { Calendar, Filter, X } from 'lucide-react';
 import { inputClass, selectClass } from './studentData';
 
+const PLACEMENT_REQUEST_OPTIONS = ['Urgent', 'Normal', 'Snooze', 'Inactive'];
+
+const PLACEMENT_STATUS_OPTIONS = [
+  'In Progress',
+  'Appointment Scheduled',
+  'Appointment Successful',
+  'Waiting to Join',
+  'Placement Started',
+  'Student Withdraw',
+  'Industry Rejected',
+  'Placement Completed',
+];
+
 export default function StudentFilters({ filters, onFilterChange, onClear, options, resultCount, selectedCount, onApply }) {
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
+
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-      {/* Row 1 Filters */}
-      <div className="grid grid-cols-6 gap-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">First Name</label>
-          <input
-            type="text"
-            placeholder="Enter first name"
-            value={filters.firstName}
-            onChange={(e) => onFilterChange('firstName', e.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Last Name</label>
-          <input
-            type="text"
-            placeholder="Enter last name"
-            value={filters.lastName}
-            onChange={(e) => onFilterChange('lastName', e.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Student ID</label>
-          <input
-            type="text"
-            placeholder="Enter student ID"
-            value={filters.studentId}
-            onChange={(e) => onFilterChange('studentId', e.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">RTO</label>
-          <select
-            value={filters.rto}
-            onChange={(e) => onFilterChange('rto', e.target.value)}
-            className={selectClass}
-          >
-            <option value="">All RTOs</option>
-            {options.rtoOptions.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course</label>
-          <select
-            value={filters.course}
-            onChange={(e) => onFilterChange('course', e.target.value)}
-            className={selectClass}
-          >
-            <option value="">All Courses</option>
-            {options.courseOptions.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Status</label>
-          <select
-            value={filters.status}
-            onChange={(e) => onFilterChange('status', e.target.value)}
-            className={selectClass}
-          >
-            <option value="">All Status</option>
-            {options.statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-      </div>
+      <div className="grid grid-cols-5 gap-4">
 
-      {/* Row 2 Filters */}
-      <div className="grid grid-cols-6 gap-4">
+        {/* Assigned Date */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">From Date</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Assigned Date</label>
           <div className="relative">
             <input
               type="date"
-              value={filters.fromDate}
-              onChange={(e) => onFilterChange('fromDate', e.target.value)}
+              value={filters.assignedDate}
+              onChange={(e) => onFilterChange('assignedDate', e.target.value)}
               className={`${inputClass} pr-8`}
             />
             <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
@@ -88,22 +36,40 @@ export default function StudentFilters({ filters, onFilterChange, onClear, optio
             </span>
           </div>
         </div>
+
+        {/* Placement Request type */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">To Date</label>
-          <div className="relative">
-            <input
-              type="date"
-              value={filters.toDate}
-              onChange={(e) => onFilterChange('toDate', e.target.value)}
-              className={`${inputClass} pr-8`}
-            />
-            <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
-              <Calendar size={14} />
-            </span>
-          </div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Placement Request</label>
+          <select
+            value={filters.placementRequest}
+            onChange={(e) => onFilterChange('placementRequest', e.target.value)}
+            className={selectClass}
+          >
+            <option value="">All Requests</option>
+            {PLACEMENT_REQUEST_OPTIONS.map(r => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
         </div>
+
+        {/* Placement Status */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">City / Suburb</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Placement Status</label>
+          <select
+            value={filters.placementStatus}
+            onChange={(e) => onFilterChange('placementStatus', e.target.value)}
+            className={selectClass}
+          >
+            <option value="">All Statuses</option>
+            {PLACEMENT_STATUS_OPTIONS.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* City */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">City</label>
           <input
             type="text"
             placeholder="Enter city or suburb"
@@ -112,41 +78,22 @@ export default function StudentFilters({ filters, onFilterChange, onClear, optio
             className={inputClass}
           />
         </div>
+
+        {/* Course */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Source</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Course</label>
           <select
-            value={filters.source}
-            onChange={(e) => onFilterChange('source', e.target.value)}
+            value={filters.course}
+            onChange={(e) => onFilterChange('course', e.target.value)}
             className={selectClass}
           >
-            <option value="">All Sources</option>
-            {options.sourceOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value="">All Courses</option>
+            {(options.courseOptions || []).map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Age From</label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            placeholder="Min age"
-            value={filters.ageFrom}
-            onChange={(e) => onFilterChange('ageFrom', e.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">Age To</label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            placeholder="Max age"
-            value={filters.ageTo}
-            onChange={(e) => onFilterChange('ageTo', e.target.value)}
-            className={inputClass}
-          />
-        </div>
+
       </div>
 
       {/* Filter Action Buttons */}

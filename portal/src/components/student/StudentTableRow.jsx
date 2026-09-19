@@ -128,6 +128,7 @@ export default function StudentTableRow({
   canAssign = true,
   hasPlacementRequest = false,
   isSnoozed = false,
+  isAdmin = false,
 }) {
   return (
     <tr className="hover:bg-slate-50/80 transition cursor-pointer">
@@ -170,6 +171,7 @@ export default function StudentTableRow({
             canAssign={canAssign}
             hasPlacementRequest={hasPlacementRequest}
             isSnoozed={isSnoozed}
+            isAdmin={isAdmin}
           />
         )}
       </td>
