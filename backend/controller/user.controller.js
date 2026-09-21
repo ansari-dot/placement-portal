@@ -272,3 +272,162 @@ export const deleteUserController = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// GET /users/score-stats
+// Returns coordinator progress rows for the Score tab.
+//
+// Admin  → one row per active user (all roles).
+// Others → only their own row.
+//
+// Columns per row:
+//   pendingStudents  — students whose internshipPriority is NOT 'Inactive' and who
+//                      have no Active/Completed internship (i.e. still pending placement).
+//                      Reuses the same internshipPriority field used by the workflow UI.
+//   snoozedStudents  — students where Student.snoozed === true (DB field, not localStorage).
+//   inactiveStudents — students where internshipPriority === 'Inactive'
+//                      (same field used by WorkflowStep1Students "Inactive Student" option).
+//   rtos             — count of distinct non-empty assignedRto values on the coordinator's students.
+//   industries       — count using same logic as Industry Tab:
+//                        (A) Industry.createdBy === coordinatorId  OR
+//                        (B) industry name appears in a workflow sub-doc whose studentId
+//                            maps to a student with assignedCoordinator === coordinatorId.
+//   score            — NO existing formula found in the codebase. Returning null.
+//                      Do not invent a formula; display "—" in the UI.
+//
+// All coordinator identification is ObjectId-based. Names are never used for filtering.
+import StudentModel from '../model/student.model.js';
+import WorkflowModel from '../model/workflow.model.js';
+import IndustryModel from '../model/industry.model.js';
+
+export const getScoreStatsController = async (req, res) => {
+  try {
+    const isAdmin = req.user?.role === 'Administrator';
+
+    // Determine which users to compute rows for
+    let targetUsers;
+    if (isAdmin) {
+      targetUsers = await UserModel.find({ status: 'Active' }, { _id: 1, name: 1, role: 1, email: 1 }).lean();
+    } else if (req.user) {
+      targetUsers = [{ _id: req.user._id, name: req.user.name, role: req.user.role, email: req.user.email }];
+    } else {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    // Pre-load all students and workflows once — avoids N+1 per coordinator
+    const [allStudents, allWorkflows, allIndustries] = await Promise.all([
+      StudentModel.find({}, {
+        _id: 1, studentId: 1, assignedCoordinator: 1,
+        internshipPriority: 1, snoozed: 1, assignedRto: 1,
+      }).lean(),
+      WorkflowModel.find({}, {
+        'internships.studentId': 1, 'internships.company': 1, 'internships.status': 1,
+        'appointments.studentId': 1, 'appointments.company': 1,
+        'requests.studentId': 1, 'requests.contactedIndustries': 1,
+      }).lean(),
+      IndustryModel.find({}, { _id: 1, name: 1, createdBy: 1 }).lean(),
+    ]);
+
+    // Build a set of studentIds that have an Active internship (for "pending" logic)
+    const activelyPlacedStudentIds = new Set();
+    for (const wf of allWorkflows) {
+      for (const intern of (wf.internships || [])) {
+        if ((intern.status || 'Active') === 'Active' && intern.studentId) {
+          activelyPlacedStudentIds.add(intern.studentId.trim().toLowerCase());
+        }
+      }
+    }
+
+    const rows = targetUsers.map(user => {
+      const uid = user._id.toString();
+
+      // Students assigned to this user (ObjectId-based)
+      const myStudents = allStudents.filter(
+        s => s.assignedCoordinator && s.assignedCoordinator.toString() === uid
+      );
+
+      const myStudentIdStrings = new Set(
+        myStudents.map(s => (s.studentId || '').trim().toLowerCase()).filter(Boolean)
+      );
+
+      // ── Pending: has no active placement AND internshipPriority !== 'Inactive' ──
+      const pendingStudents = myStudents.filter(s => {
+        if ((s.internshipPriority || '').trim() === 'Inactive') return false;
+        return !activelyPlacedStudentIds.has((s.studentId || '').trim().toLowerCase());
+      }).length;
+
+      // ── Snoozed: Student.snoozed === true (DB field) ──────────────────────
+      const snoozedStudents = myStudents.filter(s => s.snoozed === true).length;
+
+      // ── Inactive: internshipPriority === 'Inactive' ───────────────────────
+      const inactiveStudents = myStudents.filter(
+        s => (s.internshipPriority || '').trim() === 'Inactive'
+      ).length;
+
+      // ── RTOs: distinct non-empty assignedRto values ───────────────────────
+      const rtoSet = new Set(
+        myStudents.map(s => (s.assignedRto || '').trim()).filter(Boolean)
+      );
+      const rtos = rtoSet.size;
+
+      // ── Industries: same dual-condition logic as getMyIndustriesController ─
+      // Condition A: Industry.createdBy === userId (ObjectId)
+      const createdByIndustryIds = new Set(
+        allIndustries
+          .filter(ind => ind.createdBy && ind.createdBy.toString() === uid)
+          .map(ind => ind._id.toString())
+      );
+
+      // Condition B: industry name linked to coordinator's students via workflows
+      const studentLinkedIndustryNames = new Set();
+      if (myStudentIdStrings.size > 0) {
+        for (const wf of allWorkflows) {
+          for (const intern of (wf.internships || [])) {
+            if (!myStudentIdStrings.has((intern.studentId || '').trim().toLowerCase())) continue;
+            const nm = (intern.company || '').trim().toLowerCase();
+            if (nm) studentLinkedIndustryNames.add(nm);
+          }
+          for (const appt of (wf.appointments || [])) {
+            if (!myStudentIdStrings.has((appt.studentId || '').trim().toLowerCase())) continue;
+            const nm = (appt.company || '').trim().toLowerCase();
+            if (nm && nm !== 'unknown company' && nm !== 'pending assignment')
+              studentLinkedIndustryNames.add(nm);
+          }
+          for (const req of (wf.requests || [])) {
+            if (!myStudentIdStrings.has((req.studentId || '').trim().toLowerCase())) continue;
+            for (const c of (req.contactedIndustries || [])) {
+              const nm = (c.organizationName || '').trim().toLowerCase();
+              if (nm) studentLinkedIndustryNames.add(nm);
+            }
+          }
+        }
+      }
+
+      const industries = allIndustries.filter(ind => {
+        if (createdByIndustryIds.has(ind._id.toString())) return true;
+        if (studentLinkedIndustryNames.has((ind.name || '').trim().toLowerCase())) return true;
+        return false;
+      }).length;
+
+      // ── Score: no existing formula in codebase — returning null ───────────
+      const score = null;
+
+      return {
+        userId: uid,
+        userName: user.name,
+        userRole: user.role,
+        userEmail: user.email,
+        pendingStudents,
+        snoozedStudents,
+        inactiveStudents,
+        rtos,
+        industries,
+        score,
+      };
+    });
+
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error('getScoreStatsController error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

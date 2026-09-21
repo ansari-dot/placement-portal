@@ -22,6 +22,9 @@ const industrySchema = new mongoose.Schema({
   abn: { type: String },
   website: { type: String },
   shortDescription: { type: String },
+  // Ownership — which user created / is credited with this industry.
+  // Optional so all pre-existing documents remain valid with no migration needed.
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
 
 const IndustryModel = mongoose.model('Industry', industrySchema);

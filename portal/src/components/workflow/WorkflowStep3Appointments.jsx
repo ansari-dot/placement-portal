@@ -127,6 +127,72 @@ export default function WorkflowStep3Appointments({
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState('');
 
+  // Details editing state in drawer
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+  const [editDetails, setEditDetails] = useState({
+    date: '',
+    time: '',
+    location: '',
+    company: '',
+    position: '',
+    meetingType: 'In-Person',
+    interviewer: '',
+  });
+
+  const handleOpenEditDetails = () => {
+    if (!selectedAppointment) return;
+    setEditDetails({
+      date: selectedAppointment.date || '',
+      time: selectedAppointment.time || '',
+      location: selectedAppointment.location || '',
+      company: selectedAppointment.company || '',
+      position: selectedAppointment.position || '',
+      meetingType: selectedAppointment.meetingType || 'In-Person',
+      interviewer: selectedAppointment.interviewer || '',
+    });
+    setIsEditingDetails(true);
+  };
+
+  const handleSaveDetails = async () => {
+    if (!selectedAppointment) return;
+    const dbId = selectedAppointment.id || selectedAppointment._id;
+    if (!dbId || !onUpdateAppointment) return;
+    if (!editDetails.date || !editDetails.time) {
+      showToast('Date and Time are required');
+      return;
+    }
+    try {
+      setIsSavingDetails(true);
+      await onUpdateAppointment(dbId, {
+        date: editDetails.date,
+        time: editDetails.time,
+        location: editDetails.location,
+        company: editDetails.company,
+        position: editDetails.position,
+        meetingType: editDetails.meetingType,
+        interviewer: editDetails.interviewer,
+      });
+      setSelectedAppointment(prev => ({
+        ...prev,
+        date: editDetails.date,
+        time: editDetails.time,
+        location: editDetails.location,
+        company: editDetails.company,
+        position: editDetails.position,
+        meetingType: editDetails.meetingType,
+        interviewer: editDetails.interviewer,
+      }));
+      setIsEditingDetails(false);
+      showToast('Appointment details updated successfully');
+    } catch (err) {
+      console.error('Failed to save appointment details:', err);
+      showToast('Failed to save details: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSavingDetails(false);
+    }
+  };
+
   // Cancel / Outcome Modal State
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
@@ -1258,6 +1324,7 @@ export default function WorkflowStep3Appointments({
                             setShowDrawer(true);
                             setIsRescheduling(false);
                             setIsEditingNotes(false);
+                            setIsEditingDetails(false);
                           }}
                           className={`cursor-pointer hover:bg-slate-50 transition ${isSelected ? 'bg-blue-50/50' : ''}`}
                         >
@@ -1356,6 +1423,7 @@ export default function WorkflowStep3Appointments({
                                     setShowDrawer(true);
                                     setIsRescheduling(false);
                                     setIsEditingNotes(false);
+                                    setIsEditingDetails(false);
                                   }}
                                   className={`p-2 rounded-xl border text-left w-full shadow-2xs cursor-pointer transition hover:scale-[1.02] ${badgeStyle.bg} ${isSelectedAppt ? 'ring-2 ring-blue-600 font-bold shadow-md' : ''}`}
                                 >
@@ -1562,32 +1630,135 @@ export default function WorkflowStep3Appointments({
                 </div>
 
                 <div>
-                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
-                    <span className="w-1 h-3 bg-cyan-600 rounded-full"></span>
-                    <span>Appointment Info</span>
-                  </h5>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Date</span>
-                      <span className="font-semibold text-slate-900">{selectedAppointment.date}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Time</span>
-                      <span className="font-semibold text-slate-900">{selectedAppointment.time}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Location</span>
-                      <span className="font-semibold text-slate-900 truncate max-w-[150px]">{selectedAppointment.location || 'N/A'}</span>
-                    </div>
-                    {selectedAppointment.cancellationReason && (
-                      <div className="flex justify-between items-start">
-                        <span className="text-slate-500">Reason</span>
-                        <span className="font-semibold text-slate-900 text-right max-w-[150px] break-words">
-                          {selectedAppointment.cancellationReason}
-                        </span>
-                      </div>
+                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+                    <span className="flex items-center space-x-1.5">
+                      <span className="w-1 h-3 bg-cyan-600 rounded-full"></span>
+                      <span>Appointment Info</span>
+                    </span>
+                    {!isEditingDetails && (
+                      <button
+                        onClick={handleOpenEditDetails}
+                        className="flex items-center gap-1 text-blue-600 hover:underline text-[10px] font-bold"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        Edit
+                      </button>
                     )}
-                  </div>
+                  </h5>
+
+                  {isEditingDetails ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-0.5">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Date *</label>
+                          <input
+                            type="date"
+                            value={editDetails.date}
+                            onChange={e => setEditDetails(p => ({ ...p, date: e.target.value }))}
+                            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div className="space-y-0.5">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Time *</label>
+                          <input
+                            type="time"
+                            value={editDetails.time}
+                            onChange={e => setEditDetails(p => ({ ...p, time: e.target.value }))}
+                            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase">Location</label>
+                        <input
+                          type="text"
+                          value={editDetails.location}
+                          onChange={e => setEditDetails(p => ({ ...p, location: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase">Company</label>
+                        <input
+                          type="text"
+                          value={editDetails.company}
+                          onChange={e => setEditDetails(p => ({ ...p, company: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase">Position / Role</label>
+                        <input
+                          type="text"
+                          value={editDetails.position}
+                          onChange={e => setEditDetails(p => ({ ...p, position: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase">Interviewer</label>
+                        <input
+                          type="text"
+                          value={editDetails.interviewer}
+                          onChange={e => setEditDetails(p => ({ ...p, interviewer: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase">Meeting Type</label>
+                        <select
+                          value={editDetails.meetingType}
+                          onChange={e => setEditDetails(p => ({ ...p, meetingType: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="In-Person">In-Person</option>
+                          <option value="Video">Video</option>
+                          <option value="Phone">Phone</option>
+                        </select>
+                      </div>
+                      <div className="flex space-x-2 pt-1">
+                        <button
+                          onClick={handleSaveDetails}
+                          disabled={isSavingDetails}
+                          className="flex-1 py-2 bg-[#0147A6] hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-50 flex items-center justify-center space-x-1.5"
+                        >
+                          {isSavingDetails
+                            ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /><span>Saving…</span></>
+                            : <><Check className="w-3 h-3" /><span>Save</span></>}
+                        </button>
+                        <button
+                          onClick={() => setIsEditingDetails(false)}
+                          disabled={isSavingDetails}
+                          className="px-3 py-2 border border-slate-200 text-xs font-semibold text-slate-600 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Date</span>
+                        <span className="font-semibold text-slate-900">{selectedAppointment.date}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Time</span>
+                        <span className="font-semibold text-slate-900">{selectedAppointment.time}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Location</span>
+                        <span className="font-semibold text-slate-900 truncate max-w-[150px]">{selectedAppointment.location || 'N/A'}</span>
+                      </div>
+                      {selectedAppointment.cancellationReason && (
+                        <div className="flex justify-between items-start">
+                          <span className="text-slate-500">Reason</span>
+                          <span className="font-semibold text-slate-900 text-right max-w-[150px] break-words">
+                            {selectedAppointment.cancellationReason}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Outcome Result Card (shown after outcome is saved) ─── */}
@@ -1755,7 +1926,9 @@ export default function WorkflowStep3Appointments({
 
             {drawerTab === 'Details' && (
               <div className="space-y-3 text-xs">
-                <div className="space-y-2">
+
+                {/* ── Read-only identity fields ─────────────────────────── */}
+                <div className="space-y-1.5">
                   <div className="flex justify-between border-b border-slate-100 pb-1.5">
                     <span className="text-slate-400">Appointment ID</span>
                     <span className="font-mono font-bold text-slate-800">{selectedAppointment.apptId || selectedAppointment.id}</span>
@@ -1768,40 +1941,6 @@ export default function WorkflowStep3Appointments({
                     <span className="text-slate-400">Student ID</span>
                     <span className="font-mono text-slate-800">{selectedAppointment.studentId}</span>
                   </div>
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-slate-400">Company</span>
-                    <span className="font-semibold text-slate-800">{selectedAppointment.company}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-slate-400">Position</span>
-                    <span className="font-semibold text-slate-800">{selectedAppointment.position || 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-slate-400">Meeting Type</span>
-                    <span className="font-semibold text-slate-800">{selectedAppointment.meetingType}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-slate-400">Interviewer</span>
-                    <span className="font-semibold text-slate-800">{selectedAppointment.interviewer || 'N/A'}</span>
-                  </div>
-                  {selectedAppointment.cancellationReason && (
-                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-slate-400">Cancellation Reason</span>
-                      <span className="font-semibold text-slate-800 text-right max-w-[150px] break-words">
-                        {selectedAppointment.cancellationReason}
-                      </span>
-                    </div>
-                  )}
-                  {selectedAppointment.cancellationType && (
-                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-slate-400">Cancellation Type</span>
-                      <span className="font-semibold text-slate-800">
-                        {selectedAppointment.cancellationType === 'student' ? 'Student Request' :
-                         selectedAppointment.cancellationType === 'industry' ? 'Industry Rejected' :
-                         selectedAppointment.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
-                      </span>
-                    </div>
-                  )}
                   {selectedAppointment.appointmentOutcome && (
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
                       <span className="text-slate-400">Outcome</span>
@@ -1825,23 +1964,168 @@ export default function WorkflowStep3Appointments({
                       <span className="font-semibold text-slate-800">{selectedAppointment.expectedCompletionDate}</span>
                     </div>
                   )}
-                  {selectedAppointment.cancellationTypeLabel && (
+                  {selectedAppointment.cancellationReason && (
                     <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                      <span className="text-slate-400">Outcome Label</span>
-                      <span className="font-semibold text-slate-800">{selectedAppointment.cancellationTypeLabel}</span>
+                      <span className="text-slate-400">Cancel Reason</span>
+                      <span className="font-semibold text-slate-800 text-right max-w-[150px] break-words">{selectedAppointment.cancellationReason}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="pt-2">
-                  <button
-                    onClick={() => handleDelete(selectedAppointment.id || selectedAppointment._id, selectedAppointment)}
-                    className="w-full py-2 bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl flex items-center justify-center space-x-2 hover:bg-rose-100 transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Appointment</span>
-                  </button>
-                </div>
+                {/* ── Editable section ─────────────────────────────────── */}
+                {isEditingDetails ? (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Edit Details</p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-500 uppercase">Date *</label>
+                        <input
+                          type="date"
+                          value={editDetails.date}
+                          onChange={e => setEditDetails(p => ({ ...p, date: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-500 uppercase">Time *</label>
+                        <input
+                          type="time"
+                          value={editDetails.time}
+                          onChange={e => setEditDetails(p => ({ ...p, time: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase">Company / Organisation</label>
+                      <input
+                        type="text"
+                        value={editDetails.company}
+                        onChange={e => setEditDetails(p => ({ ...p, company: e.target.value }))}
+                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase">Position / Role</label>
+                      <input
+                        type="text"
+                        value={editDetails.position}
+                        onChange={e => setEditDetails(p => ({ ...p, position: e.target.value }))}
+                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase">Interviewer / Contact</label>
+                      <input
+                        type="text"
+                        value={editDetails.interviewer}
+                        onChange={e => setEditDetails(p => ({ ...p, interviewer: e.target.value }))}
+                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase">Meeting Type</label>
+                      <select
+                        value={editDetails.meetingType}
+                        onChange={e => setEditDetails(p => ({ ...p, meetingType: e.target.value }))}
+                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="In-Person">In-Person</option>
+                        <option value="Video">Video</option>
+                        <option value="Phone">Phone</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase">Location / Address</label>
+                      <input
+                        type="text"
+                        value={editDetails.location}
+                        onChange={e => setEditDetails(p => ({ ...p, location: e.target.value }))}
+                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="flex space-x-2 pt-1">
+                      <button
+                        onClick={handleSaveDetails}
+                        disabled={isSavingDetails}
+                        className="flex-1 py-2 bg-[#0147A6] hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-50 flex items-center justify-center space-x-1.5"
+                      >
+                        {isSavingDetails
+                          ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /><span>Saving…</span></>
+                          : <><Check className="w-3 h-3" /><span>Save Changes</span></>}
+                      </button>
+                      <button
+                        onClick={() => setIsEditingDetails(false)}
+                        disabled={isSavingDetails}
+                        className="px-3 py-2 border border-slate-200 text-xs font-semibold text-slate-600 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between pb-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Appointment Details</p>
+                      <button
+                        onClick={handleOpenEditDetails}
+                        className="text-blue-600 text-xs font-bold flex items-center space-x-1 hover:underline"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
+                    </div>
+
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Date</span>
+                      <span className="font-semibold text-slate-800">{selectedAppointment.date || '—'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Time</span>
+                      <span className="font-semibold text-slate-800">{selectedAppointment.time || '—'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Company</span>
+                      <span className="font-semibold text-slate-800 text-right max-w-[150px] break-words">{selectedAppointment.company || '—'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Position</span>
+                      <span className="font-semibold text-slate-800">{selectedAppointment.position || '—'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Meeting Type</span>
+                      <span className="font-semibold text-slate-800">{selectedAppointment.meetingType || '—'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Interviewer</span>
+                      <span className="font-semibold text-slate-800">{selectedAppointment.interviewer || '—'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                      <span className="text-slate-400">Location</span>
+                      <span className="font-semibold text-slate-800 text-right max-w-[150px] break-words">{selectedAppointment.location || '—'}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Delete ────────────────────────────────────────────── */}
+                {!isEditingDetails && (
+                  <div className="pt-1">
+                    <button
+                      onClick={() => handleDelete(selectedAppointment.id || selectedAppointment._id, selectedAppointment)}
+                      className="w-full py-2 bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl flex items-center justify-center space-x-2 hover:bg-rose-100 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Appointment</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

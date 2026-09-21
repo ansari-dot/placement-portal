@@ -5,6 +5,7 @@ export const fetchIndustries = async (params) => {
   return response.data;
 };
 
+
 export const createIndustry = async (industryData) => {
   const response = await api.post("/industries", industryData);
   return response.data;
@@ -22,5 +23,10 @@ export const fetchIndustryStats = async () => {
 
 export const deleteIndustry = async (id) => {
   const response = await api.delete(`/industries/${id}`);
+  return response.data;
+};
+
+export const fetchMyIndustries = async () => {
+  const response = await api.get('/industries/my');
   return response.data;
 };

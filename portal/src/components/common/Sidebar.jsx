@@ -15,6 +15,7 @@ import {
   Settings,
   LogOut,
   ChevronRight,
+  Trophy,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -432,6 +433,40 @@ export default function Sidebar() {
 
                 <span className="truncate">
                   Industries
+                </span>
+
+              </div>
+
+              <ChevronRight
+                className="
+                  w-2.5
+                  h-2.5
+                  text-white/40
+                  shrink-0
+                "
+              />
+
+            </Link>
+
+
+            {/* Score */}
+
+            <Link
+              to="/score"
+              className={`
+                ${navLinkClass('/score')}
+                justify-between
+              `}
+            >
+
+              <div className="flex items-center gap-2.5 min-w-0">
+
+                <Trophy
+                  className={iconClass('/score')}
+                />
+
+                <span className="truncate">
+                  Score
                 </span>
 
               </div>

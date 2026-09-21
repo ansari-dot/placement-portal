@@ -15,6 +15,7 @@ import StudentViewEditPage from "./pages/StudentViewEditPage";
 import WorkflowPage from "./pages/WorkflowPage";
 import TheRTOPage from "./pages/TheRTOPage";
 import IndustryPage from "./pages/IndustryPage";
+import ScorePage from "./pages/ScorePage"; // ADDED: standalone Score page
 import JobPage from "./pages/JobPage";
 import UsersPage from "./pages/UsersPage";
 
@@ -94,6 +95,15 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <IndustryPage />
+          </ProtectedRoute>
+        }
+      />
+      {/* ADDED: Score page (sidebar entry below Industry links here) */}
+      <Route
+        path="/score"
+        element={
+          <ProtectedRoute>
+            <ScorePage />
           </ProtectedRoute>
         }
       />

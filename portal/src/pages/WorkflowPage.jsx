@@ -299,37 +299,31 @@ export default function WorkflowPage() {
   }, [visibleWorkflowStudents]);
 
   // ─── Mapping helpers ───────────────────────────────────────────────────────
+  // ID-only matching — name fallback is intentionally removed because two students
+  // can share the same name. Workflow sub-docs store studentId; if absent, no match.
 
   const findRequestsForStudent = useCallback((stu) => {
-    const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
     const stuDbId = norm(stu.id || stu._id);
     const stuBizId = norm(stu.studentId);
-    const stuName = norm(stu.name || stuFullName);
 
     return (workflow?.requests || []).filter((r) => {
       const reqStudentId = norm(r.studentId);
-      const reqStudentName = norm(r.student);
       return (
         (reqStudentId && stuDbId && reqStudentId === stuDbId) ||
-        (reqStudentId && stuBizId && reqStudentId === stuBizId) ||
-        (reqStudentName && stuName && (reqStudentName === stuName || reqStudentName.includes(stuName) || stuName.includes(reqStudentName)))
+        (reqStudentId && stuBizId && reqStudentId === stuBizId)
       );
     });
   }, [workflow]);
 
   const findAppointmentsForStudent = useCallback((stu) => {
-    const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
     const stuDbId = norm(stu.id || stu._id);
     const stuBizId = norm(stu.studentId);
-    const stuName = norm(stu.name || stuFullName);
 
     return (workflow?.appointments || []).filter((a) => {
       const apptStudentId = norm(a.studentId);
-      const apptStudentName = norm(a.student);
       return (
         (apptStudentId && stuDbId && apptStudentId === stuDbId) ||
-        (apptStudentId && stuBizId && apptStudentId === stuBizId) ||
-        (apptStudentName && stuName && (apptStudentName === stuName || apptStudentName.includes(stuName) || stuName.includes(apptStudentName)))
+        (apptStudentId && stuBizId && apptStudentId === stuBizId)
       );
     });
   }, [workflow]);
@@ -355,11 +349,9 @@ export default function WorkflowPage() {
       // ── Internship records for this student ──────────────────────────────
       const matchingInternships = (workflow?.internships || []).filter((i) => {
         const iStuId = norm(i.studentId);
-        const iStuName = norm(i.student);
         return (
           (iStuId && stuDbId && iStuId === stuDbId) ||
-          (iStuId && stuBizId && iStuId === stuBizId) ||
-          (iStuName && stuName && iStuName === stuName)
+          (iStuId && stuBizId && iStuId === stuBizId)
         );
       });
 
@@ -797,16 +789,11 @@ export default function WorkflowPage() {
     // A student can only have one active placement at a time.
     // Active = appointment is Scheduled, Confirmed, or commencement date has passed.
     const studentId = appointmentData.studentId || '';
-    const studentName = (appointmentData.student || '').trim().toLowerCase();
     const ACTIVE_STATUSES = ['Scheduled', 'Confirmed'];
-    const hasActivePlacement = (workflow?.appointments || []).some((a) => {
+    const hasActivePlacement = studentId && (workflow?.appointments || []).some((a) => {
       if (!ACTIVE_STATUSES.includes(a.status)) return false;
       const aStuId = (a.studentId || '').trim();
-      const aStuName = (a.student || '').trim().toLowerCase();
-      return (
-        (studentId && aStuId && aStuId === studentId) ||
-        (studentName && aStuName && aStuName === studentName)
-      );
+      return aStuId && aStuId === studentId;
     });
     if (hasActivePlacement) {
       const err = new Error(
