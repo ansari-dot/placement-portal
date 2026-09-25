@@ -129,7 +129,8 @@ export const createRTOController = async (req, res) => {
       loc: suburb && state ? `${suburb}, ${state}` : 'Melbourne, VIC',
       date: partnershipSince || new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }),
       status: 'Active',
-      students: 0
+      students: 0,
+      createdBy: req.user?._id || null,
     });
 
     await rto.save();
@@ -210,6 +211,26 @@ export const deleteRTOController = async (req, res) => {
       success: true,
       message: 'RTO deleted successfully'
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /rtos/my
+// Admin → all RTOs.
+// Coordinator → only RTOs onboarded (createdBy) by this user (ObjectId match).
+export const getMyRTOsController = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const isAdmin = req.user.role === 'Administrator';
+    const rtos = isAdmin
+      ? await RtoModel.find().sort({ createdAt: -1 }).lean()
+      : await RtoModel.find({ createdBy: req.user._id }).sort({ createdAt: -1 }).lean();
+
+    return res.status(200).json({ success: true, data: rtos });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

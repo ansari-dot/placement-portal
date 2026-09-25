@@ -1,16 +1,31 @@
 import IndustryModel from '../model/industry.model.js';
 import WorkflowModel from '../model/workflow.model.js';
 import JobModel from '../model/job.model.js';
+import StudentModel from '../model/student.model.js';
+import UserModel from '../model/user.model.js';
 
 const safeRegex = (str) => new RegExp(`^${str.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
-// Helper to auto-sync any industries created in Workflow Step 2 or Step 3 into Industry collection
+// Helper to auto-sync any industries created in Workflow Step 2 or Step 3 into Industry collection.
+// When syncing from workflow requests, the request carries a coordinator name string — we look up
+// the matching User document so we can stamp createdBy on new industry records.
 const syncIndustriesFromWorkflows = async () => {
   try {
+    // Pre-load all users once so we can resolve coordinator name → ObjectId
+    const allUsers = await UserModel.find({}, { _id: 1, name: 1 }).lean();
+    const resolveCoordinatorId = (coordinatorName) => {
+      if (!coordinatorName) return null;
+      const norm = coordinatorName.trim().toLowerCase();
+      const match = allUsers.find(u => (u.name || '').trim().toLowerCase() === norm);
+      return match ? match._id : null;
+    };
+
     const workflows = await WorkflowModel.find();
     for (const wf of workflows) {
       // From requests -> contactedIndustries
       for (const r of (wf.requests || [])) {
+        // Resolve the coordinator who owns this request
+        const coordinatorId = resolveCoordinatorId(r.coordinator);
         for (const c of (r.contactedIndustries || [])) {
           const orgName = (c.organizationName || '').trim();
           if (!orgName) continue;
@@ -29,11 +44,12 @@ const syncIndustriesFromWorkflows = async () => {
               status: c.response === 'Rejected' ? 'Inactive' : 'Active',
               students: 1,
               jobs: 0,
+              createdBy: coordinatorId,
             });
           }
         }
       }
-      // From appointments -> company
+      // From appointments -> company (no coordinator field on appointments — leave createdBy null)
       for (const a of (wf.appointments || [])) {
         const compName = (a.company || '').trim();
         if (!compName || compName === 'Unknown Company' || compName === 'Pending Assignment') continue;
@@ -52,6 +68,7 @@ const syncIndustriesFromWorkflows = async () => {
             status: a.status === 'Declined' ? 'Inactive' : 'Active',
             students: 1,
             jobs: 0,
+            createdBy: null,
           });
         }
       }
@@ -150,11 +167,65 @@ export const getAllIndustriesController = async (req, res) => {
         employer: { $regex: ind.name.trim(), $options: 'i' }
       });
 
+      // ── Currently / Previously Placed (same logic as getMyIndustriesController) ──
+      // Priority: Internship status (Step 4) overrides Appointment status (Step 3).
+      // Internship status 'Active' → currently placed; any other status → previously placed.
+      // Appointments used only as fallback when no internship record exists for that student.
+      const currentlyPlacedMap  = new Map(); // key → record
+      const previouslyPlacedMap = new Map(); // key → record
+
+      for (const wf of allWorkflows) {
+        // Step 4 — Internships (highest signal)
+        for (const intern of (wf.internships || [])) {
+          if ((intern.company || '').trim().toLowerCase() !== normName) continue;
+          const key = (intern.studentId || '').trim().toLowerCase();
+          if (!key) continue;
+          const record = {
+            studentName: intern.student || 'Student',
+            studentId: intern.studentId || '',
+            start: intern.start || '',
+            end: intern.end || '',
+          };
+          if ((intern.status || 'Active') === 'Active') {
+            currentlyPlacedMap.set(key, record);
+            previouslyPlacedMap.delete(key);
+          } else if (!currentlyPlacedMap.has(key)) {
+            previouslyPlacedMap.set(key, record);
+          }
+        }
+        // Step 3 — Appointments (fallback only)
+        for (const appt of (wf.appointments || [])) {
+          if ((appt.company || '').trim().toLowerCase() !== normName) continue;
+          const key = (appt.studentId || '').trim().toLowerCase();
+          if (!key) continue;
+          if (currentlyPlacedMap.has(key) || previouslyPlacedMap.has(key)) continue;
+          const record = {
+            studentName: appt.student || 'Student',
+            studentId: appt.studentId || '',
+            date: appt.date || '',
+          };
+          const isConfirmed = appt.status === 'Confirmed';
+          const isCompleted = appt.status === 'Completed';
+          const isDeclined  = appt.status === 'Declined' || appt.cancellationType === 'industry';
+          if (isConfirmed) {
+            currentlyPlacedMap.set(key, record);
+          } else if (isCompleted) {
+            previouslyPlacedMap.set(key, record);
+          } else if (!isDeclined) {
+            currentlyPlacedMap.set(key, record);
+          }
+        }
+      }
+
       indDoc.students = studentDetails.length;
       indDoc.studentDetails = studentDetails;
       indDoc.placedCount = placedCount;
       indDoc.rejectedCount = rejectedCount;
       indDoc.jobs = jobCount || indDoc.jobs || 0;
+      indDoc.currentlyPlacedStudents  = Array.from(currentlyPlacedMap.values());
+      indDoc.previouslyPlacedStudents = Array.from(previouslyPlacedMap.values());
+      indDoc.currentlyPlacedCount     = indDoc.currentlyPlacedStudents.length;
+      indDoc.previouslyPlacedCount    = indDoc.previouslyPlacedStudents.length;
 
       return indDoc;
     }));
@@ -230,6 +301,7 @@ export const createIndustryController = async (req, res) => {
       status: 'Active',
       students: 0,
       jobs: 0,
+      createdBy: req.user?._id || null,
     });
 
     await industry.save();
@@ -362,6 +434,202 @@ export const getIndustryStatsController = async (req, res) => {
   }
 };
 
+// ── GET /industries/my ──────────────────────────────────────────────────────
+// Returns industries visible to the logged-in coordinator (or all for admin).
+//
+// An industry is visible when ANY of the following is true (ObjectId-based only,
+// never name-based ownership):
+//
+//   (A) Industry.createdBy === req.user._id
+//       Covers direct creation via the Industries section, and auto-sync from
+//       workflow requests where requests[].coordinator name resolved to this user.
+//
+//   (B) The industry has NO owner (createdBy is null) AND its name appears in a
+//       workflow internship / appointment / request whose studentId maps to a
+//       Student whose assignedCoordinator === req.user._id.
+//       If the industry is owned (createdBy) by a DIFFERENT user, it is NOT shown
+//       just because one of this coordinator's students is linked to it.
+//
+// The student placement lists (currentlyPlacedStudents / previouslyPlacedStudents)
+// attached to each result are for DISPLAY ONLY — they are scoped to this
+// coordinator's assigned students and must NOT influence which industries appear.
+export const getMyIndustriesController = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const userId = req.user._id;
+    const isAdmin = req.user.role === 'Administrator';
+
+    // ── Admin shortcut: return all industries with full enrichment ─────────
+    if (isAdmin) {
+      const all = await IndustryModel.find().lean();
+      const enriched = all.map(ind => ({
+        ...ind,
+        currentlyPlacedStudents: [],
+        previouslyPlacedStudents: [],
+        currentlyPlacedCount: 0,
+        previouslyPlacedCount: 0,
+      }));
+      return res.status(200).json({ success: true, data: enriched });
+    }
+
+    // ── Coordinator path ───────────────────────────────────────────────────
+
+    // Step A: industries directly created by / credited to this user (ObjectId match)
+    const createdByIds = new Set(
+      (await IndustryModel.find({ createdBy: userId }, { _id: 1 }).lean())
+        .map(i => i._id.toString())
+    );
+
+    // Step B: find this coordinator's specifically assigned students (ObjectId-based)
+    const myStudents = await StudentModel.find(
+      { assignedCoordinator: userId },
+      { _id: 1, studentId: 1, firstName: 1, lastName: 1 }
+    ).lean();
+
+    // Build a set of the students' business-level studentId strings (used in workflow sub-docs)
+    const myStudentIdStrings = new Set(
+      myStudents
+        .map(s => (s.studentId || '').toString().trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    // Walk workflows to collect industry names associated with this coordinator's students.
+    // Matching is done by studentId string (the business ID stored in workflow sub-docs)
+    // against the set derived from ObjectId-based assignedCoordinator lookup above.
+    const studentLinkedIndustryNames = new Set(); // lowercase industry names
+
+    if (myStudentIdStrings.size > 0) {
+      const allWorkflows = await WorkflowModel.find(
+        {},
+        { 'internships.studentId': 1, 'internships.company': 1,
+          'appointments.studentId': 1, 'appointments.company': 1,
+          'requests.studentId': 1, 'requests.contactedIndustries': 1 }
+      ).lean();
+
+      for (const wf of allWorkflows) {
+        for (const intern of (wf.internships || [])) {
+          if (!myStudentIdStrings.has((intern.studentId || '').trim().toLowerCase())) continue;
+          const nm = (intern.company || '').trim().toLowerCase();
+          if (nm) studentLinkedIndustryNames.add(nm);
+        }
+        for (const appt of (wf.appointments || [])) {
+          if (!myStudentIdStrings.has((appt.studentId || '').trim().toLowerCase())) continue;
+          const nm = (appt.company || '').trim().toLowerCase();
+          if (nm && nm !== 'unknown company' && nm !== 'pending assignment')
+            studentLinkedIndustryNames.add(nm);
+        }
+        for (const req of (wf.requests || [])) {
+          if (!myStudentIdStrings.has((req.studentId || '').trim().toLowerCase())) continue;
+          for (const c of (req.contactedIndustries || [])) {
+            const nm = (c.organizationName || '').trim().toLowerCase();
+            if (nm) studentLinkedIndustryNames.add(nm);
+          }
+        }
+      }
+    }
+
+    // Fetch ALL industries once, then filter to those matching condition A or B
+    const allIndustries = await IndustryModel.find().lean();
+    const myIndustries = allIndustries.filter(ind => {
+      // Condition A: ObjectId match on createdBy (created by / credited to this coordinator)
+      if (createdByIds.has(ind._id.toString())) return true;
+      // Condition B: one of this coordinator's specifically assigned students is linked
+      // to this industry via workflow sub-docs.
+      // No restriction on createdBy — a student-linked industry is always visible
+      // regardless of who created it.
+      if (studentLinkedIndustryNames.has((ind.name || '').trim().toLowerCase())) return true;
+      return false;
+    });
+
+    if (!myIndustries.length) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    // ── Build placement lists (display only, scoped to coordinator's students) ─
+    // These lists show which of this coordinator's students are placed — they do
+    // NOT affect which industries appear in the list above.
+    const myIndustryNormNames = new Set(myIndustries.map(i => (i.name || '').trim().toLowerCase()));
+
+    // placementMap: normName → { currentlyPlaced: Map<key, record>, previouslyPlaced: Map }
+    const placementMap = new Map();
+    for (const nm of myIndustryNormNames) {
+      placementMap.set(nm, { currentlyPlaced: new Map(), previouslyPlaced: new Map() });
+    }
+
+    const allWorkflowsFull = await WorkflowModel.find().lean();
+
+    for (const wf of allWorkflowsFull) {
+      // Internships — highest placement signal
+      for (const intern of (wf.internships || [])) {
+        if (!myStudentIdStrings.has((intern.studentId || '').trim().toLowerCase())) continue;
+        const nm = (intern.company || '').trim().toLowerCase();
+        if (!placementMap.has(nm)) continue;
+        const entry = placementMap.get(nm);
+        const key = (intern.studentId || '').trim().toLowerCase();
+        const record = {
+          studentName: intern.student || 'Student',
+          studentId: intern.studentId || '',
+          start: intern.start || '',
+          end: intern.end || '',
+        };
+        if ((intern.status || 'Active') === 'Active') {
+          entry.currentlyPlaced.set(key, record);
+          entry.previouslyPlaced.delete(key);
+        } else if (!entry.currentlyPlaced.has(key)) {
+          entry.previouslyPlaced.set(key, record);
+        }
+      }
+      // Appointments — fallback when no internship record yet
+      for (const appt of (wf.appointments || [])) {
+        if (!myStudentIdStrings.has((appt.studentId || '').trim().toLowerCase())) continue;
+        const nm = (appt.company || '').trim().toLowerCase();
+        if (!placementMap.has(nm)) continue;
+        const entry = placementMap.get(nm);
+        const key = (appt.studentId || '').trim().toLowerCase();
+        if (entry.currentlyPlaced.has(key) || entry.previouslyPlaced.has(key)) continue;
+        const record = {
+          studentName: appt.student || 'Student',
+          studentId: appt.studentId || '',
+          date: appt.date || '',
+        };
+        const isConfirmed = appt.status === 'Confirmed';
+        const isCompleted = appt.status === 'Completed';
+        const isDeclined  = appt.status === 'Declined' || appt.cancellationType === 'industry';
+        if (isConfirmed) {
+          entry.currentlyPlaced.set(key, record);
+        } else if (isCompleted) {
+          entry.previouslyPlaced.set(key, record);
+        } else if (!isDeclined) {
+          entry.currentlyPlaced.set(key, record);
+        }
+      }
+    }
+
+    // ── Build final enriched response ──────────────────────────────────────
+    const enriched = myIndustries.map(ind => {
+      const nm = (ind.name || '').trim().toLowerCase();
+      const entry = placementMap.get(nm) || { currentlyPlaced: new Map(), previouslyPlaced: new Map() };
+      const currentlyPlacedStudents  = Array.from(entry.currentlyPlaced.values());
+      const previouslyPlacedStudents = Array.from(entry.previouslyPlaced.values());
+      return {
+        ...ind,
+        currentlyPlacedStudents,
+        previouslyPlacedStudents,
+        currentlyPlacedCount:  currentlyPlacedStudents.length,
+        previouslyPlacedCount: previouslyPlacedStudents.length,
+      };
+    });
+
+    return res.status(200).json({ success: true, data: enriched });
+  } catch (error) {
+    console.error('getMyIndustriesController error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const deleteIndustryController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -449,4 +717,3 @@ export const deleteIndustryController = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-

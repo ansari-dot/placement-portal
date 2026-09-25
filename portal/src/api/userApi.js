@@ -24,3 +24,8 @@ export const deleteUser = async (id) => {
   const response = await api.delete(`/users/${id}`);
   return response.data;
 };
+
+export const fetchScoreStats = async () => {
+  const response = await api.get('/users/score-stats');
+  return response.data;
+};

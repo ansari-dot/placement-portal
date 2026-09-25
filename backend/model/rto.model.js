@@ -73,6 +73,9 @@ const rtoSchema = new mongoose.Schema({
   isOnline: { type: Boolean, default: false },
   lastActive: { type: Date, default: Date.now },
   lastSeen: { type: Date, default: Date.now },
+
+  // Ownership — which user onboarded/created this RTO
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
 
 const RtoModel = mongoose.model('Rto', rtoSchema);

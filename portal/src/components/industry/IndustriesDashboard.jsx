@@ -3,8 +3,51 @@ import {
   Building2, CheckCircle2, PauseCircle, Briefcase, GraduationCap, 
   Search, SlidersHorizontal, Plus, ChevronDown, Download, 
   MoreHorizontal, Eye, Edit2, ChevronLeft, ChevronRight, 
-  MapPin, ArrowUpRight, Trash2, X
+  MapPin, ArrowUpRight, Trash2, X, Phone, Mail, User, Clock,
+  ChevronUp
 } from 'lucide-react';
+
+// ─── Expandable placed-student cell (display-only) ───────────────────────────
+function PlacedStudentsCell({ students, variant }) {
+  const [expanded, setExpanded] = useState(false);
+  const colors = {
+    current:  { pill: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'text-emerald-500' },
+    previous: { pill: 'bg-sky-50 text-sky-700 border-sky-200',             icon: 'text-sky-500'     },
+  };
+  const c = colors[variant];
+  const visible = expanded ? students : students.slice(0, 2);
+
+  if (!students.length) {
+    return <span className="text-[11px] text-slate-400 italic">—</span>;
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1">
+        {visible.map((s, i) => (
+          <span
+            key={s.studentId || s.studentName || i}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${c.pill}`}
+            title={s.studentId ? `${s.studentName} (${s.studentId})` : s.studentName}
+          >
+            <User className={`w-2.5 h-2.5 flex-shrink-0 ${c.icon}`} />
+            {s.studentName}
+          </span>
+        ))}
+      </div>
+      {students.length > 2 && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="flex items-center gap-0.5 text-[10px] font-semibold text-indigo-600 hover:underline self-start"
+        >
+          {expanded
+            ? <><ChevronUp className="w-3 h-3" /> Less</>
+            : <><ChevronDown className="w-3 h-3" /> +{students.length - 2} more</>}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function IndustriesDashboard({ 
   onAddNewIndustry, 
@@ -298,130 +341,144 @@ export default function IndustriesDashboard({
             {/* Main Data Table */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left border-collapse">
+              <table className="w-full min-w-[1200px] text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
                     <th className="py-3.5 px-4 flex items-center gap-1 cursor-pointer hover:text-slate-700">
                       Industry / Company <ChevronDown className="w-3.5 h-3.5" />
                     </th>
                     <th className="py-3.5 px-4">Sector</th>
                     <th className="py-3.5 px-4">Location</th>
+                    <th className="py-3.5 px-4">
+                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> Contact No.</span>
+                    </th>
+                    <th className="py-3.5 px-4">
+                      <span className="flex items-center gap-1"><User className="w-3 h-3" /> Contact Person</span>
+                    </th>
+                    <th className="py-3.5 px-4">
+                      <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> Email</span>
+                    </th>
                     <th className="py-3.5 px-4">Status</th>
-                    <th className="py-3.5 px-4">Students</th>
-                    <th className="py-3.5 px-4">Jobs</th>
+                    <th className="py-3.5 px-4">
+                      <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Currently Placed</span>
+                    </th>
+                    <th className="py-3.5 px-4">
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-sky-500" /> Previously Placed</span>
+                    </th>
                     <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {industries.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
-                            {item.name.substring(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-slate-900">{item.name}</div>
-                            <div className="text-xs text-slate-500">ABN: {item.abn || 'N/A'}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-block bg-sky-50 text-sky-700 text-xs font-medium px-2.5 py-1 rounded-full border border-sky-100">
-                          {item.sector}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        <div className="flex items-center gap-1 text-xs">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400" /> {item.location}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                          item.status === 'Active'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border-rose-200'
-                        }`}>
-                          {item.status || 'Active'} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex flex-col gap-0.5">
-                          <button
-                            onClick={() => setViewingIndustry(item)}
-                            className="font-bold text-slate-800 text-xs hover:text-indigo-600 hover:underline flex items-center gap-1 text-left cursor-pointer"
-                          >
-                            <span>{item.students || 0} Student(s)</span>
-                          </button>
-                          {item.studentDetails && item.studentDetails.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-0.5">
-                              {item.studentDetails.slice(0, 2).map((st, sIdx) => {
-                                const isRej = st.status.includes('Rejected');
-                                const isPl = st.status === 'Placed' || st.status === 'Accepted';
-                                return (
-                                  <span
-                                    key={sIdx}
-                                    className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
-                                      isPl
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        : isRej
-                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                        : 'bg-blue-50 text-blue-700 border-blue-200'
-                                    }`}
-                                    title={`${st.studentName} - ${st.status}${st.rejectionReason ? ` (${st.rejectionReason})` : ''}`}
-                                  >
-                                    {st.studentName} ({st.status})
-                                  </span>
-                                );
-                              })}
-                              {item.studentDetails.length > 2 && (
-                                <button
-                                  onClick={() => setViewingIndustry(item)}
-                                  className="text-[9px] font-bold text-indigo-600 hover:underline cursor-pointer"
-                                >
-                                  +{item.studentDetails.length - 2} more
-                                </button>
-                              )}
+                  {industries.map((item, idx) => {
+                    // Use backend-provided arrays (same logic as getMyIndustriesController).
+                    // These are DISPLAY ONLY and do not affect which industries appear.
+                    const currentlyPlaced  = item.currentlyPlacedStudents  || [];
+                    const previouslyPlaced = item.previouslyPlacedStudents || [];
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        {/* Industry / Company */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
+                              {item.name.substring(0, 2).toUpperCase()}
                             </div>
-                          )}
-                          {item.rejectedCount > 0 && (
-                            <span className="text-[9px] font-bold text-rose-600">
-                              {item.rejectedCount} Student Rejected
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-slate-800">{item.jobs || 0}</td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setViewingIndustry(item)}
-                            title="View Details"
-                            className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleOpenEdit(item)}
-                            title="Edit Industry"
-                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeletingIndustry(item)}
-                            title="Delete Industry"
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            <div>
+                              <div className="font-semibold text-slate-900">{item.name}</div>
+                              <div className="text-xs text-slate-500">ABN: {item.abn || 'N/A'}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Sector */}
+                        <td className="py-3 px-4">
+                          <span className="inline-block bg-sky-50 text-sky-700 text-xs font-medium px-2.5 py-1 rounded-full border border-sky-100">
+                            {item.sector}
+                          </span>
+                        </td>
+
+                        {/* Location */}
+                        <td className="py-3 px-4 text-slate-600">
+                          <div className="flex items-center gap-1 text-xs">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" /> {item.location || '—'}
+                          </div>
+                        </td>
+
+                        {/* Contact Number */}
+                        <td className="py-3 px-4 text-xs text-slate-700 whitespace-nowrap">
+                          {item.contactPhone || '—'}
+                        </td>
+
+                        {/* Contact Person */}
+                        <td className="py-3 px-4">
+                          <div className="text-xs">
+                            <div className="font-medium text-slate-800">{item.contactPersonName || '—'}</div>
+                            {item.contactJobTitle && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">{item.contactJobTitle}</div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Email */}
+                        <td className="py-3 px-4 max-w-[160px]">
+                          <span className="text-xs text-slate-700 truncate block" title={item.contactEmail}>
+                            {item.contactEmail || '—'}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-4">
+                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                            item.status === 'Active'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            {item.status || 'Active'} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
+                          </span>
+                        </td>
+
+                        {/* Currently Placed Students */}
+                        <td className="py-3 px-4 max-w-[180px]">
+                          <PlacedStudentsCell students={currentlyPlaced} variant="current" />
+                        </td>
+
+                        {/* Previously Placed Students */}
+                        <td className="py-3 px-4 max-w-[180px]">
+                          <PlacedStudentsCell students={previouslyPlaced} variant="previous" />
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setViewingIndustry(item)}
+                              title="View Details"
+                              className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenEdit(item)}
+                              title="Edit Industry"
+                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingIndustry(item)}
+                              title="Delete Industry"
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {industries.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 text-sm font-medium">
+                      <td colSpan={10} className="p-8 text-center text-slate-400 text-sm font-medium">
                         No industries found.
                       </td>
                     </tr>
@@ -1044,4 +1101,4 @@ export default function IndustriesDashboard({
 
     </div>
   );
-}
+}

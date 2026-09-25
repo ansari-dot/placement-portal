@@ -29,3 +29,8 @@ export const deleteRto = async (id) => {
   const response = await api.delete(`/rtos/${id}`);
   return response.data;
 };
+
+export const fetchMyRtos = async () => {
+  const response = await api.get('/rtos/my');
+  return response.data;
+};
