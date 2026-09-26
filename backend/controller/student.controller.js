@@ -190,15 +190,56 @@ export const getAllStudentsUnfilteredController = async (req, res) => {
     }
 };
 
+// ─── Assign / Change / Remove Coordinator ─────────────────────────────────
+// FIXED: previously this only overwrote assignedCoordinator/assignedCoordinatorName
+// and never recorded WHO the student was assigned to before, or WHEN each
+// change happened. The Student Profile page needs "All coordinators to whom
+// the student was assigned, with dates" — so every call now:
+//   1. Reads the student's CURRENT coordinator (before overwriting it)
+//   2. Determines the action type: 'Assigned' (had none before), 'Changed'
+//      (had a different one before), or 'Removed' (new value is null)
+//   3. Pushes a full history entry ($push, so it never wipes prior entries)
+//   4. Then updates the live assignedCoordinator / assignedCoordinatorName
+// `req.user` (the logged-in admin performing the action) is captured as
+// `assignedBy` / `assignedByUserId` so the history also shows who made the change.
 export const assignCoordinatorController = async (req, res) => {
     try {
         const { id } = req.params;
         const { coordinatorId, coordinatorName } = req.body;
 
+        const currentStudent = await getStudentById(id);
+        if (!currentStudent) {
+            return res.status(404).json({
+                message: "Student not found",
+                success: false,
+            });
+        }
+
+        const previousCoordinatorId   = currentStudent.assignedCoordinator || null;
+        const previousCoordinatorName = currentStudent.assignedCoordinatorName || '';
+
+        let action = 'Assigned';
+        if (!coordinatorId) {
+            action = 'Removed';
+        } else if (previousCoordinatorId) {
+            action = 'Changed';
+        }
+
+        const historyEntry = {
+            coordinatorId: coordinatorId || null,
+            coordinatorName: coordinatorName || '',
+            action,
+            previousCoordinatorName,
+            assignedBy: req.user?.name || req.user?.email || '',
+            assignedByUserId: req.user?._id || req.user?.id || null,
+            date: new Date(),
+        };
+
         const student = await updateStudent(id, {
             assignedCoordinator: coordinatorId || null,
             assignedCoordinatorName: coordinatorName || '',
             assignedCoordinatorAt: coordinatorId ? new Date() : null,
+            $push: { coordinatorHistory: historyEntry },
         });
 
         if (!student) {
@@ -210,7 +251,9 @@ export const assignCoordinatorController = async (req, res) => {
 
         res.status(200).json({
             message: coordinatorId
-                ? `Student assigned to ${coordinatorName || 'coordinator'} successfully`
+                ? (action === 'Changed'
+                    ? `Coordinator changed from ${previousCoordinatorName || 'Unassigned'} to ${coordinatorName || 'coordinator'} successfully`
+                    : `Student assigned to ${coordinatorName || 'coordinator'} successfully`)
                 : "Coordinator unassigned successfully",
             success: true,
             data: student,

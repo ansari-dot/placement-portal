@@ -4,10 +4,10 @@ import { useSelector } from 'react-redux';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
-  Calendar, Globe, MapPin, GraduationCap, Building2, Layers, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, PauseCircle
+  Calendar, Globe, MapPin, GraduationCap, Building2, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, PauseCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { deleteStudent } from '../../api/studentsApi';
+import { deleteStudent, snoozeStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 
 const STEP1_DRAWER_DOCS = [
@@ -23,6 +23,13 @@ const STEP1_DRAWER_DOCS = [
   { field: 'cbrDoc',             label: 'CPR' },
 ];
 
+// Statuses for which a student's placement request should be REGENERATED
+// (a fresh request) rather than merely "changed" — the previous attempt
+// ended negatively and the student needs a brand-new placement request.
+const REGENERATE_STATUSES = ['Student Withdraw', 'Student Missed Appointment', 'Industry Rejected'];
+
+const norm = (val) => (val === undefined || val === null ? '' : String(val).trim().toLowerCase());
+
 export default function WorkflowStep1Students({ 
   students = [], 
   initialSelectedStudentIds = [], 
@@ -34,6 +41,7 @@ export default function WorkflowStep1Students({
   appointments = [],
   onUpdateRequest, // Used when changing priority of an existing placement request
   onCoordinatorAssigned, // Called after coordinator is assigned/changed — updates parent state
+  coordinators = [], // Full list of active coordinators — used for the "User" filter
 }) {
   const navigate = useNavigate();
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -57,6 +65,17 @@ export default function WorkflowStep1Students({
   const [toast, setToast] = useState(null);
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // ─── Tabs & Advanced Filters ──────────────────────────────────────────
+  const [activeMainTab, setActiveMainTab] = useState('all'); // 'all' | 'inactive' | 'snooze'
+  const [filters, setFilters] = useState({
+    rto: '',
+    dateFrom: '',
+    dateTo: '',
+    priorities: [], // subset of ['Urgent','Normal','Inactive','Snooze']
+    coordinatorId: '',
+    industry: '',
+  });
 
   // ─── NEW: Appointment Form State (In Drawer) ──────────────────────────
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
@@ -112,35 +131,9 @@ export default function WorkflowStep1Students({
     return diffDays <= 30;
   }).length;
 
-  // Filter students based on search query
-  const filteredStudents = studentList.filter(stu => 
-    stu.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    stu.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (stu.studentId && stu.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    stu.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    stu.rto.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
-  const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(null), 2500);
-  };
-
-  const handleExport = (format) => {
-    setShowExportMenu(false);
-    const data = filteredStudents.map(s => `${s.name},${s.email},${s.id},${s.rto},${s.status},${s.placementStatus},${s.addedOn}`).join('\n');
-    const blob = new Blob([data], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `students_export.${format === 'csv' ? 'csv' : 'xlsx'}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast(`Exported as ${format.toUpperCase()}`);
   };
 
   const handleAddStudent = () => {
@@ -197,13 +190,40 @@ export default function WorkflowStep1Students({
         email: stu.email,
         id: stu.id,
         studentId: stu.studentId || stu.enrollmentId || stu.id,
-        institute: stu.rto,
+        institute: stu.assignedRto || stu.rto || stu.institute || '',
         status: stu.status,
         addedOn: stu.addedOn,
-        contactedIndustries: stu.contactedIndustries || []
+        contactedIndustries: stu.contactedIndustries || [],
+        coordinatorHistory: stu.coordinatorHistory || [],
+        assignedCoordinatorAt: stu.assignedCoordinatorAt || null,
+        // Personal detail fields for Overview tab
+        dateOfBirth: stu.dateOfBirth || null,
+        gender: stu.gender || '',
+        nationality: stu.nationality || '',
+        language: stu.language || '',
+        suburb: stu.suburb || stu.location || '',
+        state: stu.state || '',
+        phoneNumber: stu.phoneNumber || stu.phone || '',
+        // Education fields
+        courseQualification: stu.courseQualification || stu.course || '',
+        courseLevel: stu.courseLevel || '',
+        currentYearSemester: stu.currentYearSemester || stu.semester || '',
+        campus: stu.campus || '',
+        // Placement preferences
+        preferredIndustry: stu.preferredIndustry || '',
+        preferredLocation: stu.preferredLocation || '',
+        placementRadius: stu.placementRadius || stu.radius || '',
+        availabilityDays: stu.availabilityDays || {},
+        availabilityFrom: stu.availabilityFrom || '',
+        availabilityTo: stu.availabilityTo || '',
+        willingToRelocate: stu.willingToRelocate || '',
+        placementNotes: stu.placementNotes || '',
+        gpa: stu.gpa || '',
+        placementHours: stu.placementHours ?? null,
       });
       setShowDrawer(true);
       setShowAppointmentForm(false);
+      setActiveTab('Overview');
     } else if (action === 'edit') {
       // Navigate to the student edit page using the MongoDB _id (stu.id is the dbId from mapStudentsForStep1)
       navigate(`/students/${stu.id}/edit`);
@@ -356,7 +376,7 @@ export default function WorkflowStep1Students({
   const authUser = useSelector((state) => state.auth?.user);
 
   const [showGenRequestModal, setShowGenRequestModal] = useState(false);
-  const [isChangingPlacement, setIsChangingPlacement] = useState(false); // true = Change Placement Requirement mode
+  const [isChangingPlacement, setIsChangingPlacement] = useState(false); // true = Change Placement Request mode
   const [genPriority, setGenPriority] = useState('Normal'); // 'Normal' | 'Urgent' | 'Inactive' | 'Snooze'
   const [genTargetStudent, setGenTargetStudent] = useState(null);
   const [snoozeDuration, setSnoozeDuration] = useState('7_days');
@@ -367,15 +387,182 @@ export default function WorkflowStep1Students({
   // ✅ Local request map — shows badge immediately after generate (backend-only, no localStorage seed)
   const [localRequestMap, setLocalRequestMap] = useState({});
 
-  // Persisted snoozed students dictionary
+  // ─── Snoozed students dictionary — derived from the DB students list ─────
+  // We build this from the `students` prop (which carries the DB snoozed flag)
+  // so the state survives page refreshes, logouts, and browser switches.
+  // Shape: { [dbId]: { id, studentId, name, email, rto, snoozedAt, snoozeUntil,
+  //                    duration, durationLabel, reason, rawStudent } }
   const [snoozedStudentIds, setSnoozedStudentIds] = useState(() => {
-    try {
-      const saved = localStorage.getItem('portal_snoozed_students');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
+    const fromDb = {};
+    (students || []).forEach((s) => {
+      if (s.snoozed) {
+        const duration = s.snoozeUntil ? 'custom' : 'indefinite';
+        fromDb[s.id] = {
+          id: s.id,
+          studentId: s.studentId || s.id,
+          name: s.name,
+          email: s.email,
+          rto: s.rto || '',
+          snoozedAt: s.snoozedAt || new Date().toISOString(),
+          snoozeUntil: s.snoozeUntil || null,
+          duration,
+          durationLabel: s.snoozeReason ? '' : 'Indefinite',
+          reason: s.snoozeReason || 'Deferred from placement workflow',
+          rawStudent: s,
+        };
+      }
+    });
+    return fromDb;
   });
+
+  // Re-sync snoozed dictionary whenever the parent refreshes the students list
+  // (covers the case where the backend returns updated snoozed flags after a save)
+  React.useEffect(() => {
+    const fromDb = {};
+    (students || []).forEach((s) => {
+      if (s.snoozed) {
+        const duration = s.snoozeUntil ? 'custom' : 'indefinite';
+        fromDb[s.id] = {
+          id: s.id,
+          studentId: s.studentId || s.id,
+          name: s.name,
+          email: s.email,
+          rto: s.rto || '',
+          snoozedAt: s.snoozedAt || new Date().toISOString(),
+          snoozeUntil: s.snoozeUntil || null,
+          duration,
+          durationLabel: s.snoozeReason ? '' : 'Indefinite',
+          reason: s.snoozeReason || 'Deferred from placement workflow',
+          rawStudent: s,
+        };
+      }
+    });
+    setSnoozedStudentIds(fromDb);
+  }, [students]);
+
+  // ─── Priority + action-label helper (shared by tabs, filters, row menu, drawer) ──
+  const getStudentPriority = (stu) => {
+    const keys = [stu?.id, stu?.studentId].filter(Boolean);
+    for (const k of keys) {
+      const v = localRequestMap[k] || internshipRequestMap[k];
+      if (v === 'Normal' || v === 'Urgent' || v === 'Inactive') return v;
+    }
+    return null;
+  };
+
+  // Decides what the Generate/Change/Regenerate action should say & do for a student.
+  const getRequestActionInfo = (stu) => {
+    const reqVal = getStudentPriority(stu);
+    const isRegenerable = REGENERATE_STATUSES.includes(stu?.placementStatus);
+    const isChange = Boolean(reqVal) && !isRegenerable;
+    const label = isChange
+      ? 'Change Placement Request'
+      : (isRegenerable ? 'Regenerate Placement Request' : 'Generate Request');
+    return { reqVal, isRegenerable, isChange, label };
+  };
+
+  // ─── Tab counts & tab-scoped list ────────────────────────────────────────
+  const inactiveStudentsCount = React.useMemo(() => (
+    studentList.filter((s) => getStudentPriority(s) === 'Inactive').length
+  ), [studentList, localRequestMap, internshipRequestMap]);
+
+  const snoozedCount = Object.keys(snoozedStudentIds).length;
+
+  const tabScopedStudents = React.useMemo(() => {
+    if (activeMainTab === 'snooze') {
+      return studentList.filter((s) => Boolean(snoozedStudentIds[s.id]));
+    }
+    if (activeMainTab === 'inactive') {
+      return studentList.filter((s) => getStudentPriority(s) === 'Inactive');
+    }
+    return studentList.filter((s) => !snoozedStudentIds[s.id] && getStudentPriority(s) !== 'Inactive');
+  }, [studentList, activeMainTab, snoozedStudentIds, localRequestMap, internshipRequestMap]);
+
+  const uniqueRtos = React.useMemo(() => (
+    Array.from(new Set(studentList.map((s) => s.rto).filter(Boolean))).sort()
+  ), [studentList]);
+
+  // ─── Final filtered + searched list (search + advanced filters) ─────────
+  const filteredStudents = tabScopedStudents.filter((stu) => {
+    const matchesSearch =
+      stu.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stu.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (stu.studentId && stu.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      stu.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stu.rto.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (filters.rto && stu.rto !== filters.rto) return false;
+
+    if (filters.dateFrom || filters.dateTo) {
+      const raw = stu.createdAt || stu.addedOn;
+      const added = raw ? new Date(raw) : null;
+      if (added && !isNaN(added.getTime())) {
+        if (filters.dateFrom && added < new Date(filters.dateFrom)) return false;
+        if (filters.dateTo && added > new Date(`${filters.dateTo}T23:59:59`)) return false;
+      }
+    }
+
+    if (filters.coordinatorId) {
+      if (filters.coordinatorId === 'unassigned') {
+        if (stu.assignedCoordinator) return false;
+      } else if (String(stu.assignedCoordinator || '') !== String(filters.coordinatorId)) {
+        return false;
+      }
+    }
+
+    if (filters.priorities.length > 0) {
+      const isSnoozed = Boolean(snoozedStudentIds[stu.id]);
+      const priority = getStudentPriority(stu);
+      const matchesPriority = filters.priorities.some((p) => (p === 'Snooze' ? isSnoozed : priority === p));
+      if (!matchesPriority) return false;
+    }
+
+    if (filters.industry) {
+      const term = filters.industry.toLowerCase();
+      const matches = (stu.contactedIndustries || []).some((ci) =>
+        (ci.organizationName || '').toLowerCase().includes(term)
+      );
+      if (!matches) return false;
+    }
+
+    return true;
+  });
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
+  const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  // Reset to page 1 whenever the tab or the advanced filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [activeMainTab, filters]);
+
+  const handleExport = (format) => {
+    setShowExportMenu(false);
+    const data = filteredStudents.map(s => `${s.name},${s.email},${s.id},${s.rto},${s.status},${s.placementStatus},${s.addedOn}`).join('\n');
+    const blob = new Blob([data], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `students_export.${format === 'csv' ? 'csv' : 'xlsx'}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported as ${format.toUpperCase()}`);
+  };
+
+  // ─── Appointments/placement timeline for the student open in the drawer ──
+  const studentAppointments = React.useMemo(() => {
+    if (!selectedStudent) return [];
+    const sid = norm(selectedStudent.id);
+    const sBiz = norm(selectedStudent.studentId);
+    return (appointments || [])
+      .filter((a) => {
+        const aId = norm(a.studentId);
+        return (aId && sid && aId === sid) || (aId && sBiz && aId === sBiz);
+      })
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt || b.date || 0) - new Date(a.updatedAt || a.createdAt || a.date || 0));
+  }, [appointments, selectedStudent]);
 
   // Check if student is online (fully dynamic)
   const isStudentOnline = (id, email, name, studentObj) => {
@@ -441,25 +628,50 @@ export default function WorkflowStep1Students({
         '30_days': '30 Days',
         'indefinite': 'Indefinite'
       };
+
+      // Calculate snoozeUntil date from duration
+      let snoozeUntilDate = null;
+      if (snoozeDuration !== 'indefinite') {
+        const days = snoozeDuration === '7_days' ? 7 : snoozeDuration === '14_days' ? 14 : 30;
+        snoozeUntilDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+      }
+
+      const snoozedAtIso = new Date().toISOString();
+      const reasonText = snoozeReason || 'Deferred from placement workflow';
+
+      // Optimistic UI update — show immediately before API responds
       const newEntry = {
         id: stuId,
         studentId: genTargetStudent.studentId || genTargetStudent.enrollmentId || stuId,
         name: genTargetStudent.name,
         email: genTargetStudent.email,
         rto: genTargetStudent.rto || 'RTO',
-        snoozedAt: new Date().toISOString(),
+        snoozedAt: snoozedAtIso,
+        snoozeUntil: snoozeUntilDate,
         duration: snoozeDuration,
         durationLabel: durationLabels[snoozeDuration] || '7 Days',
-        reason: snoozeReason || 'Deferred from placement workflow',
+        reason: reasonText,
         rawStudent: genTargetStudent,
       };
-      const updated = { ...snoozedStudentIds, [stuId]: newEntry };
-      setSnoozedStudentIds(updated);
-      try {
-        localStorage.setItem('portal_snoozed_students', JSON.stringify(updated));
-      } catch (e) {
-        console.error(e);
-      }
+      setSnoozedStudentIds((prev) => ({ ...prev, [stuId]: newEntry }));
+
+      // Persist to database — uses PUT /students/:id via snoozeStudent()
+      snoozeStudent(stuId, {
+        snoozed: true,
+        snoozedAt: snoozedAtIso,
+        snoozeUntil: snoozeUntilDate,
+        snoozeReason: reasonText,
+      }).catch((err) => {
+        console.error('Failed to save snooze to DB:', err);
+        // Rollback optimistic update on failure
+        setSnoozedStudentIds((prev) => {
+          const rolled = { ...prev };
+          delete rolled[stuId];
+          return rolled;
+        });
+        showToast('Failed to snooze student. Please try again.');
+      });
+
       showToast(`Student ${genTargetStudent.name} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setShowGenRequestModal(false);
       setSnoozeReason('');
@@ -471,6 +683,17 @@ export default function WorkflowStep1Students({
     if (stuId) updatedLocal[stuId] = genPriority;
     if (genTargetStudent.studentId) updatedLocal[genTargetStudent.studentId] = genPriority;
     setLocalRequestMap(updatedLocal);
+
+    // If this student was snoozed, clear the snooze in the DB when generating/changing a real request
+    if (snoozedStudentIds[stuId]) {
+      setSnoozedStudentIds((prev) => {
+        const updated = { ...prev };
+        delete updated[stuId];
+        return updated;
+      });
+      snoozeStudent(stuId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '' })
+        .catch((err) => console.error('Failed to clear snooze on new request:', err));
+    }
 
     if (isChangingPlacement) {
       // ── Change existing request priority in the backend ──
@@ -486,7 +709,7 @@ export default function WorkflowStep1Students({
       }
       showToast(`Placement priority updated to ${genPriority} for ${genTargetStudent.name}`);
     } else {
-      // ── Generate new request ──
+      // ── Generate new (or regenerated) request ──
       showToast(`Placement Request generated (${genPriority} priority) for ${genTargetStudent.name}`);
       if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
     }
@@ -495,32 +718,45 @@ export default function WorkflowStep1Students({
   };
 
   const handleUnsnoozeStudent = (stuId, stuName) => {
-    const updated = { ...snoozedStudentIds };
-    delete updated[stuId];
-    setSnoozedStudentIds(updated);
-    try {
-      localStorage.setItem('portal_snoozed_students', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
-    }
+    // Optimistic UI update
+    setSnoozedStudentIds((prev) => {
+      const updated = { ...prev };
+      delete updated[stuId];
+      return updated;
+    });
+
+    // Persist to database — clear all snooze fields
+    snoozeStudent(stuId, {
+      snoozed: false,
+      snoozedAt: null,
+      snoozeUntil: null,
+      snoozeReason: '',
+    }).catch((err) => {
+      console.error('Failed to un-snooze student in DB:', err);
+      showToast('Failed to un-snooze student. Please try again.');
+    });
+
     showToast(`Student ${stuName || ''} un-snoozed & restored to active workflow`);
   };
 
   const handleCreateRequest = () => {
     if (!selectedStudent) return;
-    // Match by ID only — name matching causes false positives
-    const keys = [selectedStudent.id, selectedStudent.studentId].filter(Boolean);
-    const hasReq = keys.some((k) => {
-      const v = localRequestMap[k] || internshipRequestMap[k];
-      return v === 'Normal' || v === 'Urgent' || v === 'Inactive';
-    });
-    handleOpenGenRequest(selectedStudent, hasReq);
+    const info = getRequestActionInfo(selectedStudent);
+    handleOpenGenRequest(selectedStudent, info.isChange);
   };
 
-  const hasActiveFilters = searchQuery !== '';
+  const hasActiveFilters =
+    searchQuery !== '' ||
+    Boolean(filters.rto) ||
+    Boolean(filters.dateFrom) ||
+    Boolean(filters.dateTo) ||
+    filters.priorities.length > 0 ||
+    Boolean(filters.coordinatorId) ||
+    Boolean(filters.industry);
 
   const handleClearFilters = () => {
     setSearchQuery('');
+    setFilters({ rto: '', dateFrom: '', dateTo: '', priorities: [], coordinatorId: '', industry: '' });
     showToast('Filters cleared');
   };
 
@@ -545,6 +781,27 @@ export default function WorkflowStep1Students({
 
       {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
+
+        {/* ─── Student Tabs: All / Inactive / Snooze ───────────────────────── */}
+        <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
+          {[
+            { key: 'all',      label: 'All',               count: studentList.filter(s => !snoozedStudentIds[s.id] && getStudentPriority(s) !== 'Inactive').length },
+            { key: 'inactive', label: 'Inactive Students',  count: inactiveStudentsCount },
+            { key: 'snooze',   label: 'Snooze',             count: snoozedCount },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveMainTab(tab.key)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+                activeMainTab === tab.key
+                  ? 'bg-[#0147A6] text-white shadow-xs'
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {tab.label} <span className="opacity-80">({tab.count})</span>
+            </button>
+          ))}
+        </div>
         
         {/* Metric Cards - Fully Dynamic */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
@@ -626,22 +883,103 @@ export default function WorkflowStep1Students({
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
             {showFilters && (
-              <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Placement Request</p>
-                <div className="space-y-1.5">
-                  {['Urgent', 'Normal', 'Inactive Students', 'Snooze'].map((label) => (
-                    <label key={label} className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
-                      <input type="checkbox" defaultChecked className="rounded accent-blue-600" />
-                      <span>{label}</span>
-                    </label>
-                  ))}
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-3 max-h-96 overflow-y-auto">
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Placement Request</p>
+                  <div className="space-y-1.5">
+                    {['Urgent', 'Normal', 'Inactive', 'Snooze'].map((label) => (
+                      <label key={label} className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="rounded accent-blue-600"
+                          checked={filters.priorities.includes(label)}
+                          onChange={(e) => {
+                            setFilters((prev) => ({
+                              ...prev,
+                              priorities: e.target.checked
+                                ? [...prev.priorities, label]
+                                : prev.priorities.filter((p) => p !== label),
+                            }));
+                          }}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-                <button 
-                  onClick={() => { setShowFilters(false); showToast('Filters applied'); }}
-                  className="w-full py-1.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-[11px] font-semibold rounded-lg transition-all duration-500 cursor-pointer"
-                >
-                  Apply
-                </button>
+
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">RTO</p>
+                  <select
+                    value={filters.rto}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, rto: e.target.value }))}
+                    className="w-full px-2.5 py-1.5 text-[11px] border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="">All RTOs</option>
+                    {uniqueRtos.map((rto) => (
+                      <option key={rto} value={rto}>{rto}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">User (Coordinator)</p>
+                  <select
+                    value={filters.coordinatorId}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, coordinatorId: e.target.value }))}
+                    className="w-full px-2.5 py-1.5 text-[11px] border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="">All Coordinators</option>
+                    {coordinators.map((c) => (
+                      <option key={c._id || c.id} value={c._id || c.id}>{c.name}</option>
+                    ))}
+                    <option value="unassigned">Unassigned</option>
+                  </select>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Industry</p>
+                  <input
+                    type="text"
+                    placeholder="Search by industry / company..."
+                    value={filters.industry}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, industry: e.target.value }))}
+                    className="w-full px-2.5 py-1.5 text-[11px] border border-slate-200 rounded-lg"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Added Date Range</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <input
+                      type="date"
+                      value={filters.dateFrom}
+                      onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-[11px] border border-slate-200 rounded-lg"
+                    />
+                    <input
+                      type="date"
+                      value={filters.dateTo}
+                      onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value }))}
+                      className="w-full px-2 py-1.5 text-[11px] border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button 
+                    onClick={() => setFilters({ rto: '', dateFrom: '', dateTo: '', priorities: [], coordinatorId: '', industry: '' })}
+                    className="flex-1 py-1.5 border border-slate-200 text-slate-600 text-[11px] font-semibold rounded-lg hover:bg-slate-50"
+                  >
+                    Reset
+                  </button>
+                  <button 
+                    onClick={() => { setShowFilters(false); showToast('Filters applied'); }}
+                    className="flex-1 py-1.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-[11px] font-semibold rounded-lg transition-all duration-500 cursor-pointer"
+                  >
+                    Apply
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -706,7 +1044,7 @@ export default function WorkflowStep1Students({
             <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
             <span>Snoozed Students</span>
             <span className="px-1.5 py-0.2 bg-amber-200 text-amber-950 rounded-full text-[10px] font-bold">
-              {Object.keys(snoozedStudentIds).length}
+              {snoozedCount}
             </span>
           </button>
         </div>
@@ -754,7 +1092,7 @@ export default function WorkflowStep1Students({
                 {showColumns && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-1.5">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Toggle Columns</p>
-                    {['Student', 'RTO / College', 'Placement Status', 'Assigned At'].map((col, i) => (
+                    {['Student', 'RTO / College', 'Placement Status', 'Assigned To'].map((col, i) => (
                       <label key={i} className="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer">
                         <input type="checkbox" defaultChecked className="rounded accent-blue-600" />
                         <span>{col}</span>
@@ -797,7 +1135,8 @@ export default function WorkflowStep1Students({
                 <th className="p-4">RTO / College</th>
                 <th className="p-4">Placement Status</th>
                 <th className="p-4">Placement Request</th>
-                <th className="p-4">Assigned At</th>
+                <th className="p-4">Assigned To</th>
+                <th className="p-4">Added On</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -814,6 +1153,7 @@ export default function WorkflowStep1Students({
                   }
                   return null;
                 })();
+                const actionInfo = getRequestActionInfo(stu);
                 // Open menu upward for the last 3 rows to avoid viewport clipping
                 const openUpward = rowIdx >= paginatedStudents.length - 3;
                 return (
@@ -870,6 +1210,7 @@ export default function WorkflowStep1Students({
                       {(() => {
                         const statusVal = stu.placementStatus || 'None';
                         const statusConfig = {
+                          'Ready':                       { bg: 'bg-blue-50',      text: 'text-blue-700',     border: 'border-blue-200'    },
                           'Placement Completed':        { bg: 'bg-emerald-100',  text: 'text-emerald-800',  border: 'border-emerald-300' },
                           'Placement Started':          { bg: 'bg-emerald-50',   text: 'text-emerald-700',  border: 'border-emerald-300' },
                           'Appointment Successful':     { bg: 'bg-teal-50',      text: 'text-teal-700',     border: 'border-teal-200'    },
@@ -898,7 +1239,7 @@ export default function WorkflowStep1Students({
                           title={`Snoozed: ${snoozedStudentIds[stu.id].reason || 'Deferred'}`}
                           className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition cursor-pointer"
                         >
-                          <span>Snoozed ({snoozedStudentIds[stu.id].durationLabel || '7 Days'})</span>
+                          <span>Snoozed ({snoozedStudentIds[stu.id].durationLabel || (snoozedStudentIds[stu.id].snoozeUntil ? `Until ${new Date(snoozedStudentIds[stu.id].snoozeUntil).toLocaleDateString()}` : 'Indefinite')})</span>
                         </button>
                       ) : reqValue ? (
                         <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -918,6 +1259,18 @@ export default function WorkflowStep1Students({
                         </span>
                       )}
                     </td>
+                    <td className="p-4">
+                      {stu.assignedCoordinatorName ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <UserCheck className="w-3 h-3" />
+                          {stu.assignedCoordinatorName}
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">
+                          Unassigned
+                        </span>
+                      )}
+                    </td>
                     <td className="p-4 text-slate-500">{stu.addedOn}</td>
                     <td className="p-4 text-right relative" data-row-menu onClick={(e) => e.stopPropagation()}>
                       <button 
@@ -928,15 +1281,20 @@ export default function WorkflowStep1Students({
                       </button>
                       {showRowMenu === stu.id && (
                         <div className={`absolute right-0 w-56 bg-white rounded-xl border border-slate-200 shadow-xl z-50 p-1.5 space-y-0.5 overflow-y-auto max-h-80 ${openUpward ? 'bottom-10' : 'top-10'}`}>
-                          {reqValue ? (
+                          {actionInfo.isChange ? (
                             <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu, true); }} className="w-full text-left px-3 py-2 text-xs text-teal-700 font-semibold hover:bg-teal-50 rounded-lg flex items-center space-x-2">
                               <Plus className="w-3.5 h-3.5 text-teal-600" />
-                              <span>Change Placement Requirement</span>
+                              <span>{actionInfo.label}</span>
                             </button>
                           ) : (
-                            <button onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu); }} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
-                              <Plus className="w-3.5 h-3.5 text-blue-600" />
-                              <span>Generate Request</span>
+                            <button
+                              onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu, false); }}
+                              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-lg flex items-center space-x-2 ${
+                                actionInfo.isRegenerable ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'
+                              }`}
+                            >
+                              <Plus className={`w-3.5 h-3.5 ${actionInfo.isRegenerable ? 'text-amber-600' : 'text-blue-600'}`} />
+                              <span>{actionInfo.label}</span>
                             </button>
                           )}
                           {snoozedStudentIds[stu.id] ? (
@@ -976,7 +1334,7 @@ export default function WorkflowStep1Students({
               })}
               {paginatedStudents.length === 0 && (
                 <tr>
-                  <td colSpan="8" className="p-8 text-center text-slate-400 text-sm">
+                  <td colSpan="9" className="p-8 text-center text-slate-400 text-sm">
                     No students found matching your search
                   </td>
                 </tr>
@@ -1226,7 +1584,7 @@ export default function WorkflowStep1Students({
                         </span>
                         <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] font-bold rounded-full border border-blue-400/20 flex items-center space-x-1">
                           <Award className="w-2.5 h-2.5" />
-                          <span>Ready</span>
+                          <span>{selectedStudent.placementStatus || 'Ready'}</span>
                         </span>
                       </div>
                     </div>
@@ -1250,12 +1608,12 @@ export default function WorkflowStep1Students({
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-5 bg-white">
-                {['Overview', 'Education', 'Documents', 'Industry Contacts'].map((tab) => (
+              <div className="flex border-b border-slate-100 px-5 text-[11px] font-semibold text-slate-500 space-x-4 bg-white overflow-x-auto">
+                {['Overview', 'Education', 'Documents', 'Industry Contacts', 'Placement'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`py-3 relative transition ${
+                    className={`py-3 relative transition whitespace-nowrap ${
                       activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
                     }`}
                   >
@@ -1369,6 +1727,13 @@ export default function WorkflowStep1Students({
                           </div>
                           {rec.email && <p className="text-[10px] text-slate-600 font-mono truncate">{rec.email}</p>}
                           {rec.address && <p className="text-[10px] text-slate-500">{rec.address}</p>}
+                          {/* Coordinator attribution — shows automatically once the backend
+                              starts recording who added each industry contact. */}
+                          {(rec.addedByName || rec.contactedBy) && (
+                            <p className="text-[10px] text-slate-500">
+                              Contacted by: <span className="font-semibold text-slate-700">{rec.addedByName || rec.contactedBy}</span>
+                            </p>
+                          )}
                           {rec.notes && (
                             <div className="pt-1.5 border-t border-slate-200/60 mt-1">
                               <p className="text-[10px] text-slate-700 font-medium">
@@ -1394,22 +1759,154 @@ export default function WorkflowStep1Students({
                 </div>
               )}
 
+              {/* ─── PLACEMENT TAB (orientation / commencement / completion / coordinator) ── */}
+              {activeTab === 'Placement' && (
+                <div className="p-5 space-y-4 text-xs overflow-y-auto max-h-[calc(100vh-320px)]">
+                  <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5 mb-1">
+                    <CalendarIcon className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Placement Timeline</span>
+                  </h5>
+
+                  {studentAppointments.length === 0 ? (
+                    <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
+                      No appointments recorded yet for this student.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {studentAppointments.map((appt, idx) => (
+                        <div key={appt.id || idx} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <p className="font-bold text-slate-900 text-xs">{appt.company}</p>
+                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border ${
+                              appt.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : appt.status === 'Cancelled' || appt.status === 'Withdrawn' ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-blue-50 text-blue-700 border-blue-200'
+                            }`}>
+                              {appt.status}
+                            </span>
+                          </div>
+                          {/* Orientation / Appointment date */}
+                          {(appt.date || appt.time) && (
+                            <div className="flex items-start space-x-1.5 text-[10px] text-slate-600">
+                              <CalendarIcon className="w-3 h-3 text-blue-500 mt-0.5 shrink-0" />
+                              <div>
+                                <span className="font-semibold text-slate-700">Orientation / Appointment: </span>
+                                {appt.date}{appt.time ? ` at ${appt.time}` : ''}
+                                {appt.meetingType ? ` (${appt.meetingType})` : ''}
+                              </div>
+                            </div>
+                          )}
+                          {/* Commencement Date */}
+                          {appt.commencementDate && (
+                            <div className="flex items-start space-x-1.5 text-[10px] text-slate-600">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
+                              <div>
+                                <span className="font-semibold text-slate-700">Commencement: </span>
+                                {(() => { try { return new Date(appt.commencementDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return appt.commencementDate; } })()}
+                              </div>
+                            </div>
+                          )}
+                          {/* Expected Completion Date */}
+                          {appt.expectedCompletionDate && (
+                            <div className="flex items-start space-x-1.5 text-[10px] text-slate-600">
+                              <Clock className="w-3 h-3 text-amber-500 mt-0.5 shrink-0" />
+                              <div>
+                                <span className="font-semibold text-slate-700">Expected Completion: </span>
+                                {(() => { try { return new Date(appt.expectedCompletionDate).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return appt.expectedCompletionDate; } })()}
+                              </div>
+                            </div>
+                          )}
+                          {/* Appointment Notes */}
+                          {appt.notes && (
+                            <div className="pt-1.5 border-t border-slate-200/60 mt-1 text-[10px] text-slate-700">
+                              <span className="font-bold text-slate-900">Notes: </span>{appt.notes}
+                            </div>
+                          )}
+                          {/* Cancellation reason if applicable */}
+                          {appt.cancellationReason && (
+                            <div className="text-[10px] text-rose-700">
+                              <span className="font-bold">Reason: </span>{appt.cancellationReason}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Coordinator Assignment */}
+                  <div className="pt-3 border-t border-slate-100">
+                    <h5 className="font-bold text-slate-900 text-xs mb-2 flex items-center space-x-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Coordinator</span>
+                    </h5>
+                    {selectedStudent.assignedCoordinatorName ? (
+                      <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center space-x-2">
+                        <UserCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-indigo-800 text-[11px]">{selectedStudent.assignedCoordinatorName}</p>
+                          {selectedStudent.assignedCoordinatorAt && (
+                            <p className="text-[10px] text-indigo-500">
+                              Since {(() => { try { return new Date(selectedStudent.assignedCoordinatorAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ''; } })()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">No coordinator assigned</p>
+                    )}
+                  </div>
+
+                  {/* Coordinator History */}
+                  {Array.isArray(selectedStudent.coordinatorHistory) && selectedStudent.coordinatorHistory.length > 0 && (
+                    <div className="pt-3 border-t border-slate-100">
+                      <h5 className="font-bold text-slate-900 text-xs mb-2 flex items-center space-x-1.5">
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Coordinator History</span>
+                      </h5>
+                      <div className="space-y-2">
+                        {[...selectedStudent.coordinatorHistory]
+                          .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+                          .map((h, i) => (
+                            <div key={i} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px]">
+                              <div className="flex items-center justify-between">
+                                <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${
+                                  h.action === 'Assigned' ? 'bg-blue-50 text-blue-700'
+                                  : h.action === 'Removed' ? 'bg-rose-50 text-rose-700'
+                                  : 'bg-amber-50 text-amber-700'
+                                }`}>{h.action}</span>
+                                <span className="text-slate-400">
+                                  {h.date ? (() => { try { return new Date(h.date).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ''; } })() : ''}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-slate-700 font-semibold">{h.coordinatorName || '—'}</p>
+                              {h.previousCoordinatorName && (
+                                <p className="text-slate-400">Prev: {h.previousCoordinatorName}</p>
+                              )}
+                              {h.assignedBy && <p className="text-slate-400">By: {h.assignedBy}</p>}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* ─── OTHER TABS CONTENT ────────────────────────────────────── */}
-              {activeTab !== 'Industry Contacts' && activeTab !== 'Documents' && (
-                <div className="p-5 space-y-4 text-xs">
+              {activeTab !== 'Industry Contacts' && activeTab !== 'Documents' && activeTab !== 'Placement' && (
+                <div className="p-5 space-y-4 text-xs overflow-y-auto max-h-[calc(100vh-320px)]">
                   {/* Key Stats Row */}
                   <div className="grid grid-cols-3 gap-2">
                     <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
                       <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">GPA</p>
-                      <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.gpa}</p>
+                      <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.gpa || '—'}</p>
                     </div>
                     <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Year</p>
-                      <p className="text-sm font-bold text-slate-900 mt-0.5">2nd</p>
+                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Semester</p>
+                      <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.currentYearSemester || selectedStudent.semester || '—'}</p>
                     </div>
                     <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Radius</p>
-                      <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.radius}</p>
+                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wide">Hours</p>
+                      <p className="text-sm font-bold text-slate-900 mt-0.5">{selectedStudent.placementHours ?? '—'}</p>
                     </div>
                   </div>
 
@@ -1417,30 +1914,58 @@ export default function WorkflowStep1Students({
                   <div>
                     <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
                       <span className="w-1 h-3 bg-blue-600 rounded-full"></span>
-                      <span>Personal Details</span>
+                      <span>Student Details</span>
                     </h5>
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 flex items-center space-x-2">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Date of Birth</span>
-                        </span>
-                        <span className="font-semibold text-slate-800">{selectedStudent.dob}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 flex items-center space-x-2">
-                          <Globe className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Nationality</span>
-                        </span>
-                        <span className="font-semibold text-slate-800">{selectedStudent.nationality}</span>
-                      </div>
+                    <div className="space-y-2">
+                      {selectedStudent.dateOfBirth && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Date of Birth</span>
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {(() => { try { return new Date(selectedStudent.dateOfBirth).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return selectedStudent.dateOfBirth; } })()}
+                          </span>
+                        </div>
+                      )}
+                      {selectedStudent.gender && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Gender</span>
+                          </span>
+                          <span className="font-semibold text-slate-800">{selectedStudent.gender}</span>
+                        </div>
+                      )}
+                      {(selectedStudent.nationality || selectedStudent.language) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <Globe className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Nationality</span>
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {[selectedStudent.nationality, selectedStudent.language].filter(Boolean).join(' / ')}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400 flex items-center space-x-2">
                           <MapPin className="w-3.5 h-3.5 text-slate-400" />
                           <span>Location</span>
                         </span>
-                        <span className="font-semibold text-slate-800">{selectedStudent.location}</span>
+                        <span className="font-semibold text-slate-800 text-right max-w-[140px] truncate">
+                          {[selectedStudent.suburb, selectedStudent.state].filter(Boolean).join(', ') || selectedStudent.location || '—'}
+                        </span>
                       </div>
+                      {(selectedStudent.phoneNumber || selectedStudent.phone) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <Phone className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Phone</span>
+                          </span>
+                          <span className="font-semibold text-slate-800">{selectedStudent.phone || selectedStudent.phoneNumber}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1450,28 +1975,43 @@ export default function WorkflowStep1Students({
                       <span className="w-1 h-3 bg-emerald-500 rounded-full"></span>
                       <span>Education</span>
                     </h5>
-                    <div className="space-y-2.5">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400 flex items-center space-x-2">
                           <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
                           <span>Course</span>
                         </span>
-                        <span className="font-semibold text-slate-800 text-right">{selectedStudent.course}</span>
+                        <span className="font-semibold text-slate-800 text-right max-w-[150px] truncate">
+                          {selectedStudent.courseQualification || selectedStudent.course || '—'}
+                        </span>
                       </div>
+                      {(selectedStudent.courseLevel) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <Award className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Level</span>
+                          </span>
+                          <span className="font-semibold text-slate-800">{selectedStudent.courseLevel}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400 flex items-center space-x-2">
                           <Building2 className="w-3.5 h-3.5 text-slate-400" />
                           <span>Institute</span>
                         </span>
-                        <span className="font-semibold text-blue-600">{selectedStudent.institute}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 flex items-center space-x-2">
-                          <Layers className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Semester</span>
+                        <span className="font-semibold text-blue-600 text-right max-w-[150px] truncate">
+                          {selectedStudent.assignedRto || selectedStudent.rto || selectedStudent.institute || '—'}
                         </span>
-                        <span className="font-semibold text-slate-800">{selectedStudent.semester}</span>
                       </div>
+                      {selectedStudent.campus && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Campus</span>
+                          </span>
+                          <span className="font-semibold text-slate-800">{selectedStudent.campus}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1481,30 +2021,72 @@ export default function WorkflowStep1Students({
                       <span className="w-1 h-3 bg-amber-500 rounded-full"></span>
                       <span>Placement Preferences</span>
                     </h5>
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 flex items-center space-x-2">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Availability</span>
-                        </span>
-                        <span className="font-semibold text-slate-800 text-right">{selectedStudent.availability}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 flex items-center space-x-2">
-                          <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Industry</span>
-                        </span>
-                        <span className="font-semibold text-slate-800">{selectedStudent.industry}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 flex items-center space-x-2">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Radius</span>
-                        </span>
-                        <span className="font-semibold text-slate-800">{selectedStudent.radius}</span>
-                      </div>
+                    <div className="space-y-2">
+                      {(() => {
+                        const days = selectedStudent.availabilityDays;
+                        if (!days) return null;
+                        const daysObj = typeof days === 'object' && !(days instanceof Map) ? days : {};
+                        const activeDays = Object.entries(daysObj).filter(([, v]) => v).map(([k]) => k);
+                        if (activeDays.length === 0) return null;
+                        return (
+                          <div className="flex items-start justify-between">
+                            <span className="text-slate-400 flex items-center space-x-2 shrink-0">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Availability</span>
+                            </span>
+                            <span className="font-semibold text-slate-800 text-right max-w-[150px]">
+                              {activeDays.join(', ')}
+                              {selectedStudent.availabilityFrom && ` · ${selectedStudent.availabilityFrom}–${selectedStudent.availabilityTo || ''}`}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                      {(selectedStudent.preferredIndustry) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Preferred Industry</span>
+                          </span>
+                          <span className="font-semibold text-slate-800 text-right max-w-[140px] truncate">
+                            {Array.isArray(selectedStudent.preferredIndustry)
+                              ? selectedStudent.preferredIndustry.join(', ')
+                              : selectedStudent.preferredIndustry}
+                          </span>
+                        </div>
+                      )}
+                      {(selectedStudent.preferredLocation || selectedStudent.placementRadius) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Location / Radius</span>
+                          </span>
+                          <span className="font-semibold text-slate-800 text-right max-w-[140px] truncate">
+                            {[selectedStudent.preferredLocation, selectedStudent.placementRadius].filter(Boolean).join(' · ')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedStudent.willingToRelocate && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center space-x-2">
+                            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Willing to Relocate</span>
+                          </span>
+                          <span className="font-semibold text-slate-800">{selectedStudent.willingToRelocate}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
+
+                  {/* Coordinator Notes (placementNotes) */}
+                  {selectedStudent.placementNotes && (
+                    <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-1">
+                      <h5 className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center space-x-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Coordinator Notes</span>
+                      </h5>
+                      <p className="text-[11px] text-amber-950 leading-relaxed">{selectedStudent.placementNotes}</p>
+                    </div>
+                  )}
 
                   {/* Quick Actions */}
                   <div className="pt-4 border-t border-slate-100 space-y-2">
@@ -1535,13 +2117,10 @@ export default function WorkflowStep1Students({
                       <Plus className="w-3.5 h-3.5" />
                       <span>
                         {(() => {
-                          // Match by ID only — name matching causes false positives
-                          const keys = [selectedStudent?.id, selectedStudent?.studentId].filter(Boolean);
-                          const hasReq = keys.some((k) => {
-                            const v = localRequestMap[k] || internshipRequestMap[k];
-                            return v === 'Normal' || v === 'Urgent';
-                          });
-                          return hasReq ? 'Change Placement Requirement' : 'Create Placement Request';
+                          const info = getRequestActionInfo(selectedStudent);
+                          if (info.isChange) return 'Change Placement Request';
+                          if (info.isRegenerable) return 'Regenerate Placement Request';
+                          return 'Create Placement Request';
                         })()}
                       </span>
                       <ArrowUpRight className="w-3 h-3 text-blue-200" />
@@ -1583,7 +2162,11 @@ export default function WorkflowStep1Students({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {isChangingPlacement ? 'Change Placement Requirement' : 'Generate Placement Request'}
+                  {isChangingPlacement
+                    ? 'Change Placement Request'
+                    : (REGENERATE_STATUSES.includes(genTargetStudent.placementStatus)
+                        ? 'Regenerate Placement Request'
+                        : 'Generate Placement Request')}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {isChangingPlacement
@@ -1735,7 +2318,7 @@ export default function WorkflowStep1Students({
                     <span>Snooze Student</span>
                   </>
                 ) : isChangingPlacement ? (
-                  <span>Update Priority</span>
+                  <span>Update Request</span>
                 ) : (
                   <span>Generate &amp; Continue</span>
                 )}
@@ -1756,7 +2339,7 @@ export default function WorkflowStep1Students({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Snoozed Students ({Object.keys(snoozedStudentIds).length})
+                    Snoozed Students ({snoozedCount})
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">Students temporarily deferred from placement requests</p>
                 </div>
@@ -1801,7 +2384,7 @@ export default function WorkflowStep1Students({
                       <div className="flex items-center space-x-2">
                         <p className="font-bold text-slate-900 text-xs">{item.name}</p>
                         <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                          {item.durationLabel || 'Snoozed'}
+                          {item.durationLabel || (item.snoozeUntil ? `Until ${new Date(item.snoozeUntil).toLocaleDateString()}` : 'Indefinite')}
                         </span>
                         {isStudentOnline(item.id, item.email, item.name) && (
                           <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1837,7 +2420,7 @@ export default function WorkflowStep1Students({
                 </div>
               ))}
 
-              {Object.keys(snoozedStudentIds).length === 0 && (
+              {snoozedCount === 0 && (
                 <div className="py-12 text-center text-slate-400">
                   <PauseCircle className="w-10 h-10 mx-auto text-slate-300 mb-2" />
                   <p className="font-semibold text-xs text-slate-600">No Snoozed Students</p>

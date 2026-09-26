@@ -120,7 +120,7 @@ export const internshipRequestSchema = z.object({
     .optional()
     .default("Normal"),
 
-  contactedIndustries: z
+   contactedIndustries: z
     .array(
       z.object({
         organizationName: z.string().trim().optional().default(""),
@@ -134,6 +134,9 @@ export const internshipRequestSchema = z.object({
         contactedDate: z.any().optional(),
         appointmentDate: z.string().trim().optional().default(""),
         appointmentTime: z.string().trim().optional().default(""),
+        // Who added this contact — coordinator attribution
+        addedByName: z.string().trim().optional().default(""),
+        addedByUserId: z.string().trim().optional().default(""),
       })
     )
     .optional()

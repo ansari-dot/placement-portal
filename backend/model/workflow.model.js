@@ -74,7 +74,7 @@ const internshipRequestSchema = new mongoose.Schema(
       enum: ["Normal", "Urgent", "Inactive"],
       default: "Normal",
     },
-    contactedIndustries: [
+     contactedIndustries: [
       {
         organizationName: { type: String, trim: true, default: "" },
         email: { type: String, trim: true, default: "" },
@@ -84,7 +84,12 @@ const internshipRequestSchema = new mongoose.Schema(
         industryType: { type: String, trim: true, default: "" },
         notes: { type: String, trim: true, default: "" },
         response: { type: String, trim: true, default: "" },
-        contactedDate: { type: Date, default: Date.now }
+        contactedDate: { type: Date, default: Date.now },
+        // Who added this industry contact — powers "Industries contacted,
+        // along with the coordinator's name who contacted that specific
+        // industry" on the Student Profile page.
+        addedByName:   { type: String, trim: true, default: "" },
+        addedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       }
     ],
     notes: {

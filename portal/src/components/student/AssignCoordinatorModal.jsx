@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Search, UserCheck, Loader2, Users, CheckCircle2, UserX } from 'lucide-react';
+import { X, Search, UserCheck, Loader2, Users, CheckCircle2, UserX, History, Clock } from 'lucide-react';
 import { fetchUsers } from '../../api/userApi';
 import api from '../../api/axios';
 
@@ -12,6 +12,20 @@ const ROLE_COLORS = {
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
 
+const ACTION_STYLES = {
+  Assigned: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  Changed:  { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200' },
+  Removed:  { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' },
+};
+
+const formatHistoryDate = (d) => {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    ' · ' + date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+};
+
 export default function AssignCoordinatorModal({ student, onClose, onAssigned }) {
   const [users, setUsers]           = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -19,6 +33,13 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
   const [search, setSearch]         = useState('');
   const [selected, setSelected]     = useState(null);   // { _id, name, role, ... }
   const [error, setError]           = useState('');
+  const [showHistory, setShowHistory] = useState(false);
+
+  // History comes straight off the student record — always up to date
+  // because WorkflowPage refreshes workflow/student data after every assign.
+  const history = [...(student?.coordinatorHistory || [])].sort(
+    (a, b) => new Date(b.date || 0) - new Date(a.date || 0)
+  );
 
   // Pre-select the already-assigned coordinator (if any)
   useEffect(() => {
@@ -58,13 +79,14 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
     setSaving(true);
     setError('');
     try {
-      await api.patch(`/students/${student.dbId || student.id}/assign-coordinator`, {
+      const res = await api.patch(`/students/${student.dbId || student.id}/assign-coordinator`, {
         coordinatorId:   selected._id,
         coordinatorName: selected.name,
       });
       onAssigned?.({
         coordinatorId:   selected._id,
         coordinatorName: selected.name,
+        updatedStudent:  res?.data?.data || null,
       });
       onClose();
     } catch (err) {
@@ -78,11 +100,11 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
     setSaving(true);
     setError('');
     try {
-      await api.patch(`/students/${student.dbId || student.id}/assign-coordinator`, {
+      const res = await api.patch(`/students/${student.dbId || student.id}/assign-coordinator`, {
         coordinatorId:   null,
         coordinatorName: '',
       });
-      onAssigned?.({ coordinatorId: null, coordinatorName: '' });
+      onAssigned?.({ coordinatorId: null, coordinatorName: '', updatedStudent: res?.data?.data || null });
       onClose();
     } catch (err) {
       setError(err?.response?.data?.message || 'Could not unassign coordinator. Please try again.');
@@ -134,6 +156,58 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
             >
               Remove
             </button>
+          </div>
+        )}
+
+        {/* ─── Assignment History Toggle ─────────────────────────────────── */}
+        {history.length > 0 && (
+          <div className="mx-5 mt-3">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="w-full flex items-center justify-between px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition"
+            >
+              <span className="flex items-center space-x-2 text-[11px] font-semibold text-slate-700">
+                <History className="w-3.5 h-3.5 text-slate-500" />
+                <span>Assignment History ({history.length})</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {showHistory ? 'Hide' : 'Show'}
+              </span>
+            </button>
+
+            {showHistory && (
+              <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {history.map((h, idx) => {
+                  const style = ACTION_STYLES[h.action] || ACTION_STYLES.Assigned;
+                  return (
+                    <div key={idx} className="px-3 py-2 bg-white border border-slate-100 rounded-lg flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${style.bg} ${style.text} ${style.border}`}>
+                            {h.action}
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-800 truncate">
+                            {h.coordinatorName || 'Unassigned'}
+                          </span>
+                        </div>
+                        {h.action === 'Changed' && h.previousCoordinatorName && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Previously: {h.previousCoordinatorName}
+                          </p>
+                        )}
+                        {h.assignedBy && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">By: {h.assignedBy}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 shrink-0 whitespace-nowrap">
+                        <Clock className="w-2.5 h-2.5" />
+                        {formatHistoryDate(h.date)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
