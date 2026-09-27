@@ -218,6 +218,7 @@ export default function WorkflowStep3Appointments({
     Cancelled: true,
     Withdrawn: true,
     Declined: true,
+    'Industry Rejected': true,
     'Not Suitable Site': true
   });
 
@@ -328,7 +329,7 @@ export default function WorkflowStep3Appointments({
       else if (appt.status === 'Rescheduled') rescheduledCount++;
       else if (appt.status === 'Cancelled') cancelledCount++;
       else if (appt.status === 'Withdrawn') withdrawnCount++;
-      else if (appt.status === 'Declined') declinedCount++;
+      else if (appt.status === 'Declined' || appt.status === 'Industry Rejected') declinedCount++;
       else if (appt.status === 'Scheduled') upcomingCount++;
     });
 
@@ -416,6 +417,7 @@ export default function WorkflowStep3Appointments({
           badge: 'bg-orange-100 text-orange-700 border-orange-300'
         };
       case 'Declined':
+      case 'Industry Rejected':
         return {
           bg: 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100',
           sub: 'text-rose-600',
@@ -612,7 +614,7 @@ export default function WorkflowStep3Appointments({
           cancellationType: '',
         };
       } else if (appointmentOutcome === 'industry_rejected') {
-        status = 'Declined';
+        status = 'Industry Rejected';
         cancellationType = 'industry';
         cancellationReason = outcomeNotes || 'Industry rejected the student';
         payload = {
@@ -698,7 +700,7 @@ export default function WorkflowStep3Appointments({
       try {
         const statusMap = {
           student: 'Declined',
-          industry: 'Declined',
+          industry: 'Industry Rejected',
           withdrawn: 'Withdrawn',
           other: 'Cancelled'
         };
@@ -935,7 +937,7 @@ export default function WorkflowStep3Appointments({
 
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
             <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Declined</p>
+              <p className="text-[9px] text-slate-500 font-medium">Industry Rejected</p>
               <div className="w-5 h-5 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
                 <X className="w-2.5 h-2.5" />
               </div>
@@ -1050,7 +1052,7 @@ export default function WorkflowStep3Appointments({
                   <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-2">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status Filters</p>
                     <div className="space-y-1.5">
-                      {['Scheduled', 'Completed', 'No Show', 'Rescheduled', 'Cancelled', 'Withdrawn', 'Declined', 'Not Suitable Site'].map(st => (
+                      {['Scheduled', 'Completed', 'No Show', 'Rescheduled', 'Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected', 'Not Suitable Site'].map(st => (
                         <label key={st} className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
                           <input
                             type="checkbox"
@@ -1065,7 +1067,7 @@ export default function WorkflowStep3Appointments({
                     <div className="pt-2 border-t border-slate-100 flex justify-between">
                       <button
                         onClick={() => {
-                          setStatusFilters({ Scheduled: true, Completed: true, 'No Show': true, Rescheduled: true, Cancelled: true, Withdrawn: true, Declined: true, 'Not Suitable Site': true });
+                          setStatusFilters({ Scheduled: true, Completed: true, 'No Show': true, Rescheduled: true, Cancelled: true, Withdrawn: true, Declined: true, 'Industry Rejected': true, 'Not Suitable Site': true });
                           showToast('Reset status filters');
                         }}
                         className="text-[10px] font-bold text-slate-500 hover:underline"
@@ -1461,7 +1463,7 @@ export default function WorkflowStep3Appointments({
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="w-3 h-3 rounded-full bg-rose-500"></span>
-                    <span>Declined</span>
+                    <span>Industry Rejected</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="w-3 h-3 rounded-full bg-orange-500"></span>
@@ -1515,6 +1517,7 @@ export default function WorkflowStep3Appointments({
           <div className={`relative bg-gradient-to-br from-slate-900 via-slate-800 to-${
             selectedAppointment.status === 'Completed' ? 'emerald' :
             selectedAppointment.status === 'Declined' ? 'rose' :
+            selectedAppointment.status === 'Industry Rejected' ? 'rose' :
             selectedAppointment.status === 'Not Suitable Site' ? 'amber' :
             selectedAppointment.status === 'Withdrawn' ? 'orange' :
             selectedAppointment.status === 'Cancelled' ? 'slate' :
@@ -2358,7 +2361,7 @@ export default function WorkflowStep3Appointments({
                 >
                   <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                   <span>
-                    {appointmentOutcome === 'industry_rejected' && 'Appointment will be marked as Declined. Student returns to workflow for re-placement.'}
+                    {appointmentOutcome === 'industry_rejected' && 'Appointment will be marked as Industry Rejected. Student returns to workflow for re-placement.'}
                     {appointmentOutcome === 'student_withdrawal' && 'Appointment will be marked as Withdrawn. Student returns to workflow for re-placement.'}
                     {appointmentOutcome === 'not_suitable_site' && 'Appointment will be marked as Not Suitable Site. Student returns to workflow — site deemed not appropriate.'}
                   </span>
@@ -2477,7 +2480,7 @@ export default function WorkflowStep3Appointments({
               {cancelType === 'industry' && (
                 <div className="bg-rose-50 p-3 rounded-xl border border-rose-200">
                   <p className="text-[10px] text-rose-800 font-medium">
-                    Industry rejected the student. This will be marked as "Declined" in placements.
+                    Industry rejected the student. This will be marked as "Industry Rejected" in placements.
                   </p>
                 </div>
               )}
@@ -2485,7 +2488,7 @@ export default function WorkflowStep3Appointments({
               {cancelType === 'student' && (
                 <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
                   <p className="text-[10px] text-blue-800 font-medium">
-                    Student requested cancellation. This will be marked as "Declined" in placements.
+                    Student requested cancellation. This will be marked as "Declined" for student, or "Industry Rejected" if the industry cancelled.
                   </p>
                 </div>
               )}

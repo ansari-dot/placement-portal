@@ -1,4 +1,5 @@
 import api from "./axios";
+import { notifyPlacementDataChanged } from "./placementEvents";
 
 // Get all students (backend filters by assignedCoordinator for non-admin users)
 export const fetchStudents = async () => {
@@ -21,12 +22,14 @@ export const fetchStudentById = async (id) => {
 // Create a new student
 export const createStudent = async (studentData) => {
   const response = await api.post("/students", studentData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 // Update a student
 export const updateStudent = async (id, studentData) => {
   const response = await api.put(`/students/${id}`, studentData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
@@ -42,6 +45,7 @@ export const assignCoordinator = async (studentId, coordinatorId, coordinatorNam
 // Delete a student
 export const deleteStudent = async (id) => {
   const response = await api.delete(`/students/${id}`);
+  notifyPlacementDataChanged();
   return response.data;
 };
 

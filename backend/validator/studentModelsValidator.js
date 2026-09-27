@@ -226,7 +226,7 @@ export const studentSchema = z.object({
     .string()
     .trim()
     .optional()
-    .default("Normal"),
+    .default(""),
 
   studentSource: z
     .string()

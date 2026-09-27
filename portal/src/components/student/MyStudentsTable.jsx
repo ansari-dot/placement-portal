@@ -43,7 +43,7 @@ const mapBackendStudent = (s) => ({
   location: s.location || s.suburb || '',
   state: s.state || '',
   status: s.status || 'Active',
-  placementStatus: s.placementStatus || 'None',
+  placementStatus: s.placementStatus || 'Awaiting',
   placementHours: s.placementHours ?? null,
   source: s.source || s.studentSource || '',
   created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
@@ -631,7 +631,6 @@ export default function MyStudentsTable() {
   // Helper: look up a student in the dual-source map
   const getStudentHasRequest = (student) => {
     if (!student) return false;
-    // Match by ID only — never by name to avoid false positives on new students
     const keys = [
       student.id,
       student.studentId,
@@ -644,6 +643,24 @@ export default function MyStudentsTable() {
       const val = workflowRequestMap[k];
       return val === 'Normal' || val === 'Urgent' || val === 'Inactive';
     });
+  };
+
+  // Helper: return the actual priority string ('Normal'|'Urgent'|'Inactive') or null
+  const getStudentWorkflowPriority = (student) => {
+    if (!student) return null;
+    const keys = [
+      student.id,
+      student.studentId,
+      student.dbId,
+      norm(student.id),
+      norm(student.studentId),
+      norm(student.dbId),
+    ].filter(Boolean);
+    for (const k of keys) {
+      const val = workflowRequestMap[k];
+      if (val === 'Normal' || val === 'Urgent' || val === 'Inactive') return val;
+    }
+    return null;
   };
 
   return (
@@ -777,6 +794,7 @@ export default function MyStudentsTable() {
                       hiddenColumns={hiddenColumns}
                       canAssign={isAdmin}
                       hasPlacementRequest={getStudentHasRequest(student)}
+                      workflowPriority={getStudentWorkflowPriority(student)}
                       isSnoozed={!!(snoozedStudentIds[student.id] || snoozedStudentIds[student.studentId] || snoozedStudentIds[student.dbId])}
                       isAdmin={isAdmin}
                     />
@@ -830,11 +848,11 @@ export default function MyStudentsTable() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {isChangingPlacement ? 'Change Placement Requirement' : 'Generate Placement Request'}
+                  {isChangingPlacement ? 'Change Placement Request' : 'Generate Placement Request'}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {isChangingPlacement
-                    ? 'Update the placement priority for this student'
+                    ? 'Update the request type for this student'
                     : 'Moving student to Step 2 – Placement Request'}
                 </p>
               </div>
@@ -913,10 +931,10 @@ export default function MyStudentsTable() {
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-bold">Inactive</span>
+                    <span className="text-xs font-bold">Inactive Student</span>
                     <input type="radio" name="myStudentPriority" checked={genPriority === 'Inactive'} onChange={() => {}} className="accent-violet-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500 font-normal mt-1">Inactive Student</span>
+                  <span className="text-[10px] text-slate-500 font-normal mt-1">Mark as Inactive</span>
                 </button>
 
                 {/* Snooze */}

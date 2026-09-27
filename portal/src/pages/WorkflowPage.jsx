@@ -28,6 +28,7 @@ import {
   deleteInternship,
 } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
+import { updateStudent } from '../api/studentsApi';
 
 const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements'];
 
@@ -202,16 +203,29 @@ export default function WorkflowPage() {
 
       if (workflowId) {
         try {
+          const resolvedPriority = priority || 'Normal';
           const requestData = {
             title: `${student.course || 'Internship'} Placement`,
             student: student.name,
             studentId: student.id || student.studentId,
             company: 'Pending Assignment',
             rto: student.rto || 'TBD',
-            priority: priority || 'Normal',
-            status: 'New',
+            priority: resolvedPriority,
+            status: resolvedPriority === 'Inactive' ? 'On Hold' : 'New',
           };
           await createInternshipRequest(workflowId, requestData);
+
+          // ── Sync Student.internshipPriority so Score tab reflects Inactive ──
+          // The Score backend reads Student.internshipPriority directly.
+          const stuId = student.id || student.studentId;
+          if (stuId) {
+            updateStudent(stuId, {
+              internshipPriority: resolvedPriority === 'Inactive' ? 'Inactive' : '',
+            }).catch((err) =>
+              console.error('Failed to sync internshipPriority on new request:', err)
+            );
+          }
+
           await refreshWorkflowData();
         } catch (err) {
           console.error('Failed to create internship request in backend:', err);
@@ -371,7 +385,7 @@ export default function WorkflowPage() {
         return bDate - aDate;
       });
 
-      const TERMINAL_APPT_STATUSES = ['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site'];
+      const TERMINAL_APPT_STATUSES = ['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site', 'Industry Rejected', 'Student Missed Appointment'];
       const ACTIVE_APPT_STATUSES   = ['Scheduled', 'Confirmed'];
 
       // The most recent NON-terminal appointment wins over any terminal one.
@@ -399,7 +413,7 @@ export default function WorkflowPage() {
             i.status === 'Active' ||
             (
               i.start &&
-              !['Declined', 'Withdrawn', 'Cancelled', 'Completed', 'Not Suitable Site'].includes(i.status) &&
+              !['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Withdrawn', 'Cancelled', 'Completed', 'Not Suitable Site'].includes(i.status) &&
               !isNaN(new Date(i.start).getTime()) &&
               new Date(i.start) <= now
             )
@@ -440,18 +454,19 @@ export default function WorkflowPage() {
       const hasIndustryRejected =
         !hasCompleted && !hasStartedPlacement && !hasStudentWithdraw && !hasNotSuitableSite && (
           sortedAppointments.some((a) =>
+            a.status === 'Industry Rejected' ||
             (a.status === 'Declined' && a.appointmentOutcome !== 'not_suitable_site') ||
             a.appointmentOutcome === 'industry_rejected' ||
             (a.cancellationType === 'industry' && a.status === 'Cancelled')
           ) ||
-          matchingInternships.some((i) => i.status === 'Declined')
+          matchingInternships.some((i) => i.status === 'Declined' || i.status === 'Industry Rejected')
         );
 
       // Student Missed Appointment — No Show
       const hasStudentMissed =
         !hasCompleted && !hasStartedPlacement &&
         !hasNotSuitableSite && !hasStudentWithdraw && !hasIndustryRejected &&
-        sortedAppointments.some((a) => a.status === 'No Show');
+        sortedAppointments.some((a) => a.status === 'No Show' || a.status === 'Student Missed Appointment');
 
       // Appointment Successful — outcome confirmed, not yet commenced
       const hasApptSuccessful =
@@ -469,11 +484,11 @@ export default function WorkflowPage() {
         !hasStudentMissed && !hasApptSuccessful &&
         sortedAppointments.some((a) =>
           a.status === 'Scheduled' ||
-          (a.date && !['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site'].includes(a.status))
+          (a.date && !['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site', 'Industry Rejected', 'Student Missed Appointment'].includes(a.status))
         );
 
       // ── Derive final status ───────────────────────────────────────────────
-      let dynamicPlacementStatus = 'None';
+      let dynamicPlacementStatus = 'Awaiting';
       if (hasCompleted) {
         dynamicPlacementStatus = 'Placement Completed';
       } else if (hasStartedPlacement) {
@@ -496,10 +511,10 @@ export default function WorkflowPage() {
         dynamicPlacementStatus = 'In Progress';
       } else if (stu.rto && (stu.course || stu.courseQualification)) {
         // No request yet, but the student's core profile (RTO + course) is
-        // complete enough to be placement-ready.
-        dynamicPlacementStatus = 'Ready';
+        // complete enough to start the placement process.
+        dynamicPlacementStatus = 'Awaiting';
       } else {
-        dynamicPlacementStatus = 'None';
+        dynamicPlacementStatus = 'Awaiting';
       }
 
       return {
@@ -668,10 +683,12 @@ export default function WorkflowPage() {
             cancellationType: a.cancellationType || 'student',
           };
         }
-        if (a.status === 'Declined') return { status: 'Declined', cancellationReason: a.cancellationReason || 'Industry rejected the student', cancellationType: a.cancellationType || 'industry' };
+        if (a.status === 'Declined') return { status: 'Industry Rejected', cancellationReason: a.cancellationReason || 'Industry rejected the student', cancellationType: a.cancellationType || 'industry' };
+        if (a.status === 'Industry Rejected') return { status: 'Industry Rejected', cancellationReason: a.cancellationReason || 'Industry rejected the student', cancellationType: a.cancellationType || 'industry' };
         if (a.status === 'Withdrawn') return { status: 'Withdrawn', cancellationReason: a.cancellationReason || 'Student withdrew from placement', cancellationType: a.cancellationType || 'withdrawn' };
         if (a.status === 'Cancelled') return { status: 'Cancelled', cancellationReason: a.cancellationReason || 'Appointment was cancelled', cancellationType: '' };
-        if (a.status === 'No Show') return { status: 'Declined', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
+        if (a.status === 'No Show') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
+        if (a.status === 'Student Missed Appointment') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
         if (a.status === 'Confirmed' || (a.commencementDate && new Date(a.commencementDate) <= new Date())) return { status: 'Placement Started', cancellationReason: '', cancellationType: '' };
         return { status: 'Waiting to Join', cancellationReason: '', cancellationType: '' };
       };
@@ -752,6 +769,17 @@ export default function WorkflowPage() {
             rest.status = 'On Hold';
           }
           const result = await updateInternshipRequest(wfId, realId, rest);
+
+          // ── Sync Student.internshipPriority so Score tab reflects the change ──
+          // The Score backend reads Student.internshipPriority directly; the workflow
+          // request priority alone is not enough to update the count.
+          if (studentId && rest.priority !== undefined) {
+            const newPriority = rest.priority === 'Inactive' ? 'Inactive' : '';
+            updateStudent(studentId, { internshipPriority: newPriority }).catch((err) =>
+              console.error('Failed to sync internshipPriority on student:', err)
+            );
+          }
+
           await refreshWorkflowData();
           return result?.data;
         }
@@ -761,6 +789,24 @@ export default function WorkflowPage() {
 
     try {
       const result = await updateInternshipRequest(wfId, requestId, requestData);
+
+      // ── Sync Student.internshipPriority for direct request updates (Step 2) ──
+      // When a request's priority is changed directly (e.g. from the Step 2 requests
+      // table), keep Student.internshipPriority in sync so the Score tab stays correct.
+      if (requestData.priority !== undefined) {
+        // Find the matching request to get its studentId
+        const matchedReq = (workflow?.requests || []).find(
+          (r) => String(r._id || r.reqId || r.id) === String(requestId)
+        );
+        const stuId = matchedReq?.studentId;
+        if (stuId) {
+          const newPriority = requestData.priority === 'Inactive' ? 'Inactive' : '';
+          updateStudent(stuId, { internshipPriority: newPriority }).catch((err) =>
+            console.error('Failed to sync internshipPriority on student:', err)
+          );
+        }
+      }
+
       await refreshWorkflowData();
       return result.data;
     } catch (err) {

@@ -11,6 +11,7 @@ const PLACEMENT_STATUS_OPTIONS = [
   'Placement Started',
   'Student Withdraw',
   'Industry Rejected',
+  'Not Suitable Site',
   'Placement Completed',
 ];
 

@@ -787,11 +787,12 @@ export default function WorkflowStep2Requests({
                             } else if (matchedAppt.status === 'Completed') {
                               resp = 'Placement Completed';
                             } else if (
-                              matchedAppt.status === 'Declined' &&
-                              matchedAppt.appointmentOutcome === 'not_suitable_site'
+                              matchedAppt.status === 'Not Suitable Site' ||
+                              (matchedAppt.status === 'Declined' && matchedAppt.appointmentOutcome === 'not_suitable_site')
                             ) {
                               resp = 'Not Suitable Site';
                             } else if (
+                              matchedAppt.status === 'Industry Rejected' ||
                               matchedAppt.status === 'Declined' ||
                               matchedAppt.appointmentOutcome === 'industry_rejected'
                             ) {
@@ -801,7 +802,7 @@ export default function WorkflowStep2Requests({
                               matchedAppt.appointmentOutcome === 'student_withdrawal'
                             ) {
                               resp = 'Student Withdrew';
-                            } else if (matchedAppt.status === 'No Show') {
+                            } else if (matchedAppt.status === 'No Show' || matchedAppt.status === 'Student Missed Appointment') {
                               resp = 'Student Missed Appointment';
                             } else if (matchedAppt.status === 'Cancelled') {
                               resp = 'Cancelled';
@@ -1104,13 +1105,20 @@ export default function WorkflowStep2Requests({
                         displayResponse = 'Placement Started';
                       } else if (matchedDrawerAppt.status === 'Completed') {
                         displayResponse = 'Placement Completed';
-                      } else if (matchedDrawerAppt.status === 'Declined' && matchedDrawerAppt.appointmentOutcome === 'not_suitable_site') {
+                      } else if (
+                        matchedDrawerAppt.status === 'Not Suitable Site' ||
+                        (matchedDrawerAppt.status === 'Declined' && matchedDrawerAppt.appointmentOutcome === 'not_suitable_site')
+                      ) {
                         displayResponse = 'Not Suitable Site';
-                      } else if (matchedDrawerAppt.status === 'Declined' || matchedDrawerAppt.appointmentOutcome === 'industry_rejected') {
+                      } else if (
+                        matchedDrawerAppt.status === 'Industry Rejected' ||
+                        matchedDrawerAppt.status === 'Declined' ||
+                        matchedDrawerAppt.appointmentOutcome === 'industry_rejected'
+                      ) {
                         displayResponse = 'Industry Rejected';
                       } else if (matchedDrawerAppt.status === 'Withdrawn' || matchedDrawerAppt.appointmentOutcome === 'student_withdrawal') {
                         displayResponse = 'Student Withdrew';
-                      } else if (matchedDrawerAppt.status === 'No Show') {
+                      } else if (matchedDrawerAppt.status === 'No Show' || matchedDrawerAppt.status === 'Student Missed Appointment') {
                         displayResponse = 'Student Missed Appointment';
                       } else if (matchedDrawerAppt.status === 'Cancelled') {
                         displayResponse = 'Cancelled';

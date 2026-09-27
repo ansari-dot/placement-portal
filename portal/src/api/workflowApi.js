@@ -1,4 +1,5 @@
 import api from "./axios";
+import { notifyPlacementDataChanged } from "./placementEvents";
 
 // ===== Workflow CRUD =====
 export const fetchWorkflows = async () => {
@@ -46,48 +47,57 @@ export const removeStudentFromWorkflow = async (id, studentId) => {
 // ===== Internship Requests (Step 2) =====
 export const createInternshipRequest = async (workflowId, requestData) => {
   const response = await api.post(`/workflows/${workflowId}/requests`, requestData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 export const updateInternshipRequest = async (workflowId, requestId, requestData) => {
   const response = await api.put(`/workflows/${workflowId}/requests/${requestId}`, requestData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 export const deleteInternshipRequest = async (workflowId, requestId) => {
   const response = await api.delete(`/workflows/${workflowId}/requests/${requestId}`);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 // ===== Appointments (Step 3) =====
 export const createAppointment = async (workflowId, appointmentData) => {
   const response = await api.post(`/workflows/${workflowId}/appointments`, appointmentData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 export const updateAppointment = async (workflowId, appointmentId, appointmentData) => {
   const response = await api.put(`/workflows/${workflowId}/appointments/${appointmentId}`, appointmentData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 export const deleteAppointment = async (workflowId, appointmentId) => {
   const response = await api.delete(`/workflows/${workflowId}/appointments/${appointmentId}`);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 // ===== Internships (Step 4) =====
 export const createInternship = async (workflowId, internshipData) => {
   const response = await api.post(`/workflows/${workflowId}/internships`, internshipData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 export const updateInternship = async (workflowId, internshipId, internshipData) => {
   const response = await api.put(`/workflows/${workflowId}/internships/${internshipId}`, internshipData);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
 export const deleteInternship = async (workflowId, internshipId) => {
   const response = await api.delete(`/workflows/${workflowId}/internships/${internshipId}`);
+  notifyPlacementDataChanged();
   return response.data;
 };
 
