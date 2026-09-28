@@ -74,7 +74,7 @@ function IndustryRow({ industry, index }) {
       {/* # */}
       <td className="py-3.5 px-4 text-[11px] text-slate-400 font-medium w-8">{index + 1}</td>
 
-      {/* Industry Name + Type */}
+      {/* Industry Name */}
       <td className="py-3.5 px-4 min-w-[160px]">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
@@ -87,6 +87,13 @@ function IndustryRow({ industry, index }) {
             </span>
           </div>
         </div>
+      </td>
+
+      {/* Industry Type */}
+      <td className="py-3.5 px-4 min-w-[140px]">
+        <span className="inline-block bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-sky-100">
+          {industry.sector || 'General'}
+        </span>
       </td>
 
       {/* Location */}
@@ -281,6 +288,7 @@ export default function MyProgressIndustryTab() {
                 <tr className="border-b border-slate-200 bg-slate-50/60 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-4 w-8">#</th>
                   <th className="py-3 px-4 min-w-[160px]">Industry Name</th>
+                  <th className="py-3 px-4 min-w-[140px]">Industry Type</th>
                   <th className="py-3 px-4 min-w-[130px]">Location</th>
                   <th className="py-3 px-4 min-w-[120px]">Contact Number</th>
                   <th className="py-3 px-4 min-w-[130px]">Contact Person</th>

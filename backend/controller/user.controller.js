@@ -297,7 +297,7 @@ export const getScoreStatsController = async (req, res) => {
     // Determine which users to compute rows for
     let targetUsers;
     if (isAdmin) {
-      targetUsers = await UserModel.find({ status: 'Active' }, { _id: 1, name: 1, role: 1, email: 1 }).lean();
+      targetUsers = await UserModel.find({}, { _id: 1, name: 1, role: 1, email: 1 }).lean();
     } else if (req.user) {
       targetUsers = [{ _id: req.user._id, name: req.user.name, role: req.user.role, email: req.user.email }];
     } else {
@@ -309,7 +309,8 @@ export const getScoreStatsController = async (req, res) => {
     const [allStudents, allWorkflows, allIndustries, allRtos] = await Promise.all([
       StudentModel.find({}, {
         _id: 1, studentId: 1, assignedCoordinator: 1, assignedCoordinatorName: 1,
-        internshipPriority: 1, snoozed: 1, snoozeUntil: 1, status: 1, assignedRto: 1,
+        internshipPriority: 1, snoozed: 1, snoozeUntil: 1, status: 1,
+        placementStatus: 1, assignedRto: 1,
       }).lean(),
       WorkflowModel.find({}, {
         'internships.studentId': 1, 'internships.company': 1, 'internships.status': 1,
@@ -391,6 +392,7 @@ export const getScoreStatsController = async (req, res) => {
         const bizId = (s.studentId || '').trim().toLowerCase();
         const dbId = s._id.toString().toLowerCase();
         return (
+          (s.placementStatus || '').trim().toLowerCase() === 'placement started' ||
           activelyPlacedStudentIds.has(bizId) ||
           activelyPlacedStudentIds.has(dbId)
         );

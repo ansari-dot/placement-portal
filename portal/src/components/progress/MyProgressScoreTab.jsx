@@ -3,29 +3,14 @@ import { useSelector } from 'react-redux';
 import {
   Loader2, RefreshCw, AlertCircle, Users,
   PauseCircle, XCircle, Building2, BookOpen,
-  Trophy, CheckCircle2, Star, TrendingUp,
+  Trophy, Star,
 } from 'lucide-react';
 import { fetchScoreStats } from '../../api/userApi';
-
-// ── Role badge ────────────────────────────────────────────────────────────────
-function RoleBadge({ role }) {
-  const styles = {
-    Administrator: 'bg-purple-50 text-purple-700 border-purple-200',
-    Coordinator:   'bg-blue-50   text-blue-700   border-blue-200',
-    'RTO Manager': 'bg-amber-50  text-amber-700  border-amber-200',
-    Staff:         'bg-slate-100 text-slate-600  border-slate-200',
-  };
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[role] || styles.Staff}`}>
-      {role}
-    </span>
-  );
-}
 
 // ── Stat cell ─────────────────────────────────────────────────────────────────
 function StatCell({ value, colorClass = 'text-slate-800' }) {
   return (
-    <td className={`py-3 px-3 text-center text-sm font-bold ${colorClass}`}>
+    <td className={`py-2 px-2 text-center text-xs font-bold ${colorClass}`}>
       {value === null || value === undefined ? (
         <span className="text-slate-400 font-normal text-xs">—</span>
       ) : (
@@ -38,8 +23,8 @@ function StatCell({ value, colorClass = 'text-slate-800' }) {
 // ── Score badge ───────────────────────────────────────────────────────────────
 function ScoreBadge({ score }) {
   return (
-    <td className="py-3 px-3 text-center">
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+    <td className="py-2 px-2 text-center">
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
         <Trophy className="w-3 h-3 text-indigo-500" />
         {score ?? 0}
       </span>
@@ -115,7 +100,7 @@ export default function MyProgressScoreTab() {
   const myUserId = authUser?._id || authUser?.id;
   const displayRows = isAdmin
     ? rows
-    : rows.filter((r) => r.userId === myUserId);
+    : rows.filter((r) => String(r.userId) === String(myUserId));
 
   // Totals (admin footer)
   const tot = (key) => rows.reduce((s, r) => s + (r[key] ?? 0), 0);
@@ -124,16 +109,11 @@ export default function MyProgressScoreTab() {
     <div className="space-y-4 w-full">
 
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="text-sm font-bold text-slate-900">
-            {isAdmin ? 'All Coordinators — Score Overview' : 'My Score'}
+            {isAdmin ? 'All Users — Score Overview' : 'My Score'}
           </h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            {isAdmin
-              ? 'Live placement counts and scores for every active coordinator.'
-              : 'Your live placement progress and score.'}
-          </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -159,70 +139,57 @@ export default function MyProgressScoreTab() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden w-full">
-        <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden w-full">
+        <div className="w-full">
+          <table className="w-full table-fixed text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/60 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              <tr className="border-b border-slate-200 bg-slate-50/60 text-[9px] font-bold text-slate-500 uppercase">
 
                 {/* User Name — admin only */}
-                {isAdmin && <th className="py-3 px-3 whitespace-nowrap">User Name</th>}
+                {isAdmin && <th className="py-2 px-2">User Name</th>}
 
                 {/* Pending */}
-                <th className="py-3 px-3 text-center whitespace-nowrap">
+                <th className="py-2 px-1 text-center">
                   <span className="flex items-center justify-center gap-1">
-                    <Users className="w-3 h-3" /> Pending
+                    <Users className="w-3 h-3" /> Pending Students
                   </span>
                 </th>
 
-                {/* In Progress (admin: separate column) */}
+                {/* Admin placed students */}
                 {isAdmin && (
-                  <th className="py-3 px-3 text-center whitespace-nowrap">
-                    <span className="flex items-center justify-center gap-1">
-                      <TrendingUp className="w-3 h-3 text-blue-500" /> In Progress
-                    </span>
-                  </th>
-                )}
-
-                {/* Appointment Successful (admin: separate column) */}
-                {isAdmin && (
-                  <th className="py-3 px-3 text-center whitespace-nowrap">
-                    <span className="flex items-center justify-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-teal-500" /> Appt. Successful
-                    </span>
-                  </th>
+                  <th className="py-2 px-1 text-center">Placed</th>
                 )}
 
                 {/* Snooze */}
-                <th className="py-3 px-3 text-center whitespace-nowrap">
+                <th className="py-2 px-1 text-center">
                   <span className="flex items-center justify-center gap-1">
                     <PauseCircle className="w-3 h-3 text-amber-500" /> Snooze
                   </span>
                 </th>
 
                 {/* Inactive */}
-                <th className="py-3 px-3 text-center whitespace-nowrap">
+                <th className="py-2 px-1 text-center">
                   <span className="flex items-center justify-center gap-1">
                     <XCircle className="w-3 h-3 text-violet-500" /> Inactive
                   </span>
                 </th>
 
                 {/* RTOs */}
-                <th className="py-3 px-3 text-center whitespace-nowrap">
+                <th className="py-2 px-1 text-center">
                   <span className="flex items-center justify-center gap-1">
                     <BookOpen className="w-3 h-3 text-sky-500" /> RTOs
                   </span>
                 </th>
 
                 {/* Industries */}
-                <th className="py-3 px-3 text-center whitespace-nowrap">
+                <th className="py-2 px-1 text-center">
                   <span className="flex items-center justify-center gap-1">
                     <Building2 className="w-3 h-3 text-indigo-500" /> Industries
                   </span>
                 </th>
 
                 {/* Total Score */}
-                <th className="py-3 px-3 text-center whitespace-nowrap">
+                <th className="py-2 px-1 text-center">
                   <span className="flex items-center justify-center gap-1">
                     <Trophy className="w-3 h-3 text-amber-500" /> Total Score
                   </span>
@@ -231,10 +198,8 @@ export default function MyProgressScoreTab() {
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {displayRows.map((row, idx) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                const medal  = isAdmin && idx < 3 ? medals[idx] : null;
-                const isMe   = myUserId && row.userId === myUserId;
+              {displayRows.map((row) => {
+                const isMe = myUserId && String(row.userId) === String(myUserId);
 
                 return (
                   <tr
@@ -243,29 +208,18 @@ export default function MyProgressScoreTab() {
                   >
                     {/* User name — admin only */}
                     {isAdmin && (
-                      <td className="py-3 px-3">
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {medal && <span className="text-sm">{medal}</span>}
-                            <span className="font-semibold text-slate-900 text-xs">{row.userName}</span>
-                            {isMe && (
-                              <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full">
-                                You
-                              </span>
-                            )}
-                          </div>
-                          <RoleBadge role={row.userRole} />
-                        </div>
+                      <td className="py-2 px-2 text-xs font-semibold text-slate-900 truncate" title={row.userName}>
+                        {row.userName || row.userEmail || '—'}
+                        {isMe && <span className="ml-1 text-[9px] font-bold text-indigo-600">(You)</span>}
                       </td>
                     )}
 
-                    <StatCell value={row.pendingStudents}       colorClass="text-amber-600"   />
-                    {isAdmin && <StatCell value={row.inProgressStudents ?? row.pendingStudents ?? 0} colorClass="text-blue-600" />}
-                    {isAdmin && <StatCell value={row.appointmentSuccessful ?? 0}               colorClass="text-teal-600"   />}
-                    <StatCell value={row.snoozedStudents}       colorClass="text-amber-500"   />
-                    <StatCell value={row.inactiveStudents}      colorClass="text-violet-600"  />
-                    <StatCell value={row.rtos}                  colorClass="text-sky-600"     />
-                    <StatCell value={row.industries}            colorClass="text-indigo-600"  />
+                    <StatCell value={row.pendingStudents} colorClass="text-amber-600" />
+                    {isAdmin && <StatCell value={row.placedStudents} colorClass="text-emerald-600" />}
+                    <StatCell value={row.snoozedStudents} colorClass="text-amber-500" />
+                    <StatCell value={row.inactiveStudents} colorClass="text-violet-600" />
+                    <StatCell value={row.rtos} colorClass="text-sky-600" />
+                    <StatCell value={row.industries} colorClass="text-indigo-600" />
                     <ScoreBadge score={row.score} />
                   </tr>
                 );
@@ -276,18 +230,17 @@ export default function MyProgressScoreTab() {
             {isAdmin && rows.length > 1 && (
               <tfoot>
                 <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-xs text-slate-700">
-                  <td className="py-3 px-3 font-bold text-slate-900 text-[11px] uppercase tracking-wider whitespace-nowrap">
+                  <td className="py-2 px-2 font-bold text-slate-900 text-[10px] uppercase">
                     Total
                   </td>
-                  <StatCell value={tot('pendingStudents')}     colorClass="text-amber-700"   />
-                  <StatCell value={tot('inProgressStudents')}  colorClass="text-blue-700"    />
-                  <StatCell value={tot('appointmentSuccessful')} colorClass="text-teal-700"  />
-                  <StatCell value={tot('snoozedStudents')}     colorClass="text-amber-700"   />
-                  <StatCell value={tot('inactiveStudents')}    colorClass="text-violet-700"  />
-                  <StatCell value={tot('rtos')}                colorClass="text-sky-700"     />
-                  <StatCell value={tot('industries')}          colorClass="text-indigo-700"  />
-                  <td className="py-3 px-3 text-center">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                  <StatCell value={tot('pendingStudents')} colorClass="text-amber-700" />
+                  <StatCell value={tot('placedStudents')} colorClass="text-emerald-700" />
+                  <StatCell value={tot('snoozedStudents')} colorClass="text-amber-700" />
+                  <StatCell value={tot('inactiveStudents')} colorClass="text-violet-700" />
+                  <StatCell value={tot('rtos')} colorClass="text-sky-700" />
+                  <StatCell value={tot('industries')} colorClass="text-indigo-700" />
+                  <td className="py-2 px-2 text-center">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                       <Trophy className="w-3 h-3" /> {tot('score')}
                     </span>
                   </td>
@@ -298,7 +251,7 @@ export default function MyProgressScoreTab() {
         </div>
 
         {/* Formula footer */}
-        <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
           <span>Score = (Placed × 10) + (Onboarded RTOs × 50) + (Onboarded Industries × 30)</span>
           <span>· RTOs / Industries count only verified records from the database</span>
         </div>

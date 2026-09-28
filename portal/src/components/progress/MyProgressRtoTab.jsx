@@ -2,24 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import {
   Building2, MapPin, CalendarDays, Loader2, AlertCircle,
-  RefreshCw, Search, Users, CheckCircle2, Clock,
+  RefreshCw, Search, Users,
 } from 'lucide-react';
 import { fetchMyRtos } from '../../api/rtoApi';
-
-// ── Status badge ──────────────────────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const active = status === 'Active';
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-      active
-        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-        : 'bg-slate-100 text-slate-500 border-slate-200'
-    }`}>
-      {active ? <CheckCircle2 className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
-      {status || 'Active'}
-    </span>
-  );
-}
 
 // ── Single RTO row ────────────────────────────────────────────────────────────
 function RtoRow({ rto, index }) {
@@ -62,10 +47,6 @@ function RtoRow({ rto, index }) {
         </div>
       </td>
 
-      {/* Status */}
-      <td className="py-3 px-4">
-        <StatusBadge status={rto.status} />
-      </td>
     </tr>
   );
 }
@@ -205,7 +186,6 @@ export default function MyProgressRtoTab() {
                   <th className="py-3 px-4">RTO Name</th>
                   <th className="py-3 px-4">Location</th>
                   <th className="py-3 px-4">Partnership Since</th>
-                  <th className="py-3 px-4">Status</th>
                 </tr>
               </thead>
               <tbody>

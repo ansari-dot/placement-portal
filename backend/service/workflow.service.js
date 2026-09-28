@@ -212,6 +212,27 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
 
   await workflow.save({ validateBeforeSave: false });
 
+  if (Array.isArray(newContacts) && newContacts.length > 0 && matchedRequest.studentId) {
+    try {
+      const studentQuery = [{ studentId: matchedRequest.studentId }];
+      if (mongoose.Types.ObjectId.isValid(matchedRequest.studentId)) {
+        studentQuery.push({ _id: matchedRequest.studentId });
+      }
+      await StudentModel.findOneAndUpdate(
+        {
+          $and: [
+            { $or: studentQuery },
+            { placementStatus: { $in: ["Awaiting", "In Progress"] } },
+          ],
+        },
+        { placementStatus: "Industry Contacted" },
+        { runValidators: false }
+      );
+    } catch (statusErr) {
+      console.warn("[Workflow] placementStatus→IndustryContacted update skipped:", statusErr.message);
+    }
+  }
+
   try {
     if (actualDbId && mongoose.Types.ObjectId.isValid(actualDbId)) {
       if (Array.isArray(newContacts) && newContacts.length > 0) {
@@ -1231,13 +1252,16 @@ export const getWorkflowDashboardData = async () => {
     // 5. Appointment Scheduled — has a scheduled appointment
     if (uniqueAppts.some(a => ['Scheduled', 'Rescheduled'].includes(a.status))) return 'Appointment Scheduled';
 
-    // 6. In Progress — has any appointment record at all
+    // 6. Industry Contacted — at least one industry contact exists on a request.
+    if (reqs.some(r => (r.contactedIndustries || []).length > 0)) return 'Industry Contacted';
+
+    // 7. In Progress — has any appointment record at all
     if (uniqueAppts.length > 0) return 'In Progress';
 
-    // 7. A generated placement request without an appointment is in progress.
+    // 8. A generated placement request without an appointment is in progress.
     if (reqs.length > 0) return 'In Progress';
 
-    // 8. No request, appointment, or internship — always Awaiting
+    // 9. No request, appointment, or internship — always Awaiting
     return 'Awaiting';
   };
 
@@ -1268,6 +1292,7 @@ export const getWorkflowDashboardData = async () => {
   const requestsStats = {
     awaiting:                  countByPlacementStatus("Awaiting"),
     inProgress:                countByPlacementStatus("In Progress"),
+    industryContacted:         countByPlacementStatus("Industry Contacted"),
     appointmentScheduled:      countByPlacementStatus("Appointment Scheduled"),
     appointmentSuccessful:     countByPlacementStatus("Appointment Successful"),
     studentWithdraw:           countByPlacementStatus("Student Withdraw"),

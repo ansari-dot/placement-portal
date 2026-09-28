@@ -15,7 +15,7 @@ const PLACEMENT_STATUS_OPTIONS = [
   'Placement Completed',
 ];
 
-export default function StudentFilters({ filters, onFilterChange, onClear, options, resultCount, selectedCount, onApply }) {
+export default function StudentFilters({ filters, onFilterChange, onClear, options, resultCount, selectedCount, onApply, placementStatusOptions = PLACEMENT_STATUS_OPTIONS }) {
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
 
   return (
@@ -62,7 +62,7 @@ export default function StudentFilters({ filters, onFilterChange, onClear, optio
             className={selectClass}
           >
             <option value="">All Statuses</option>
-            {PLACEMENT_STATUS_OPTIONS.map(s => (
+            {placementStatusOptions.map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>

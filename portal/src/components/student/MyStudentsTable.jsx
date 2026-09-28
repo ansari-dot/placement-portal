@@ -26,6 +26,17 @@ import AssignCoordinatorModal from './AssignCoordinatorModal';
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
 
 const norm = (v) => String(v || '').trim().toLowerCase();
+const MY_PROGRESS_PLACEMENT_STATUS_OPTIONS = [
+  'In Progress',
+  'Industry Contacted',
+  'Appointment Scheduled',
+  'Appointment Successful',
+  'Waiting to Join',
+  'Placement Started',
+  'Student Withdraw',
+  'Industry Rejected',
+  'Placement Completed',
+];
 
 const mapBackendStudent = (s) => ({
   dbId: s.id || s._id,
@@ -449,9 +460,10 @@ export default function MyStudentsTable() {
           if (!reqPriority || reqPriority !== filters.placementRequest) return false;
         }
       }
-      // Placement Status filter — matches s.placementStatus; exclude 'Ready' status in My Progress
-      if (s.placementStatus === 'Ready') return false;
-      if (filters.placementStatus && (s.placementStatus || '') !== filters.placementStatus) return false;
+      // Ready is reserved for Step 1 students without a generated placement request.
+      const placementStatus = String(s.placementStatus || '').trim();
+      if (placementStatus.toLowerCase() === 'ready') return false;
+      if (filters.placementStatus && placementStatus.toLowerCase() !== filters.placementStatus.toLowerCase()) return false;
       // Assigned Date filter
       const assignedTime = parseDate(s.assignedAt);
       if (filters.assignedDate) {
@@ -740,6 +752,7 @@ export default function MyStudentsTable() {
             options={{ courseOptions }}
             resultCount={filteredStudents.length}
             selectedCount={selectedRows.length}
+            placementStatusOptions={MY_PROGRESS_PLACEMENT_STATUS_OPTIONS}
           />
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -797,6 +810,8 @@ export default function MyStudentsTable() {
                       workflowPriority={getStudentWorkflowPriority(student)}
                       isSnoozed={!!(snoozedStudentIds[student.id] || snoozedStudentIds[student.studentId] || snoozedStudentIds[student.dbId])}
                       isAdmin={isAdmin}
+                      allowGenerate={false}
+                      allowCreateAppointment={false}
                     />
                   ))}
                 </tbody>

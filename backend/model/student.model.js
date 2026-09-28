@@ -471,6 +471,7 @@ const studentSchema = new mongoose.Schema(
         values: [
           "Awaiting",                // No placement request generated yet
           "In Progress",             // Placement request has been generated
+          "Industry Contacted",      // At least one industry has been contacted
           "Appointment Scheduled",   // Appointment has been scheduled
           "Appointment Successful",  // Appointment confirmed with successful outcome
           "Student Withdraw",        // Student withdrew from appointment/placement

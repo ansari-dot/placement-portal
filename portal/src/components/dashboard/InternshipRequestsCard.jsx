@@ -5,8 +5,8 @@ import {
   Loader2,
   CalendarClock,
   CalendarCheck,
+  Building2,
   UserMinus,
-  CalendarX,
   XCircle,
   MapPinOff,
   Play,
@@ -28,6 +28,12 @@ export default function InternshipRequestsCard({ stats, loading }) {
       bg: 'bg-blue-50',
     },
     {
+      label: 'Industry Contacted',
+      count: stats?.industryContacted ?? 0,
+      icon: <Building2 className="text-cyan-600" size={18} />,
+      bg: 'bg-cyan-50',
+    },
+    {
       label: 'Appointment Scheduled',
       count: stats?.appointmentScheduled ?? 0,
       icon: <CalendarClock className="text-indigo-500" size={18} />,
@@ -44,12 +50,6 @@ export default function InternshipRequestsCard({ stats, loading }) {
       count: stats?.studentWithdraw ?? 0,
       icon: <UserMinus className="text-amber-500" size={18} />,
       bg: 'bg-amber-50',
-    },
-    {
-      label: 'Student Missed Appointment',
-      count: stats?.studentMissedAppointment ?? 0,
-      icon: <CalendarX className="text-orange-500" size={18} />,
-      bg: 'bg-orange-50',
     },
     {
       label: 'Industry Rejected',
@@ -85,11 +85,11 @@ export default function InternshipRequestsCard({ stats, loading }) {
           View All &rsaquo;
         </Link>
       </div>
-      <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10 gap-2">
         {items.map((item, idx) => (
           <div
             key={idx}
-            className="flex flex-col items-center text-center p-2.5 rounded-xl hover:bg-slate-50/80 transition border border-transparent hover:border-slate-200"
+            className="min-w-0 flex flex-col items-center text-center p-2 rounded-xl hover:bg-slate-50/80 transition border border-transparent hover:border-slate-200"
           >
             <div className={`p-2.5 rounded-xl mb-2 ${item.bg}`}>
               {item.icon}
@@ -97,7 +97,7 @@ export default function InternshipRequestsCard({ stats, loading }) {
             <span className="text-xl font-bold text-slate-900 mb-1 tracking-tight">
               {loading ? '...' : item.count}
             </span>
-            <span className="text-[10px] text-slate-400 font-medium leading-tight text-center">
+            <span className="w-full min-h-8 text-[10px] text-slate-500 font-medium leading-tight text-center break-words">
               {item.label}
             </span>
           </div>

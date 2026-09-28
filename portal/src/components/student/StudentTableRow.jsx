@@ -7,11 +7,13 @@ import { formatLastSeen } from '../../utils/presenceUtils';
 const PLACEMENT_STATUS_CONFIG = {
   'Awaiting':                   { bg: 'bg-slate-100',    text: 'text-slate-600',   border: 'border-slate-200'   },
   'In Progress':                { bg: 'bg-blue-50',      text: 'text-blue-700',    border: 'border-blue-200'    },
+  'Industry Contacted':         { bg: 'bg-cyan-50',      text: 'text-cyan-700',    border: 'border-cyan-200'    },
   'Appointment Scheduled':      { bg: 'bg-purple-50',    text: 'text-purple-700',  border: 'border-purple-200'  },
   'Appointment Successful':     { bg: 'bg-teal-50',      text: 'text-teal-700',    border: 'border-teal-200'    },
   'Student Withdraw':           { bg: 'bg-amber-50',     text: 'text-amber-700',   border: 'border-amber-200'   },
   'Student Missed Appointment': { bg: 'bg-orange-50',    text: 'text-orange-700',  border: 'border-orange-200'  },
   'Industry Rejected':          { bg: 'bg-rose-50',      text: 'text-rose-700',    border: 'border-rose-200'    },
+  'Not Suitable Site':          { bg: 'bg-amber-50',     text: 'text-amber-800',   border: 'border-amber-300'   },
   'Placement Started':          { bg: 'bg-emerald-50',   text: 'text-emerald-700', border: 'border-emerald-200' },
   'Placement Completed':        { bg: 'bg-emerald-100',  text: 'text-emerald-800', border: 'border-emerald-300' },
   'None':                       { bg: 'bg-slate-50',     text: 'text-slate-400',   border: 'border-slate-200'   },
@@ -179,6 +181,8 @@ export default function StudentTableRow({
   workflowPriority    = null,   // 'Normal' | 'Urgent' | 'Inactive' from workflowRequestMap
   isSnoozed       = false,
   isAdmin         = false,
+  allowGenerate = true,
+  allowCreateAppointment = true,
 }) {
   const extras = { hasPlacementRequest, workflowPriority, isSnoozed };
 
@@ -229,6 +233,8 @@ export default function StudentTableRow({
             hasPlacementRequest={hasPlacementRequest}
             isSnoozed={isSnoozed}
             isAdmin={isAdmin}
+            allowGenerate={allowGenerate}
+            allowCreateAppointment={allowCreateAppointment}
           />
         )}
       </td>
