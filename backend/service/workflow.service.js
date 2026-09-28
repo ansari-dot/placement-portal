@@ -91,7 +91,9 @@ export const updateWorkflowStep = async (id, step) => {
 // ===== Students in Workflow =====
 export const addStudentsToWorkflow = async (workflowId, studentIds) => {
   const workflow = await WorkflowModel.findById(workflowId);
-  if (!workflow) return null;
+  if (!workflow) {
+    throw new Error(`Workflow not found while updating placement request ${normalizedId}`);
+  }
 
   const existingIds = workflow.students.map((s) => s.toString());
   const newIds = studentIds.filter((id) => !existingIds.includes(id));
@@ -194,7 +196,9 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
       (r.id && String(r.id) === normalizedId)
     );
   });
-  if (requestIndex === -1) return null;
+  if (requestIndex === -1) {
+    throw new Error(`Placement request ${normalizedId} was not found in the workflow`);
+  }
 
   const matchedRequest = workflow.requests[requestIndex];
   const actualDbId = matchedRequest._id;

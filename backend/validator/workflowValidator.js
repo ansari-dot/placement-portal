@@ -116,9 +116,11 @@ export const internshipRequestSchema = z.object({
     .default(""),
 
   priority: z
-    .enum(["Normal", "Urgent", "Inactive"])
+    .enum(["Normal", "Urgent", "Snooze", "Inactive"])
     .optional()
     .default("Normal"),
+
+  returnedToStep1: z.boolean().optional().default(false),
 
    contactedIndustries: z
     .array(
@@ -126,6 +128,10 @@ export const internshipRequestSchema = z.object({
         organizationName: z.string().trim().optional().default(""),
         email: z.string().trim().optional().default(""),
         address: z.string().trim().optional().default(""),
+        suburb: z.string().trim().optional().default(""),
+        state: z.string().trim().optional().default(""),
+        postCode: z.string().trim().optional().default(""),
+        country: z.string().trim().optional().default("Australia"),
         phone: z.string().trim().optional().default(""),
         contactPerson: z.string().trim().optional().default(""),
         industryType: z.string().trim().optional().default(""),

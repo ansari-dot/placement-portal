@@ -34,6 +34,7 @@ export default function WorkflowStep3Appointments({
   const [newApptStudentId, setNewApptStudentId] = useState('');
   const [newApptReqId, setNewApptReqId] = useState('');
   const [newApptIndustryId, setNewApptIndustryId] = useState('');
+  const [newApptIndustryDetails, setNewApptIndustryDetails] = useState(null);
   const [newApptCompany, setNewApptCompany] = useState('');
   const [newApptPosition, setNewApptPosition] = useState('Internship Interview');
   const [newApptDate, setNewApptDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -75,8 +76,19 @@ export default function WorkflowStep3Appointments({
       if (data.reqId) {
         setNewApptReqId(data.reqId);
       }
+      if (data.requireAppointmentSchedule) {
+        setNewApptIndustryId('');
+        setNewApptIndustryDetails(null);
+        setNewApptCompany('');
+        setNewApptInterviewer('');
+        setNewApptLocation('');
+        setNewApptNotes('');
+      }
       if (data.industryId) {
         setNewApptIndustryId(data.industryId);
+      }
+      if (data.industryContact) {
+        setNewApptIndustryDetails(data.industryContact);
       }
       if (data.company) {
         setNewApptCompany(data.company);
@@ -87,11 +99,12 @@ export default function WorkflowStep3Appointments({
       if (data.location) {
         setNewApptLocation(data.location);
       }
-      if (data.appointmentDate) {
-        setNewApptDate(data.appointmentDate);
-      }
-      if (data.appointmentTime) {
-        setNewApptTime(data.appointmentTime);
+      if (data.requireAppointmentSchedule) {
+        setNewApptDate(data.appointmentDate || '');
+        setNewApptTime(data.appointmentTime || '');
+      } else {
+        if (data.appointmentDate) setNewApptDate(data.appointmentDate);
+        if (data.appointmentTime) setNewApptTime(data.appointmentTime);
       }
       if (data.position) {
         setNewApptPosition(data.position);
@@ -476,13 +489,17 @@ export default function WorkflowStep3Appointments({
   // Select industry handler with auto-fill
   const handleSelectIndustryForNewAppt = (industryRecordId) => {
     setNewApptIndustryId(industryRecordId);
-    const ind = selectedIndustriesForStudent.find(i => i.id === industryRecordId);
+    const ind = selectedIndustriesForStudent.find(i => (i.id || i._id) === industryRecordId);
     if (ind) {
+      setNewApptIndustryDetails(ind);
+      if (ind.__reqId) setNewApptReqId(ind.__reqId);
       setNewApptCompany(ind.organizationName || '');
       setNewApptInterviewer(ind.contactPerson || '');
-      setNewApptLocation(ind.address || '');
+      setNewApptLocation([ind.address, ind.suburb, ind.state, ind.postCode, ind.country].filter(Boolean).join(', '));
       if (ind.appointmentDate) setNewApptDate(ind.appointmentDate);
       if (ind.appointmentTime) setNewApptTime(ind.appointmentTime);
+    } else {
+      setNewApptIndustryDetails(null);
     }
   };
 
@@ -504,6 +521,10 @@ export default function WorkflowStep3Appointments({
   const handleCreateNewAppointment = async () => {
     if (!newApptStudentId || !newApptDate || !newApptTime) {
       showToast('Please fill in required fields (Student, Date, Time)');
+      return;
+    }
+    if (prefilledAppointmentData?.requireAppointmentSchedule && !newApptIndustryId) {
+      showToast('Select an industry already contacted for this student');
       return;
     }
 
@@ -542,8 +563,11 @@ export default function WorkflowStep3Appointments({
         setNewApptStudentId('');
         setNewApptReqId('');
         setNewApptIndustryId('');
+        setNewApptIndustryDetails(null);
         setNewApptCompany('');
         setNewApptPosition('Internship Interview');
+        setNewApptDate(new Date().toISOString().split('T')[0]);
+        setNewApptTime('10:00');
         setNewApptInterviewer('');
         setNewApptNotes('');
         // Clear pre-selected student after creation
@@ -557,6 +581,20 @@ export default function WorkflowStep3Appointments({
         console.error(err);
         showToast(err.message || 'Failed to create appointment');
       }
+    }
+  };
+
+  const handleCloseNewAppointment = () => {
+    setShowNewAppointment(false);
+    if (prefilledAppointmentData?.requireAppointmentSchedule) {
+      onClearPrefilledData?.();
+      setNewApptStudentId('');
+      setNewApptReqId('');
+      setNewApptIndustryId('');
+      setNewApptIndustryDetails(null);
+      setNewApptCompany('');
+      setNewApptDate(new Date().toISOString().split('T')[0]);
+      setNewApptTime('10:00');
     }
   };
 
@@ -1123,7 +1161,7 @@ export default function WorkflowStep3Appointments({
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl z-30 p-4 space-y-3 max-h-[85vh] overflow-y-auto">
                     <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                       <h4 className="text-xs font-bold text-slate-900">Schedule New Appointment</h4>
-                      <button onClick={() => setShowNewAppointment(false)} className="text-slate-400 hover:text-slate-600">
+                      <button onClick={handleCloseNewAppointment} className="text-slate-400 hover:text-slate-600">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
@@ -1134,6 +1172,7 @@ export default function WorkflowStep3Appointments({
                         <select
                           value={newApptStudentId}
                           onChange={(e) => handleSelectStudentForNewAppt(e.target.value)}
+                          disabled={Boolean(prefilledAppointmentData?.requireAppointmentSchedule)}
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
                         >
                           <option value="">-- Choose Student --</option>
@@ -1143,7 +1182,7 @@ export default function WorkflowStep3Appointments({
                         </select>
                       </div>
 
-                      {requests.length > 0 && (
+                      {requests.length > 0 && !prefilledAppointmentData?.requireAppointmentSchedule && (
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Linked Request (Optional)</label>
                           <select
@@ -1178,7 +1217,7 @@ export default function WorkflowStep3Appointments({
                                 : '-- Choose Contacted Industry --'}
                           </option>
                           {selectedIndustriesForStudent.map((ind) => (
-                            <option key={ind.id} value={ind.id}>
+                            <option key={ind.id || ind._id} value={ind.id || ind._id}>
                               {ind.organizationName} ({ind.industryType})
                               {ind.appointmentDate ? ` — ${ind.appointmentDate}${ind.appointmentTime ? ' ' + ind.appointmentTime : ''}` : ''}
                             </option>
@@ -1189,7 +1228,16 @@ export default function WorkflowStep3Appointments({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                        {newApptIndustryDetails && (
+                          <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-3 text-[10px] text-slate-600 space-y-1">
+                            <p className="font-bold text-slate-900">{newApptIndustryDetails.organizationName} · {newApptIndustryDetails.industryType || 'Industry'}</p>
+                            <p>Contact: {newApptIndustryDetails.contactPerson || '—'} · {newApptIndustryDetails.email || '—'} · {newApptIndustryDetails.phone || '—'}</p>
+                            <p>Address: {[newApptIndustryDetails.address, newApptIndustryDetails.suburb, newApptIndustryDetails.state, newApptIndustryDetails.postCode, newApptIndustryDetails.country].filter(Boolean).join(', ') || '—'}</p>
+                            {newApptIndustryDetails.notes && <p>Notes: {newApptIndustryDetails.notes}</p>}
+                          </div>
+                        )}
+
+                        {!newApptIndustryDetails && <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company / Organisation *</label>
                           <input
@@ -1208,7 +1256,7 @@ export default function WorkflowStep3Appointments({
                             className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                           />
                         </div>
-                      </div>
+                      </div>}
 
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -1231,7 +1279,7 @@ export default function WorkflowStep3Appointments({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      {!newApptIndustryDetails && <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Interviewer / Contact</label>
                           <input
@@ -1253,9 +1301,9 @@ export default function WorkflowStep3Appointments({
                             <option value="Phone">Phone</option>
                           </select>
                         </div>
-                      </div>
+                      </div>}
 
-                      <div>
+                      {!newApptIndustryDetails && <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Location / Address</label>
                         <input
                           placeholder="e.g. 123 Care Street or Zoom Link"
@@ -1263,9 +1311,9 @@ export default function WorkflowStep3Appointments({
                           onChange={(e) => setNewApptLocation(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
                         />
-                      </div>
+                      </div>}
 
-                      <div>
+                      {!prefilledAppointmentData?.requireAppointmentSchedule && <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Notes (Requirements & Instructions)</label>
                         <textarea
                           rows={3}
@@ -1274,7 +1322,7 @@ export default function WorkflowStep3Appointments({
                           onChange={(e) => setNewApptNotes(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs"
                         />
-                      </div>
+                      </div>}
                     </div>
 
                     <div className="flex space-x-2 pt-2">
@@ -1285,7 +1333,7 @@ export default function WorkflowStep3Appointments({
                         Create Appointment
                       </button>
                       <button
-                        onClick={() => setShowNewAppointment(false)}
+                        onClick={handleCloseNewAppointment}
                         className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
                       >
                         Cancel

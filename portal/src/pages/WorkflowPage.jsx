@@ -212,6 +212,7 @@ export default function WorkflowPage() {
             rto: student.rto || 'TBD',
             priority: resolvedPriority,
             status: resolvedPriority === 'Inactive' ? 'On Hold' : 'New',
+            returnedToStep1: resolvedPriority === 'Inactive',
           };
           await createInternshipRequest(workflowId, requestData);
 
@@ -362,9 +363,10 @@ export default function WorkflowPage() {
 
       const matchingRequests = findRequestsForStudent(stu);
       const matchingAppointments = findAppointmentsForStudent(stu);
-      const contactedIndustries = matchingRequests.flatMap((r) => r.contactedIndustries || []);
+      const activeRequests = matchingRequests.filter((request) => request.returnedToStep1 !== true);
+      const contactedIndustries = activeRequests.flatMap((r) => r.contactedIndustries || []);
 
-      const hasRequest = matchingRequests.length > 0;
+      const hasRequest = activeRequests.length > 0;
       const hasContacted = contactedIndustries.length > 0;
 
       const now = new Date();
@@ -541,11 +543,12 @@ export default function WorkflowPage() {
     });
   }, [visibleWorkflowStudents, findRequestsForStudent, findAppointmentsForStudent, workflow]);
 
-  const mapRequestsForStep2 = useCallback(() => {
+  const mapRequestsForStep2 = useCallback((excludeReturnedToStep1 = false) => {
     if (!workflow?.requests || workflow.requests.length === 0) return [];
 
     return workflow.requests
       .filter((req) => {
+        if (excludeReturnedToStep1 && req.returnedToStep1 === true) return false;
         // Coordinators always see only their students; admins filter only when a coordinator is selected
         const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
         if (!shouldFilter) return true;
@@ -553,28 +556,57 @@ export default function WorkflowPage() {
         const reqStuName = norm(req.student);
         return visibleStudentKeySet.has(reqStuId) || visibleStudentKeySet.has(reqStuName);
       })
-      .map((req) => ({
-        id: req.id || req._id || '',
-        reqId: req.reqId || '',
-        title: req.title || '',
-        student: req.student || '',
-        studentId: req.studentId || '',
-        company: req.company || '',
-        rto: req.rto || '',
-        priority: req.priority || 'Normal',
-        status: req.status || 'New',
-        contactedIndustries: (req.contactedIndustries || []).map(ind => ({
-          ...ind,
-          appointmentDate: ind.appointmentDate || '',
-          appointmentTime: ind.appointmentTime || '',
-        })),
-        date:
-          req.date ||
-          (req.createdAt
-            ? new Date(req.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-            : ''),
-      }));
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet]);
+      .map((req) => {
+        const requestStudentId = norm(req.studentId);
+        const requestStudentName = norm(req.student);
+        const student = workflowStudents.find((stu) => {
+          const identifiers = [stu.id, stu._id, stu.studentId, stu.name,
+            `${stu.firstName || ''} ${stu.lastName || ''}`].map(norm);
+          return identifiers.includes(requestStudentId) || identifiers.includes(requestStudentName);
+        });
+        const assignedCoordinatorId = String(
+          student?.assignedCoordinator?._id || student?.assignedCoordinator?.id || student?.assignedCoordinator || ''
+        );
+        const assignedCoordinator = coordinators.find(
+          (coordinator) => String(coordinator._id || coordinator.id) === assignedCoordinatorId
+        );
+        const requestCoordinator = coordinators.find(
+          (coordinator) => String(coordinator._id || coordinator.id) === String(req.coordinator || '')
+        );
+        return {
+          id: req.id || req._id || '',
+          reqId: req.reqId || '',
+          title: req.title || '',
+          student: req.student || student?.name || '',
+          studentId: req.studentId || '',
+          studentDbId: student?.id || student?._id || '',
+          studentEmail: student?.emailAddress || student?.email || '',
+          studentPhone: [student?.phoneCode, student?.phoneNumber].filter(Boolean).join(' ') || student?.phone || '',
+          studentRecord: student || null,
+          studentAddress: [student?.address, student?.suburb, student?.state, student?.postCode].filter(Boolean).join(', '),
+          availabilityDays: student?.availabilityDays || {},
+          availabilityFrom: student?.availabilityFrom || '',
+          availabilityTo: student?.availabilityTo || '',
+          coordinatorName: student?.assignedCoordinatorName || assignedCoordinator?.name || requestCoordinator?.name || req.coordinator || '',
+          assignedCoordinatorAt: student?.assignedCoordinatorAt || null,
+          company: req.company === 'Pending Assignment' ? '' : (req.company || ''),
+          rto: req.rto || '',
+          priority: req.priority || 'Normal',
+          status: req.status || 'New',
+          notes: req.notes || '',
+          contactedIndustries: (req.contactedIndustries || []).map(ind => ({
+            ...ind,
+            appointmentDate: ind.appointmentDate || '',
+            appointmentTime: ind.appointmentTime || '',
+          })),
+          date:
+            req.date ||
+            (req.createdAt
+              ? new Date(req.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+              : ''),
+        };
+      });
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators]);
 
   const mapAppointmentsForStep3 = useCallback(() => {
     if (!workflow?.appointments || workflow.appointments.length === 0) {
@@ -765,9 +797,12 @@ export default function WorkflowPage() {
         const realId = String(match._id || match.reqId || '');
         if (realId) {
           // When marking a student inactive, also set the request status to On Hold
-          if (rest.priority === 'Inactive') {
+          if (['Inactive', 'Snooze'].includes(rest.priority)) {
             rest.status = 'On Hold';
+          } else if (match.status === 'On Hold') {
+            rest.status = 'New';
           }
+          rest.returnedToStep1 = ['Inactive', 'Snooze'].includes(rest.priority);
           const result = await updateInternshipRequest(wfId, realId, rest);
 
           // ── Sync Student.internshipPriority so Score tab reflects the change ──
@@ -1179,7 +1214,7 @@ export default function WorkflowPage() {
       case 2:
         return (
           <WorkflowStep2Requests
-            requests={mapRequestsForStep2()}
+            requests={mapRequestsForStep2(true)}
             onBack={() => goToStep(1)}
             onNext={handleStep2Next}
             onCreateRequest={handleCreateRequest}
@@ -1189,6 +1224,7 @@ export default function WorkflowPage() {
             students={mapStudentsForStep1()}
             activeStudent={activeWorkflowStudent}
             appointments={mapAppointmentsForStep3()}
+            onRefreshStudents={refreshWorkflowData}
           />
         );
       case 3:

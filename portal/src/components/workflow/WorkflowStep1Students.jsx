@@ -672,6 +672,16 @@ export default function WorkflowStep1Students({
         showToast('Failed to snooze student. Please try again.');
       });
 
+      if (isChangingPlacement && onUpdateRequest) {
+        onUpdateRequest('__by_student__', {
+          studentId: stuId,
+          studentName: genTargetStudent.name,
+          priority: 'Snooze',
+          returnedToStep1: true,
+          notes: reasonText,
+        }).catch((err) => console.error('Failed to sync snooze request priority:', err));
+      }
+
       showToast(`Student ${genTargetStudent.name} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setShowGenRequestModal(false);
       setSnoozeReason('');

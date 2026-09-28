@@ -71,14 +71,22 @@ const internshipRequestSchema = new mongoose.Schema(
     },
     priority: {
       type: String,
-      enum: ["Normal", "Urgent", "Inactive"],
+      enum: ["Normal", "Urgent", "Snooze", "Inactive"],
       default: "Normal",
+    },
+    returnedToStep1: {
+      type: Boolean,
+      default: false,
     },
      contactedIndustries: [
       {
         organizationName: { type: String, trim: true, default: "" },
         email: { type: String, trim: true, default: "" },
         address: { type: String, trim: true, default: "" },
+        suburb: { type: String, trim: true, default: "" },
+        state: { type: String, trim: true, default: "" },
+        postCode: { type: String, trim: true, default: "" },
+        country: { type: String, trim: true, default: "Australia" },
         phone: { type: String, trim: true, default: "" },
         contactPerson: { type: String, trim: true, default: "" },
         industryType: { type: String, trim: true, default: "" },
