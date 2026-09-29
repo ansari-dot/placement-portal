@@ -100,19 +100,23 @@ export default function StudentViewEditPage() {
 
       const fields = [
         // Step 1 — Personal
-        'firstName', 'middleName', 'lastName', 'gender',
-        'emailAddress', 'phoneCode', 'phoneNumber', 'waPhoneCode', 'whatsappNumber',
+        'firstName', 'middleName', 'lastName', 'preferredName', 'gender',
+        'dateOfBirth', 'nationality', 'language',
+        'emailAddress', 'phoneCode', 'phoneNumber',
+        'altPhoneCode', 'alternatePhone',
+        'waPhoneCode', 'whatsappNumber',
         'address', 'suburb', 'state', 'postCode', 'country',
         // Step 2 — Education
         'courseQualification', 'courseLevel', 'placementHours',
-        'studentId', 'institute', 'assignedRto', 'studentSource',
+        'studentId', 'institute', 'assignedRto',
+        'currentYearSemester', 'campus',
         // Documents
         'policeCheckDoc', 'covidCheckDoc', 'ndisDoc', 'resumeDoc', 'wwccDoc',
         'passportDoc', 'drivingLicenceDoc', 'infectionControlDoc', 'handHygieneDoc', 'cbrDoc',
         'additionalDocuments',
         // Step 3 — Additional Info
         'preferredIndustry', 'placementSite',
-        'transport', 'licenceNumber', 'preferredLocation',
+        'transport', 'licenceNumber', 'preferredLocation', 'placementRadius',
         'visaStatus',
         'availabilityDays', 'availabilityFrom', 'availabilityTo',
         'willingToRelocate', 'placementNotes',
@@ -470,7 +474,7 @@ export default function StudentViewEditPage() {
                   <User size={16} className="text-blue-600" /><span>Personal Information</span>
                 </h3>
 
-                {/* Row 1: First Name, Middle Name, Last Name, Gender */}
+                {/* Row 1: First Name, Middle Name, Last Name, Preferred Name */}
                 <div className="grid grid-cols-4 gap-5">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">First Name <span className="text-rose-500">*</span></label>
@@ -484,6 +488,14 @@ export default function StudentViewEditPage() {
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Last Name <span className="text-rose-500">*</span></label>
                     <input type="text" value={formData.lastName || ''} onChange={e => updateField('lastName', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="Enter last name" />
                   </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Preferred Name</label>
+                    <input type="text" value={formData.preferredName || ''} onChange={e => updateField('preferredName', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="Enter preferred name" />
+                  </div>
+                </div>
+
+                {/* Row 1b: Gender, DOB, Nationality, Language */}
+                <div className="grid grid-cols-4 gap-5">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Gender</label>
                     {isEdit ? (
@@ -499,10 +511,33 @@ export default function StudentViewEditPage() {
                       <input type="text" value={formData.gender || ''} disabled className={fieldClass(false)} />
                     )}
                   </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Date of Birth</label>
+                    <input
+                      type={isEdit ? 'date' : 'text'}
+                      value={
+                        isEdit
+                          ? (formData.dateOfBirth ? String(formData.dateOfBirth).split('T')[0] : '')
+                          : (formData.dateOfBirth ? new Date(formData.dateOfBirth).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : '')
+                      }
+                      onChange={e => updateField('dateOfBirth', e.target.value)}
+                      disabled={!isEdit}
+                      className={fieldClass(isEdit)}
+                      placeholder="Date of birth"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Nationality</label>
+                    <input type="text" value={formData.nationality || ''} onChange={e => updateField('nationality', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="e.g. Australian" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Language</label>
+                    <input type="text" value={formData.language || ''} onChange={e => updateField('language', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="e.g. English" />
+                  </div>
                 </div>
 
-                {/* Row 2: Email, Phone, WhatsApp */}
-                <div className="grid grid-cols-3 gap-5">
+                {/* Row 2: Email, Phone, WhatsApp, Alternate Phone */}
+                <div className="grid grid-cols-4 gap-5">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Email Address <span className="text-rose-500">*</span></label>
                     <input type="email" value={formData.emailAddress || ''} onChange={e => updateField('emailAddress', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="Enter email address" />
@@ -537,6 +572,19 @@ export default function StudentViewEditPage() {
                       </div>
                     ) : (
                       <input type="text" value={formData.whatsappNumber || ''} disabled className={fieldClass(false)} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Alternate Phone</label>
+                    {isEdit ? (
+                      <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-600 transition">
+                        <input type="text" value={formData.altPhoneCode || '+61'} onChange={e => updateField('altPhoneCode', e.target.value)}
+                          className="w-14 px-1 py-2.5 text-xs text-slate-600 bg-transparent focus:outline-none font-medium text-center border-r border-slate-200" />
+                        <input type="text" placeholder="Optional" value={formData.alternatePhone || ''} onChange={e => updateField('alternatePhone', e.target.value)}
+                          className="w-full px-2 py-2.5 text-xs text-slate-800 placeholder-slate-400 bg-transparent focus:outline-none" />
+                      </div>
+                    ) : (
+                      <input type="text" value={formData.alternatePhone || ''} disabled className={fieldClass(false)} />
                     )}
                   </div>
                 </div>
@@ -639,8 +687,8 @@ export default function StudentViewEditPage() {
                   </div>
                 </div>
 
-                {/* Row 2: Student ID, College/RTO */}
-                <div className="grid grid-cols-2 gap-5">
+                {/* Row 2: Student ID, Campus, Current Year/Semester */}
+                <div className="grid grid-cols-3 gap-5">
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-[11px] font-semibold text-slate-500">Student ID</label>
@@ -674,69 +722,14 @@ export default function StudentViewEditPage() {
                       </p>
                     )}
                   </div>
-                  {/* College / RTO + Student Source — hidden from coordinators (admin only) */}
-                  {isAdmin && (
-                    <>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">College / RTO (optional)</label>
-                        {isEdit ? (
-                          <div className="relative">
-                            <select
-                              value={formData.institute || formData.assignedRto || ''}
-                              onChange={e => { updateField('institute', e.target.value); updateField('assignedRto', e.target.value); }}
-                              className={selectCls}>
-                              <option value="">Select College / RTO</option>
-                              {(formData.institute || formData.assignedRto) &&
-                                !activeRtos.includes(formData.institute || formData.assignedRto) &&
-                                (formData.institute || formData.assignedRto) !== 'Other' && (
-                                  <option value={formData.institute || formData.assignedRto}>{formData.institute || formData.assignedRto}</option>
-                                )}
-                              {activeRtos.map(rto => <option key={rto} value={rto}>{rto}</option>)}
-                              <option value="Other">Other</option>
-                            </select>
-                            <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
-                          </div>
-                        ) : (
-                          <input type="text" value={formData.institute || formData.assignedRto || ''} disabled className={fieldClass(false)} />
-                        )}
-                      </div>
-
-                      {/* Student Source — only shown when College = Other */}
-                      {isOtherCollege && (
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Student Source (optional)</label>
-                          {isEdit ? (
-                            isOtherSource || (formData.studentSource && !studentSources.slice(0, -1).includes(formData.studentSource)) ? (
-                              <div className="relative">
-                                <input type="text" placeholder="Type source (e.g. Referral, Website...)"
-                                  value={formData.studentSource === 'Other' ? '' : formData.studentSource || ''}
-                                  onChange={e => updateField('studentSource', e.target.value)}
-                                  className={`${inputClass} pr-8`} autoFocus />
-                                <button type="button" onClick={() => { setIsOtherSource(false); updateField('studentSource', ''); }}
-                                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition">
-                                  <X size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="relative">
-                                <select value={formData.studentSource || ''}
-                                  onChange={e => {
-                                    if (e.target.value === 'Other') { setIsOtherSource(true); updateField('studentSource', ''); }
-                                    else { setIsOtherSource(false); updateField('studentSource', e.target.value); }
-                                  }} className={selectCls}>
-                                  <option value="">Select source</option>
-                                  {studentSources.map(src => <option key={src} value={src}>{src}</option>)}
-                                </select>
-                                <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
-                              </div>
-                            )
-                          ) : (
-                            <input type="text" value={formData.studentSource || ''} disabled className={fieldClass(false)} />
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Campus</label>
+                    <input type="text" value={formData.campus || ''} onChange={e => updateField('campus', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="e.g. Melbourne CBD" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Current Year / Semester</label>
+                    <input type="text" value={formData.currentYearSemester || ''} onChange={e => updateField('currentYearSemester', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="e.g. Year 2 / Semester 1" />
+                  </div>
                 </div>
 
                 {/* Documents section — matches EducationDetailsForm exactly */}

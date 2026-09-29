@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Users, UserCheck, Filter } from 'lucide-react';
+import { Users, UserCheck } from 'lucide-react';
 import WorkFlowLayout from '../components/layout/WorkFlowLayout';
 import WorkflowStep1Students from '../components/workflow/WorkflowStep1Students';
 import WorkflowStep2Requests from '../components/workflow/WorkflowStep2Requests';
@@ -31,7 +31,7 @@ import { calculatePlacementEndDate } from '../utils/dateCalculation';
 
 const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements'];
 
-export const getResponseStyle = (response) => {
+const getResponseStyle = (response) => {
   if (!response) return 'text-slate-600 bg-slate-50';
   const r = String(response).toLowerCase();
   if (r.includes('approv') || r.includes('positive') || r.includes('accept')) {
@@ -186,6 +186,15 @@ export default function WorkflowPage() {
       }
     }
   }, [workflowId, setSearchParams]);
+
+  // ─── 🔒 Coordinators cannot access Step 1 (Students) ──────────────────────
+  // Step 1 is Admin-only per spec. If a coordinator lands here (direct URL,
+  // stale link, refresh, etc.) push them straight to Step 2 instead.
+  useEffect(() => {
+    if (!loading && !isAdmin && activeStep === 1) {
+      goToStep(2);
+    }
+  }, [loading, isAdmin, activeStep, goToStep]);
 
   const handleStep1Next = useCallback(async (student, priority) => {
     if (student) {
@@ -485,6 +494,10 @@ export default function WorkflowPage() {
         dynamicPlacementStatus = 'Industry Contacted';
       } else if (hasRequest) {
         dynamicPlacementStatus = 'In Progress';
+      } else if (stu.rto && (stu.course || stu.courseQualification)) {
+        // No request yet, but the student's core profile (RTO + course) is
+        // complete enough to be placement-ready.
+        dynamicPlacementStatus = 'Ready';
       } else {
         dynamicPlacementStatus = 'None';
       }
@@ -1088,6 +1101,21 @@ export default function WorkflowPage() {
 
     switch (activeStep) {
       case 1:
+        // 🔒 Step 1 (Students) is Admin-only. Coordinators get redirected via the
+        // effect above; this guard just prevents a flash of the students table
+        // while that redirect is in flight.
+        if (!isAdmin) {
+          return (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center bg-amber-50 border border-amber-200 rounded-2xl p-8 max-w-md">
+                <p className="text-amber-700 font-semibold mb-2">Access Restricted</p>
+                <p className="text-sm text-amber-600">
+                  The Students step is only available to administrators. Redirecting you to Placement Requests…
+                </p>
+              </div>
+            </div>
+          );
+        }
         return (
           <WorkflowStep1Students
             students={mapStudentsForStep1()}
@@ -1099,6 +1127,7 @@ export default function WorkflowPage() {
             onCreateAppointment={handleCreateAppointment}
             appointments={mapAppointmentsForStep3()}
             onCoordinatorAssigned={handleCoordinatorAssigned}
+            coordinators={coordinators}
           />
         );
       case 2:
@@ -1149,6 +1178,18 @@ export default function WorkflowPage() {
           />
         );
       default:
+        if (!isAdmin) {
+          return (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center bg-amber-50 border border-amber-200 rounded-2xl p-8 max-w-md">
+                <p className="text-amber-700 font-semibold mb-2">Access Restricted</p>
+                <p className="text-sm text-amber-600">
+                  The Students step is only available to administrators.
+                </p>
+              </div>
+            </div>
+          );
+        }
         return (
           <WorkflowStep1Students
             students={mapStudentsForStep1()}
@@ -1160,6 +1201,7 @@ export default function WorkflowPage() {
             onCreateAppointment={handleCreateAppointment}
             appointments={mapAppointmentsForStep3()}
             onCoordinatorAssigned={handleCoordinatorAssigned}
+            coordinators={coordinators}
           />
         );
     }

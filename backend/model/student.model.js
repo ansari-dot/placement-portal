@@ -312,7 +312,11 @@ const studentSchema = new mongoose.Schema(
         industryType: { type: String, trim: true, default: "" },
         notes: { type: String, trim: true, default: "" },
         response: { type: String, trim: true, default: "" },
-        contactedDate: { type: Date, default: Date.now }
+        contactedDate: { type: Date, default: Date.now },
+        // Who added this contact — powers "Industries contacted, along with
+        // the coordinator's name who contacted that specific industry"
+        addedByName:   { type: String, trim: true, default: "" },
+        addedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       }
     ],
 
@@ -391,6 +395,24 @@ const studentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Full history of every assign / change / remove action — powers the
+    // "All coordinators to whom the student was assigned, with dates" view
+    // required on the Student Profile page.
+    coordinatorHistory: [
+      {
+        coordinatorId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        coordinatorName: { type: String, trim: true, default: '' },
+        action: {
+          type: String,
+          enum: ['Assigned', 'Changed', 'Removed'],
+          default: 'Assigned',
+        },
+        previousCoordinatorName: { type: String, trim: true, default: '' },
+        assignedBy:       { type: String, trim: true, default: '' }, // name of admin who made the change
+        assignedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        date: { type: Date, default: Date.now },
+      }
+    ],
 
     // ===== System / Display Fields =====
     studentId: {

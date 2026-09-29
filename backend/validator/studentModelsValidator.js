@@ -406,6 +406,30 @@ export const studentSchema = z.object({
     .optional()
     .default(""),
 
+  // ===== Snooze Fields =====
+  snoozed: z
+    .boolean()
+    .optional()
+    .default(false),
+
+  snoozedAt: z
+    .union([z.string(), z.date()])
+    .nullable()
+    .optional()
+    .default(null),
+
+  snoozeUntil: z
+    .union([z.string(), z.date()])
+    .nullable()
+    .optional()
+    .default(null),
+
+  snoozeReason: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
   // ===== Coordinator Assignment =====
   assignedCoordinator: z
     .string()

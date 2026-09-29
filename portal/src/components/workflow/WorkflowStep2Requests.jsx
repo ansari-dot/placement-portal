@@ -1,5 +1,6 @@
 // src/components/workflow/WorkflowStep2Requests.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, Download, Plus, MoreVertical,
@@ -25,6 +26,7 @@ export default function WorkflowStep2Requests({
 }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const authUser = useSelector((state) => state.auth?.user);
   const [newRequestStudentId, setNewRequestStudentId] = useState('');
   const [newRequestCompany, setNewRequestCompany] = useState('');
   const [newRequestTitle, setNewRequestTitle] = useState('');
@@ -105,15 +107,15 @@ export default function WorkflowStep2Requests({
   }, [requests]);
 
   const [showAddOrgModal, setShowAddOrgModal] = useState(false);
-  // â”€â”€â”€ Edit Request Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Edit Request Modal ─────────────────────────────────────────────────
   const [editRequest, setEditRequest] = useState(null); // item being edited
   const [editForm, setEditForm] = useState({ status: '', company: '', rto: '', priority: 'Normal', notes: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  // â”€â”€â”€ Delete Confirm Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Delete Confirm Modal ────────────────────────────────────────────────
   const [deleteConfirmReq, setDeleteConfirmReq] = useState(null);
   const [isDeletingReq, setIsDeletingReq] = useState(false);
   const [assignCoordinatorTarget, setAssignCoordinatorTarget] = useState(null);
-  // â”€â”€â”€ Assign Coordinator Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Add Industry Form ───────────────────────────────────────────────────
   const [orgForm, setOrgForm] = useState({
     organizationName: '',
     email: '',
@@ -162,10 +164,15 @@ export default function WorkflowStep2Requests({
       return;
     }
 
+    // Attribution — records WHICH coordinator added this industry contact, so it
+    // can be shown on the Student Profile page ("Industries contacted, along
+    // with the coordinator's name who contacted that specific industry").
     const newRecord = {
       id: `c_${Date.now()}`,
       ...orgForm,
-      contactedDate: new Date().toISOString().split('T')[0]
+      contactedDate: new Date().toISOString().split('T')[0],
+      addedByName: authUser?.name || authUser?.email || '',
+      addedByUserId: authUser?._id || authUser?.id || '',
     };
 
     setContactRecordsMap(prev => ({
@@ -226,7 +233,7 @@ export default function WorkflowStep2Requests({
         }));
       }
     } else {
-      showToast(`Added contact record for ${orgForm.organizationName} (not persisted â€” onAddContact missing)`);
+      showToast(`Added contact record for ${orgForm.organizationName} (not persisted — onAddContact missing)`);
       setShowAddOrgModal(false);
       setOrgFormErrors({});
     }
@@ -349,7 +356,7 @@ export default function WorkflowStep2Requests({
       };
       setAssignCoordinatorTarget(target);
     } else if (action === 'delete') {
-      // Open confirm modal â€” do NOT delete immediately
+      // Open confirm modal — do NOT delete immediately
       setDeleteConfirmReq(item);
     }
   };
@@ -642,12 +649,6 @@ export default function WorkflowStep2Requests({
           )}
 
           <div className="w-px h-6 bg-slate-200 shrink-0"></div>
-
-          <div className="relative shrink-0">
-            {/* Export button removed — use 3-dot menu per request instead */}
-          </div>
-
-          {/* New Industry Button removed — moved to per-row 3-dot Actions menu */}
         </div>
 
         <div className="flex justify-between items-center px-1">
@@ -1092,9 +1093,13 @@ export default function WorkflowStep2Requests({
                         return isMatchStudent && (isMatchOrg || isMatchContactId);
                       });
 
+                      // FIXED: this previously referenced `ci`, which does not exist in
+                      // this scope (the loop variable here is `rec`) — that threw a
+                      // ReferenceError and crashed the drawer any time contact history
+                      // was opened. Now correctly reads `rec.organizationName`.
                       let displayResponse;
                       if (!matchedDrawerAppt) {
-                        displayResponse = ci.organizationName ? 'Industry Contacted' : (rec.response || 'In Discussion');
+                        displayResponse = rec.organizationName ? 'Industry Contacted' : (rec.response || 'In Discussion');
                       } else if (matchedDrawerAppt.status === 'Confirmed' || matchedDrawerAppt.appointmentOutcome === 'successful') {
                         displayResponse = 'Placement Started';
                       } else if (matchedDrawerAppt.status === 'Completed') {
@@ -1126,6 +1131,13 @@ export default function WorkflowStep2Requests({
                         </div>
                         <p className="text-[10px] text-slate-600 truncate">{rec.email}</p>
                         <p className="text-[10px] text-slate-500">{rec.address}</p>
+                        {/* Coordinator attribution — who added this industry contact */}
+                        {rec.addedByName && (
+                          <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                            <UserCheck className="w-3 h-3 text-slate-400" />
+                            Contacted by: <span className="font-semibold text-slate-700">{rec.addedByName}</span>
+                          </p>
+                        )}
                         {rec.appointmentDate && (
                           <div className="text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-md">
                             Proposed Appointment: {rec.appointmentDate} {rec.appointmentTime ? `at ${rec.appointmentTime}` : ''}
@@ -1273,7 +1285,7 @@ export default function WorkflowStep2Requests({
                   onChange={(e) => { setOrgForm({ ...orgForm, organizationName: e.target.value }); if (orgFormErrors.organizationName) setOrgFormErrors(p => ({...p, organizationName: ''})); }}
                   className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.organizationName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
-                {orgFormErrors.organizationName && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.organizationName}</p>}
+                {orgFormErrors.organizationName && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.organizationName}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1306,7 +1318,7 @@ export default function WorkflowStep2Requests({
                     onChange={(e) => { setOrgForm({ ...orgForm, contactPerson: e.target.value }); if (orgFormErrors.contactPerson) setOrgFormErrors(p => ({...p, contactPerson: ''})); }}
                     className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.contactPerson ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                   />
-                  {orgFormErrors.contactPerson && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.contactPerson}</p>}
+                  {orgFormErrors.contactPerson && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.contactPerson}</p>}
                 </div>
               </div>
 
@@ -1322,7 +1334,7 @@ export default function WorkflowStep2Requests({
                     onChange={(e) => { setOrgForm({ ...orgForm, email: e.target.value }); if (orgFormErrors.email) setOrgFormErrors(p => ({...p, email: ''})); }}
                     className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.email ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                   />
-                  {orgFormErrors.email && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.email}</p>}
+                  {orgFormErrors.email && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.email}</p>}
                 </div>
 
                 <div>
@@ -1336,7 +1348,7 @@ export default function WorkflowStep2Requests({
                     onChange={(e) => { setOrgForm({ ...orgForm, phone: e.target.value }); if (orgFormErrors.phone) setOrgFormErrors(p => ({...p, phone: ''})); }}
                     className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                   />
-                  {orgFormErrors.phone && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.phone}</p>}
+                  {orgFormErrors.phone && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.phone}</p>}
                 </div>
               </div>
 
@@ -1351,7 +1363,7 @@ export default function WorkflowStep2Requests({
                   onChange={(e) => { setOrgForm({ ...orgForm, address: e.target.value }); if (orgFormErrors.address) setOrgFormErrors(p => ({...p, address: ''})); }}
                   className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.address ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
-                {orgFormErrors.address && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.address}</p>}
+                {orgFormErrors.address && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.address}</p>}
               </div>
 
               <div>
@@ -1405,7 +1417,7 @@ export default function WorkflowStep2Requests({
                   onChange={(e) => { setOrgForm({ ...orgForm, notes: e.target.value }); if (orgFormErrors.notes) setOrgFormErrors(p => ({...p, notes: ''})); }}
                   className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 resize-none ${orgFormErrors.notes ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
-                {orgFormErrors.notes && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">âš  {orgFormErrors.notes}</p>}
+                {orgFormErrors.notes && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.notes}</p>}
               </div>
             </div>
 
@@ -1427,14 +1439,14 @@ export default function WorkflowStep2Requests({
         </div>
       )}
 
-      {/* â”€â”€â”€ EDIT REQUEST MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ─── EDIT REQUEST MODAL ──────────────────────────────────────────── */}
       {editRequest && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Edit Placement Request</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">{editRequest.reqId} Â· {editRequest.student}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{editRequest.reqId} · {editRequest.student}</p>
               </div>
               <button onClick={() => setEditRequest(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100">
                 <X className="w-4 h-4" />
@@ -1480,7 +1492,7 @@ export default function WorkflowStep2Requests({
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
                 >
                   <option value="Normal">Normal</option>
-                  <option value="Urgent">ðŸ”¥ Urgent</option>
+                  <option value="Urgent">🔥 Urgent</option>
                 </select>
               </div>
               <div>
@@ -1528,7 +1540,7 @@ export default function WorkflowStep2Requests({
         </div>
       )}
 
-      {/* â”€â”€â”€ DELETE CONFIRM MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ─── DELETE CONFIRM MODAL ────────────────────────────────────────── */}
       {deleteConfirmReq && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
@@ -1586,4 +1598,3 @@ export default function WorkflowStep2Requests({
   </>
   );
 }
-

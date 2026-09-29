@@ -44,3 +44,14 @@ export const deleteStudent = async (id) => {
   const response = await api.delete(`/students/${id}`);
   return response.data;
 };
+
+// Snooze a student — persists snoozed state to the database
+export const snoozeStudent = async (id, { snoozed, snoozedAt, snoozeUntil, snoozeReason }) => {
+  const response = await api.put(`/students/${id}`, {
+    snoozed,
+    snoozedAt: snoozedAt ?? null,
+    snoozeUntil: snoozeUntil ?? null,
+    snoozeReason: snoozeReason ?? '',
+  });
+  return response.data;
+};
