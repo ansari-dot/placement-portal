@@ -11,6 +11,7 @@ import QuickActions from '../components/dashboard/QuickActions';
 import LivePresenceHub from '../components/dashboard/LivePresenceHub';
 import { Calendar } from 'lucide-react';
 import { fetchWorkflowDashboardData } from '../api/workflowApi';
+import { PLACEMENT_DATA_CHANGED } from '../api/placementEvents';
 
 export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState({
@@ -41,7 +42,23 @@ export default function DashboardPage() {
         setLoading(false);
       }
     };
+
+    // Load immediately on mount
     loadData();
+
+    // Refresh every 30 seconds so counts stay in sync without a page reload
+    const interval = setInterval(loadData, 30000);
+
+    // Also refresh when the user returns to this tab/window
+    const handleFocus = () => loadData();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener(PLACEMENT_DATA_CHANGED, loadData);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener(PLACEMENT_DATA_CHANGED, loadData);
+    };
   }, []);
 
   return (

@@ -1,16 +1,24 @@
 // src/components/workflow/WorkflowStep2Requests.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSelector } from 'react-redux';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, Download, Plus, MoreVertical,
   ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List,
   X, XCircle, Building2, User, Calendar, Clock, CheckCircle2,
-  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText, UserCheck
+  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText, UserCheck, Copy
 } from 'lucide-react';
 import { fetchJobs } from '../../api/jobApi';
-import { createIndustry } from '../../api/industryApi';
+import { createIndustry, fetchIndustries } from '../../api/industryApi';
+import { snoozeStudent, updateStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
+import PlacementRequestStudentDetails from './PlacementRequestStudentDetails';
+
+const getSnoozeUntil = (durationDays) => {
+  const expiration = new Date();
+  expiration.setDate(expiration.getDate() + durationDays);
+  return expiration.toISOString();
+};
 
 export default function WorkflowStep2Requests({
   requests = [],
@@ -22,9 +30,9 @@ export default function WorkflowStep2Requests({
   onAddContact,
   students = [],
   activeStudent = null,
-  appointments = []
+  appointments = [],
+  onRefreshStudents,
 }) {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const authUser = useSelector((state) => state.auth?.user);
   const [newRequestStudentId, setNewRequestStudentId] = useState('');
@@ -34,6 +42,8 @@ export default function WorkflowStep2Requests({
   const [newRequestRto, setNewRequestRto] = useState('');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [availableJobs, setAvailableJobs] = useState([]);
+  const [contactHistoryReadOnly, setContactHistoryReadOnly] = useState(false);
+  const [industryDirectory, setIndustryDirectory] = useState([]);
 
   // Auto open Add Contact / Industry modal for student if navigated with openContact=true
   useEffect(() => {
@@ -60,6 +70,9 @@ export default function WorkflowStep2Requests({
     fetchJobs({ status: 'Open' })
       .then(res => { if (res.success) setAvailableJobs(res.data || []); })
       .catch(() => { });
+    fetchIndustries()
+      .then((res) => setIndustryDirectory(Array.isArray(res?.data) ? res.data : []))
+      .catch(() => setIndustryDirectory([]));
   }, []);
 
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -115,11 +128,21 @@ export default function WorkflowStep2Requests({
   const [deleteConfirmReq, setDeleteConfirmReq] = useState(null);
   const [isDeletingReq, setIsDeletingReq] = useState(false);
   const [assignCoordinatorTarget, setAssignCoordinatorTarget] = useState(null);
+  const [placementDetailsTarget, setPlacementDetailsTarget] = useState(null);
+  const [changePriorityTarget, setChangePriorityTarget] = useState(null);
+  const [changePriority, setChangePriority] = useState('Normal');
+  const [changePriorityNote, setChangePriorityNote] = useState('');
+  const [changeSnoozeDuration, setChangeSnoozeDuration] = useState('7_days');
+  const [savingPriority, setSavingPriority] = useState(false);
   // ─── Add Industry Form ───────────────────────────────────────────────────
   const [orgForm, setOrgForm] = useState({
     organizationName: '',
     email: '',
     address: '',
+    suburb: '',
+    state: '',
+    postCode: '',
+    country: 'Australia',
     phone: '',
     contactPerson: '',
     industryType: 'Aged Care',
@@ -129,6 +152,37 @@ export default function WorkflowStep2Requests({
     appointmentTime: ''
   });
   const [orgFormErrors, setOrgFormErrors] = useState({});
+
+  const handleOrgNameChange = (organizationName) => {
+    const matchedIndustry = industryDirectory.find(
+      (industry) => (industry.name || '').trim().toLowerCase() === organizationName.trim().toLowerCase()
+    );
+    setOrgForm((previous) => ({
+      ...previous,
+      organizationName,
+      ...(matchedIndustry ? {
+        industryType: matchedIndustry.sector || previous.industryType,
+        contactPerson: matchedIndustry.contactPersonName || '',
+        email: matchedIndustry.contactEmail || '',
+        phone: matchedIndustry.contactPhone || '',
+        address: matchedIndustry.address || '',
+        suburb: matchedIndustry.suburb || '',
+        state: matchedIndustry.state || '',
+        postCode: matchedIndustry.postCode || '',
+        country: matchedIndustry.country || 'Australia',
+      } : {
+        industryType: 'Aged Care',
+        contactPerson: '',
+        email: '',
+        phone: '',
+        address: '',
+        suburb: '',
+        state: '',
+        postCode: '',
+        country: 'Australia',
+      }),
+    }));
+  };
 
   const handleAddOrgRecord = async () => {
     // Validate all required fields
@@ -185,22 +239,28 @@ export default function WorkflowStep2Requests({
         await onAddContact(targetKey, newRecord);
 
         // Also save to Industry collection so it immediately appears in Industries page (/industry)
-        try {
-          await createIndustry({
+        const existingIndustry = industryDirectory.some(
+          (industry) => (industry.name || '').trim().toLowerCase() === newOrgNorm
+        );
+        if (!existingIndustry) {
+          try {
+            const savedIndustry = await createIndustry({
             industryName: orgForm.organizationName.trim(),
             industryType: orgForm.industryType || 'Aged Care',
             contactPersonName: orgForm.contactPerson.trim(),
             contactEmail: orgForm.email.trim(),
             contactPhone: orgForm.phone.trim(),
             address: orgForm.address.trim(),
-            suburb: '',
-            state: '',
-            postCode: '',
-            country: 'Australia',
+            suburb: orgForm.suburb.trim(),
+            state: orgForm.state.trim(),
+            postCode: orgForm.postCode.trim(),
+            country: orgForm.country.trim() || 'Australia',
             shortDescription: orgForm.notes || '',
           });
-        } catch (indErr) {
-          console.log('Industry already in DB or synced:', indErr?.message);
+            if (savedIndustry?.data) setIndustryDirectory((previous) => [savedIndustry.data, ...previous]);
+          } catch (indErr) {
+            console.log('Industry already in DB or synced:', indErr?.message);
+          }
         }
 
         showToast(`Added contact record for ${orgForm.organizationName}`);
@@ -209,6 +269,10 @@ export default function WorkflowStep2Requests({
           organizationName: '',
           email: '',
           address: '',
+          suburb: '',
+          state: '',
+          postCode: '',
+          country: 'Australia',
           phone: '',
           contactPerson: '',
           industryType: 'Aged Care',
@@ -260,6 +324,39 @@ export default function WorkflowStep2Requests({
     setTimeout(() => setToast(null), 2500);
   };
 
+  const formatAvailability = (days, from, to) => {
+    const entries = days instanceof Map ? [...days.entries()] : Object.entries(days || {});
+    const availableDays = entries.filter(([, available]) => available).map(([day]) => day);
+    const hours = [from, to].filter(Boolean).join(' - ');
+    return [availableDays.join(', '), hours].filter(Boolean).join(' · ') || '—';
+  };
+
+  const formatAssignedDate = (date) => {
+    if (!date) return '—';
+    const parsed = new Date(date);
+    return Number.isNaN(parsed.getTime())
+      ? '—'
+      : parsed.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const handleCopyStudentContact = async (value, label) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(`${label} copied`);
+    } catch {
+      showToast(`Could not copy ${label.toLowerCase()}`);
+    }
+  };
+
+  const handleOpenContactHistory = (item) => {
+    setSelectedRequest({ ...item, id: item.reqId, dbId: item.id || item.reqId, requestedOn: item.date });
+    setContactHistoryReadOnly(true);
+    setActiveTab('Contact History');
+    setShowAddOrgModal(false);
+    setShowDrawer(true);
+  };
+
   const handleExport = (format) => {
     setShowExportMenu(false);
     const data = filteredRequests.map(s => `${s.reqId},${s.title},${s.student},${s.company},${s.rto},${s.status},${s.date}`).join('\n');
@@ -298,24 +395,12 @@ export default function WorkflowStep2Requests({
 
   const handleRowAction = async (action, item) => {
     setShowRowMenu(null);
-    const dbId = item.id || item.reqId;
     if (action === 'view') {
-      setSelectedRequest({
-        ...selectedRequest,
-        id: item.reqId,
-        dbId: item.id || item.reqId,
-        title: item.title,
-        student: item.student,
-        studentId: item.studentId || 'STU-0002453',
-        company: item.company,
-        rto: item.rto,
-        status: item.status,
-        requestedOn: `${item.date} at 10:24 AM`
-      });
-      setShowDrawer(true);
+      setPlacementDetailsTarget({ request: item, editable: false });
     } else if (action === 'addIndustry') {
       // ── Open Add Industry modal scoped to THIS student's request ──
       setSelectedRequest({
+        ...item,
         id: item.reqId,
         dbId: item.id || item.reqId,
         title: item.title,
@@ -327,21 +412,18 @@ export default function WorkflowStep2Requests({
         requestedOn: `${item.date} at 10:24 AM`,
         contactedIndustries: item.contactedIndustries || [],
       });
+      setContactHistoryReadOnly(false);
       setActiveTab('Contact History');
       setShowAddOrgModal(true);
     } else if (action === 'edit') {
-      const matchedStudent = students.find(s =>
-        (s.id && (s.id === item.studentId || s.id === item.id)) ||
-        (s.studentId && s.studentId === item.studentId) ||
-        (s.name && s.name.toLowerCase() === (item.student || '').toLowerCase())
-      );
-      const studentDbId = matchedStudent?.id || item.studentId || item.id;
-
-      if (studentDbId) {
-        navigate(`/students/${studentDbId}/edit`);
-      } else {
-        showToast('Unable to open the student profile for editing');
-      }
+      setPlacementDetailsTarget({ request: item, editable: true });
+    } else if (action === 'addAppointment') {
+      handleStartAppointmentForStudent(item);
+    } else if (action === 'changePriority') {
+      setChangePriorityTarget(item);
+      setChangePriority(item.priority || 'Normal');
+      setChangePriorityNote('');
+      setChangeSnoozeDuration('7_days');
     } else if (action === 'assignCoordinator') {
       const matchedStudent = students.find(s =>
         (s.id && (s.id === item.studentId || s.id === item.id)) ||
@@ -358,6 +440,64 @@ export default function WorkflowStep2Requests({
     } else if (action === 'delete') {
       // Open confirm modal — do NOT delete immediately
       setDeleteConfirmReq(item);
+    }
+  };
+
+  const handleSavePriorityChange = async () => {
+    const item = changePriorityTarget;
+    if (!item || !changePriorityNote.trim()) return;
+    if (!onUpdateRequest) {
+      showToast('Request updates are unavailable');
+      return;
+    }
+
+    const studentId = item.studentDbId || item.studentRecord?._id || item.studentRecord?.id || item.studentId;
+    const returnedToStep1 = ['Snooze', 'Inactive'].includes(changePriority);
+    const changedAt = new Date().toLocaleString('en-AU');
+    const auditNote = `Changed to ${changePriority} by ${authUser?.name || 'Coordinator'} on ${changedAt}: ${changePriorityNote.trim()}`;
+    const notes = [item.notes, auditNote].filter(Boolean).join('\n');
+    const nextStatus = ['Snooze', 'Inactive'].includes(changePriority)
+      ? 'On Hold'
+      : (item.status === 'On Hold' ? 'New' : item.status);
+
+    setSavingPriority(true);
+    try {
+      await onUpdateRequest(item.id || item.reqId, {
+        priority: changePriority,
+        status: nextStatus,
+        notes,
+        returnedToStep1: ['Snooze', 'Inactive'].includes(changePriority),
+      });
+
+      if (studentId) {
+        if (changePriority === 'Snooze') {
+          const durationDays = { '7_days': 7, '14_days': 14, '30_days': 30 }[changeSnoozeDuration];
+          const snoozeUntil = durationDays
+            ? getSnoozeUntil(durationDays)
+            : null;
+          await snoozeStudent(studentId, {
+            snoozed: true,
+            snoozedAt: new Date().toISOString(),
+            snoozeUntil,
+            snoozeReason: changePriorityNote.trim(),
+          });
+        } else {
+          await snoozeStudent(studentId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '' });
+        }
+        await updateStudent(studentId, {
+          internshipPriority: changePriority === 'Inactive' ? 'Inactive' : '',
+          placementStatus: returnedToStep1 ? 'Awaiting' : 'In Progress',
+        });
+      }
+
+      await onRefreshStudents?.();
+      showToast(`Placement request changed to ${changePriority}`);
+      setChangePriorityTarget(null);
+    } catch (err) {
+      console.error('Could not change placement request:', err);
+      showToast(err?.response?.data?.message || err?.message || 'Could not change placement request');
+    } finally {
+      setSavingPriority(false);
     }
   };
 
@@ -408,9 +548,11 @@ export default function WorkflowStep2Requests({
       rto: selectedRequest.rto || '',
       reqId: selectedRequest.id || selectedRequest.reqId || '',
       company: rec.organizationName || selectedRequest.company || '',
-      industryId: rec.id || '',
+      industryId: rec.id || rec._id || '',
       industryName: rec.organizationName || '',
       industryType: rec.industryType || '',
+      industryContact: rec,
+      requireAppointmentSchedule: true,
       interviewer: rec.contactPerson || '',
       location: rec.address || '',
       position: selectedRequest.title || 'Internship Placement',
@@ -425,6 +567,26 @@ export default function WorkflowStep2Requests({
     if (onNext) {
       onNext(selectedRequest, rec.organizationName, prefillData);
     }
+  };
+
+  const handleStartAppointmentForStudent = (request) => {
+    if (!(request.contactedIndustries || []).length) {
+      showToast('Add an industry contact before creating an appointment');
+      return;
+    }
+    const prefillData = {
+      student: request.student,
+      studentId: request.studentId || request.studentDbId,
+      rto: request.rto || '',
+      reqId: request.id || request.reqId || '',
+      company: '',
+      position: request.title || 'Internship Placement',
+      appointmentDate: '',
+      appointmentTime: '',
+      requireAppointmentSchedule: true,
+      openModal: true,
+    };
+    if (onNext) onNext(request, '', prefillData);
   };
 
   const getStatusColor = (status) => {
@@ -698,8 +860,8 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-visible">
-          <table className="w-full text-left border-collapse text-xs">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-x-auto">
+          <table className="w-full min-w-[1180px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
                 <th className="p-4 w-10">
@@ -711,10 +873,12 @@ export default function WorkflowStep2Requests({
                   />
                 </th>
                 <th className="p-4">Request</th>
-                <th className="p-4">Student</th>
-                <th className="p-4">RTO / College</th>
+                <th className="p-4">Student Name</th>
+                <th className="p-4">Available Days and Hours</th>
+                <th className="p-4">Student Address</th>
                 <th className="p-4">Contacted Industries</th>
-                <th className="p-4">Requested On</th>
+                <th className="p-4">Placement Request</th>
+                <th className="p-4">Coordinator</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -740,106 +904,53 @@ export default function WorkflowStep2Requests({
                       <p className="font-bold text-slate-900">{item.reqId}</p>
                       <p className="text-[11px] text-slate-500 font-medium">{item.title}</p>
                     </td>
-                    <td className="py-3 px-2 flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
-                        {item.student[0]}
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">{item.student}</p>
-                        <p className="text-[11px] text-slate-400">ST{paginatedRequests.indexOf(item) + 1 + (currentPage - 1) * pageSize}</p>
-                      </div>
-                    </td>
-                    <td className="p-4 text-slate-600">{item.rto}</td>
                     <td className="p-4">
-                      {contactCount === 0 ? (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">
-                          None
-                        </span>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          {(item.contactedIndustries || []).map((ci, idx) => {
-                            const orgName = (ci.organizationName || '').trim().toLowerCase();
-                            const studentName = (item.student || '').trim().toLowerCase();
-                            const studentId = (item.studentId || item.id || '').trim().toLowerCase();
-
-                            // Find the matching appointment (if any) — including outcome appointments
-                            const matchedAppt = (appointments || []).find((a) => {
-                              const aCompany = (a.company || '').trim().toLowerCase();
-                              const aStudent = (a.student || '').trim().toLowerCase();
-                              const aStudentId = (a.studentId || '').trim().toLowerCase();
-                              const isMatchStudent =
-                                (studentId && aStudentId === studentId) ||
-                                (studentName && aStudent === studentName);
-                              const isMatchOrg =
-                                orgName && aCompany && (aCompany === orgName || aCompany.includes(orgName) || orgName.includes(aCompany));
-                              const isMatchContactId =
-                                a.industryContactId && (a.industryContactId === ci.id || a.industryContactId === ci._id);
-                              return isMatchStudent && (isMatchOrg || isMatchContactId);
-                            });
-
-                            // Derive display label from the real appointment status / outcome
-                            let resp;
-                            if (!matchedAppt) {
-                              // No appointment at all — show Industry Contacted if org is recorded
-                              resp = ci.organizationName ? 'Industry Contacted' : (ci.response || 'In Discussion');
-                            } else if (matchedAppt.status === 'Confirmed' || matchedAppt.appointmentOutcome === 'successful') {
-                              resp = 'Placement Started';
-                            } else if (matchedAppt.status === 'Completed') {
-                              resp = 'Placement Completed';
-                            } else if (
-                              matchedAppt.status === 'Declined' &&
-                              matchedAppt.appointmentOutcome === 'not_suitable_site'
-                            ) {
-                              resp = 'Not Suitable Site';
-                            } else if (
-                              matchedAppt.status === 'Declined' ||
-                              matchedAppt.appointmentOutcome === 'industry_rejected'
-                            ) {
-                              resp = 'Industry Rejected';
-                            } else if (
-                              matchedAppt.status === 'Withdrawn' ||
-                              matchedAppt.appointmentOutcome === 'student_withdrawal'
-                            ) {
-                              resp = 'Student Withdrew';
-                            } else if (matchedAppt.status === 'No Show') {
-                              resp = 'Student Missed Appointment';
-                            } else if (matchedAppt.status === 'Cancelled') {
-                              resp = 'Cancelled';
-                            } else {
-                              resp = 'Appointment Scheduled';
-                            }
-
-                            const styleMap = {
-                              'Approved':                    'bg-emerald-50 text-emerald-700 border border-emerald-200',
-                              'Rejected':                    'bg-rose-50 text-rose-600 border border-rose-200',
-                              'Pending':                     'bg-amber-50 text-amber-700 border border-amber-200',
-                              'In Discussion':               'bg-blue-50 text-blue-700 border border-blue-200',
-                              'Industry Contacted':          'bg-cyan-50 text-cyan-700 border border-cyan-200',
-                              'Appointment Scheduled':       'bg-purple-50 text-purple-700 border border-purple-200',
-                              'Placement Started':           'bg-emerald-50 text-emerald-700 border border-emerald-300',
-                              'Placement Completed':         'bg-emerald-100 text-emerald-800 border border-emerald-400',
-                              'Industry Rejected':           'bg-rose-50 text-rose-700 border border-rose-200',
-                              'Not Suitable Site':           'bg-amber-50 text-amber-800 border border-amber-400',
-                              'Student Withdrew':            'bg-orange-50 text-orange-700 border border-orange-200',
-                              'Student Missed Appointment':  'bg-slate-100 text-slate-600 border border-slate-300',
-                              'Cancelled':                   'bg-slate-100 text-slate-500 border border-slate-300',
-                            };
-                            const cls = styleMap[resp] || 'bg-blue-50 text-blue-700 border border-blue-200';
-                            return (
-                              <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}`}>
-                                <span className="max-w-[100px] truncate" title={ci.organizationName}>
-                                  {ci.organizationName || 'Industry'}
-                                </span>
-                                <span className="opacity-80">· {resp}</span>
-                              </span>
-                            );
-                          })}
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
+                          {(item.student || 'S')[0]}
                         </div>
-                      )}
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900">{item.student}</p>
+                          {item.studentEmail && (
+                            <button type="button" title="Copy email" onClick={() => handleCopyStudentContact(item.studentEmail, 'Email')} className="flex items-center gap-1 mt-0.5 text-left text-[10px] text-slate-500 hover:text-blue-700">
+                              <span className="break-all">{item.studentEmail}</span><Copy className="w-2.5 h-2.5 shrink-0" />
+                            </button>
+                          )}
+                          {item.studentPhone && (
+                            <button type="button" title="Copy phone" onClick={() => handleCopyStudentContact(item.studentPhone, 'Phone number')} className="flex items-center gap-1 mt-0.5 text-left text-[10px] text-slate-500 hover:text-blue-700">
+                              <span>{item.studentPhone}</span><Copy className="w-2.5 h-2.5 shrink-0" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="p-4 text-slate-500">{item.date}</td>
+                    <td className="p-4 text-slate-600">{formatAvailability(item.availabilityDays, item.availabilityFrom, item.availabilityTo)}</td>
+                    <td className="p-4 text-slate-600">{item.studentAddress || '—'}</td>
+                    <td className="p-4">
+                      <button type="button" onClick={() => handleOpenContactHistory(item)} className="text-left px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 whitespace-nowrap">
+                        {contactCount} {contactCount === 1 ? 'Industry' : 'Industries'} Contacted
+                      </button>
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${item.priority === 'Urgent' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                        {item.priority}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <p className="text-xs font-semibold text-slate-800">{item.coordinatorName || '—'}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Assigned Date: {formatAssignedDate(item.assignedCoordinatorAt)}</p>
+                    </td>
                     <td className="p-4 text-right relative" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          title="Add appointment for this student"
+                          onClick={() => handleStartAppointmentForStudent(item)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-50"
+                        >
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>Add Appointment</span>
+                        </button>
                         <button
                           onClick={(e) => {
                             if (showRowMenu === item.reqId) {
@@ -865,20 +976,24 @@ export default function WorkflowStep2Requests({
                         >
                           <button onClick={() => handleRowAction('view', item)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                             <Eye className="w-3.5 h-3.5 text-slate-400" />
-                            <span>View Details</span>
+                            <span>View Placement Details</span>
                           </button>
                           <button onClick={() => handleRowAction('edit', item)} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                             <Edit className="w-3.5 h-3.5 text-slate-400" />
-                            <span>Edit</span>
+                            <span>Edit Placement Details</span>
                           </button>
                           <button onClick={() => handleRowAction('addIndustry', item)} className="w-full text-left px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 rounded-lg flex items-center space-x-2">
                             <Plus className="w-3.5 h-3.5 text-indigo-500" />
                             <span>Add Industry</span>
                           </button>
                           <div className="my-0.5 border-t border-slate-100" />
-                          <button onClick={() => handleRowAction('delete', item)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Delete</span>
+                          <button onClick={() => handleRowAction('addAppointment', item)} className="w-full text-left px-3 py-2 text-xs text-blue-700 hover:bg-blue-50 rounded-lg flex items-center space-x-2">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>Add Appointment</span>
+                          </button>
+                          <button onClick={() => handleRowAction('changePriority', item)} className="w-full text-left px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 rounded-lg flex items-center space-x-2">
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Change Placement Request</span>
                           </button>
                         </div>
                       )}
@@ -888,7 +1003,7 @@ export default function WorkflowStep2Requests({
               })}
               {paginatedRequests.length === 0 && (
                 <tr>
-                  <td colSpan="8" className="p-8 text-center text-slate-400 text-sm">
+                  <td colSpan="9" className="p-8 text-center text-slate-400 text-sm">
                     No requests found matching your filters
                   </td>
                 </tr>
@@ -990,7 +1105,7 @@ export default function WorkflowStep2Requests({
       </div>
 
       {showDrawer && selectedRequest && (
-        <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
+        <div className={`${contactHistoryReadOnly ? 'fixed inset-4 z-50 w-auto max-w-none overflow-y-auto shadow-2xl' : 'w-80 shrink-0 overflow-hidden'} bg-white rounded-2xl border border-slate-200 shadow-sm`}>
           <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-purple-900 p-5">
             <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
             <div className="absolute bottom-0 left-0 w-16 h-16 bg-blue-400/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
@@ -1008,6 +1123,7 @@ export default function WorkflowStep2Requests({
                   <span>{selectedRequest.student}</span>
                 </p>
                 <p className="text-xs font-semibold text-slate-200 mt-0.5">{selectedRequest.title}</p>
+                {selectedRequest.notes && <p className="mt-2 whitespace-pre-wrap text-[10px] text-slate-300">{selectedRequest.notes}</p>}
                 <p className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
                   <Clock className="w-3 h-3" />
                   <span>Requested on {selectedRequest.requestedOn}</span>
@@ -1058,19 +1174,21 @@ export default function WorkflowStep2Requests({
                     <Building2 className="w-3.5 h-3.5 text-blue-600" />
                     <span>Contacted Organisations</span>
                   </h5>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddOrgModal(true)}
-                    className="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 text-[10px] font-bold rounded-lg flex items-center space-x-1 transition"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Add Industry</span>
-                  </button>
+                  {!contactHistoryReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddOrgModal(true)}
+                      className="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 text-[10px] font-bold rounded-lg flex items-center space-x-1 transition"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Industry</span>
+                    </button>
+                  )}
                 </div>
 
                 {currentContacts.length === 0 ? (
                   <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
-                    No industries contacted yet for this student. Click "+ Add Industry" above to record one.
+                    No industries contacted yet for this student.
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1104,13 +1222,20 @@ export default function WorkflowStep2Requests({
                         displayResponse = 'Placement Started';
                       } else if (matchedDrawerAppt.status === 'Completed') {
                         displayResponse = 'Placement Completed';
-                      } else if (matchedDrawerAppt.status === 'Declined' && matchedDrawerAppt.appointmentOutcome === 'not_suitable_site') {
+                      } else if (
+                        matchedDrawerAppt.status === 'Not Suitable Site' ||
+                        (matchedDrawerAppt.status === 'Declined' && matchedDrawerAppt.appointmentOutcome === 'not_suitable_site')
+                      ) {
                         displayResponse = 'Not Suitable Site';
-                      } else if (matchedDrawerAppt.status === 'Declined' || matchedDrawerAppt.appointmentOutcome === 'industry_rejected') {
+                      } else if (
+                        matchedDrawerAppt.status === 'Industry Rejected' ||
+                        matchedDrawerAppt.status === 'Declined' ||
+                        matchedDrawerAppt.appointmentOutcome === 'industry_rejected'
+                      ) {
                         displayResponse = 'Industry Rejected';
                       } else if (matchedDrawerAppt.status === 'Withdrawn' || matchedDrawerAppt.appointmentOutcome === 'student_withdrawal') {
                         displayResponse = 'Student Withdrew';
-                      } else if (matchedDrawerAppt.status === 'No Show') {
+                      } else if (matchedDrawerAppt.status === 'No Show' || matchedDrawerAppt.status === 'Student Missed Appointment') {
                         displayResponse = 'Student Missed Appointment';
                       } else if (matchedDrawerAppt.status === 'Cancelled') {
                         displayResponse = 'Cancelled';
@@ -1130,7 +1255,7 @@ export default function WorkflowStep2Requests({
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-600 truncate">{rec.email}</p>
-                        <p className="text-[10px] text-slate-500">{rec.address}</p>
+                        <p className="text-[10px] text-slate-500">{[rec.address, rec.suburb, rec.state, rec.postCode, rec.country].filter(Boolean).join(', ')}</p>
                         {/* Coordinator attribution — who added this industry contact */}
                         {rec.addedByName && (
                           <p className="text-[10px] text-slate-500 flex items-center gap-1">
@@ -1218,14 +1343,16 @@ export default function WorkflowStep2Requests({
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => { setActiveTab('Contact History'); setShowAddOrgModal(true); }}
-                    className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Industry Contact Record</span>
-                  </button>
+                  {!contactHistoryReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('Contact History'); setShowAddOrgModal(true); }}
+                      className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Industry Contact Record</span>
+                    </button>
+                  )}
                   <button
                     onClick={handleCreateAppointment}
                     className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
@@ -1282,9 +1409,13 @@ export default function WorkflowStep2Requests({
                   type="text"
                   placeholder="e.g. Sunnyside Aged Care Center"
                   value={orgForm.organizationName}
-                  onChange={(e) => { setOrgForm({ ...orgForm, organizationName: e.target.value }); if (orgFormErrors.organizationName) setOrgFormErrors(p => ({...p, organizationName: ''})); }}
+                  list="step2-industry-directory"
+                  onChange={(e) => { handleOrgNameChange(e.target.value); if (orgFormErrors.organizationName) setOrgFormErrors(p => ({...p, organizationName: ''})); }}
                   className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.organizationName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
+                <datalist id="step2-industry-directory">
+                  {industryDirectory.map((industry) => <option key={industry._id || industry.id || industry.name} value={industry.name} />)}
+                </datalist>
                 {orgFormErrors.organizationName && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.organizationName}</p>}
               </div>
 
@@ -1300,6 +1431,8 @@ export default function WorkflowStep2Requests({
                   >
                     <option value="Aged Care">Aged Care</option>
                     <option value="Disability Centre">Disability Centre</option>
+                    <option value="Montessori School">Montessori School</option>
+                    <option value="Day Care">Day Care</option>
                     <option value="Childcare/ECEC">Childcare/ECEC</option>
                     <option value="Information Technology">Information Technology</option>
                     <option value="Healthcare">Healthcare</option>
@@ -1358,12 +1491,31 @@ export default function WorkflowStep2Requests({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. 123 High St, Melbourne VIC"
+                  placeholder="Street address"
                   value={orgForm.address}
                   onChange={(e) => { setOrgForm({ ...orgForm, address: e.target.value }); if (orgFormErrors.address) setOrgFormErrors(p => ({...p, address: ''})); }}
                   className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.address ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
                 />
                 {orgFormErrors.address && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.address}</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">City / Suburb</label>
+                  <input type="text" value={orgForm.suburb} onChange={(e) => setOrgForm({ ...orgForm, suburb: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">State</label>
+                  <input type="text" value={orgForm.state} onChange={(e) => setOrgForm({ ...orgForm, state: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Zip Code</label>
+                  <input type="text" value={orgForm.postCode} onChange={(e) => setOrgForm({ ...orgForm, postCode: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Country</label>
+                  <input type="text" value={orgForm.country} onChange={(e) => setOrgForm({ ...orgForm, country: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                </div>
               </div>
 
               <div>
@@ -1438,6 +1590,141 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
       )}
+
+      {placementDetailsTarget && (
+        <PlacementRequestStudentDetails
+          request={placementDetailsTarget.request}
+          editable={placementDetailsTarget.editable}
+          onClose={() => setPlacementDetailsTarget(null)}
+          onSaved={onRefreshStudents}
+        />
+      )}
+
+      {changePriorityTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+          <section className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Change Placement Request</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {changePriorityTarget.student} &nbsp;·&nbsp;
+                  <span className="font-semibold">Current: {changePriorityTarget.priority}</span>
+                </p>
+              </div>
+              <button type="button" onClick={() => setChangePriorityTarget(null)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 py-4">
+              {/* Priority selector */}
+              <div>
+                <p className="mb-2 text-xs font-semibold text-slate-700">
+                  New Priority <span className="text-rose-500">*</span>
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'Normal',   hint: 'Normal Priority',              style: 'blue'   },
+                    { value: 'Urgent',   hint: 'Urgent Priority',              style: 'rose'   },
+                    { value: 'Inactive', hint: 'Inactive — returns to Step 1', style: 'violet' },
+                    { value: 'Snooze',   hint: 'Snooze — returns to Step 1',  style: 'amber'  },
+                  ].map(({ value, hint, style }) => {
+                    const selected = changePriority === value;
+                    const palettes = {
+                      blue:   selected ? 'bg-blue-50 border-blue-600 text-blue-700'       : 'border-slate-200 hover:border-blue-300',
+                      rose:   selected ? 'bg-rose-50 border-rose-600 text-rose-700'       : 'border-slate-200 hover:border-rose-300',
+                      violet: selected ? 'bg-violet-50 border-violet-600 text-violet-700' : 'border-slate-200 hover:border-violet-300',
+                      amber:  selected ? 'bg-amber-50 border-amber-600 text-amber-900'    : 'border-slate-200 hover:border-amber-300',
+                    };
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setChangePriority(value)}
+                        className={`rounded-lg border px-3 py-2.5 text-left transition ${palettes[style]} ${selected ? 'font-bold' : 'bg-white text-slate-700'}`}
+                      >
+                        <span className="flex items-center justify-between text-xs">
+                          {value}
+                          <input type="radio" name="step2-change-priority" checked={selected} onChange={() => setChangePriority(value)} className="accent-cyan-700" />
+                        </span>
+                        <span className="mt-1 block text-[10px] font-normal text-slate-500">{hint}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Snooze duration */}
+              {changePriority === 'Snooze' && (
+                <label className="block space-y-1.5 text-xs font-semibold text-slate-700">
+                  <span>Snooze Duration</span>
+                  <select
+                    value={changeSnoozeDuration}
+                    onChange={(e) => setChangeSnoozeDuration(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal"
+                  >
+                    <option value="7_days">7 Days</option>
+                    <option value="14_days">14 Days</option>
+                    <option value="30_days">30 Days</option>
+                    <option value="indefinite">Until manually restored</option>
+                  </select>
+                </label>
+              )}
+
+              {/* Mandatory note */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">
+                  Reason / Note <span className="text-rose-500">*</span>
+                  <span className="ml-1 font-normal text-slate-400">(required to enable Save)</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={changePriorityNote}
+                  onChange={(e) => setChangePriorityNote(e.target.value)}
+                  placeholder={`e.g. Changed to ${changePriority}: I have tried contacting the student for 3 days but have been unsuccessful.`}
+                  className={`w-full rounded-lg border px-3 py-2 text-xs focus:outline-none ${
+                    changePriorityNote.trim()
+                      ? 'border-emerald-400 focus:border-emerald-500'
+                      : 'border-rose-300 focus:border-rose-400 bg-rose-50/30'
+                  }`}
+                />
+                {!changePriorityNote.trim() && (
+                  <p className="text-[10px] text-rose-500">⚠ Please type a note before saving.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+              <p className="text-[10px] text-slate-400">
+                {['Snooze', 'Inactive'].includes(changePriority)
+                  ? '⚠ Student will be moved back to Step 1.'
+                  : 'Student stays in Step 2 – Placement Request.'}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={savingPriority}
+                  onClick={() => setChangePriorityTarget(null)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingPriority || !changePriorityNote.trim()}
+                  onClick={handleSavePriorityChange}
+                  className="rounded-lg bg-cyan-700 px-4 py-2 text-xs font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {savingPriority ? 'Saving…' : 'Save Change'}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+
 
       {/* ─── EDIT REQUEST MODAL ──────────────────────────────────────────── */}
       {editRequest && (

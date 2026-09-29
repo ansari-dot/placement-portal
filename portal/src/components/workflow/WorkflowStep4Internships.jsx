@@ -92,6 +92,8 @@ export default function WorkflowStep4Internships({
       case 'Waiting to Join': return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'Completed': return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'Declined': return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'Industry Rejected': return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'Student Missed Appointment': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Not Suitable Site': return 'bg-amber-50 text-amber-800 border-amber-400';
       case 'Withdrawn': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Cancelled': return 'bg-slate-100 text-slate-600 border-slate-200';
@@ -123,7 +125,7 @@ export default function WorkflowStep4Internships({
       const startDate = parseLocalDate(startStr);
 
       // Terminal statuses that are always honoured regardless of dates
-      if (['Declined', 'Not Suitable Site', 'Withdrawn', 'Cancelled'].includes(storedStatus)) return storedStatus;
+      if (['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Not Suitable Site', 'Withdrawn', 'Cancelled'].includes(storedStatus)) return storedStatus;
 
       // "Completed" is only valid once end date has actually passed
       if (storedStatus === 'Completed') {
@@ -241,10 +243,14 @@ export default function WorkflowStep4Internships({
             cancellationReason = appt.cancellationReason || 'Placement site was not suitable for the student';
             cancellationType = appt.cancellationType || 'student';
           } else {
-            status = 'Declined';
+            status = 'Industry Rejected';
             cancellationReason = appt.cancellationReason || 'Industry rejected the student';
             cancellationType = appt.cancellationType || 'industry';
           }
+        } else if (appt.status === 'Industry Rejected') {
+          status = 'Industry Rejected';
+          cancellationReason = appt.cancellationReason || 'Industry rejected the student';
+          cancellationType = appt.cancellationType || 'industry';
         } else if (appt.status === 'Withdrawn') {
           status = 'Withdrawn';
           cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
@@ -253,7 +259,7 @@ export default function WorkflowStep4Internships({
           status = 'Cancelled';
           cancellationReason = appt.cancellationReason || 'Appointment was cancelled';
         } else if (appt.status === 'No Show') {
-          status = 'Declined';
+          status = 'Student Missed Appointment';
           cancellationReason = 'Student did not show up for appointment';
           cancellationType = 'student';
         } else if (hasCommenced) {
@@ -328,7 +334,7 @@ export default function WorkflowStep4Internships({
   // Helper to check if placement is ending soon or ended
   const getEndingStatus = (item) => {
     if (!item) return null;
-    if (item.status === 'Withdrawn' || item.status === 'Declined' || item.status === 'Cancelled') {
+    if (item.status === 'Withdrawn' || item.status === 'Declined' || item.status === 'Industry Rejected' || item.status === 'Student Missed Appointment' || item.status === 'Cancelled') {
       return null;
     }
 
@@ -400,7 +406,7 @@ export default function WorkflowStep4Internships({
     const waiting = processedInternships.filter(i => i.status === 'Waiting to Join').length;
     const joined = processedInternships.filter(i => i.status === 'Joined').length;
     const completed = processedInternships.filter(i => i.status === 'Completed').length;
-    const declined = processedInternships.filter(i => i.status === 'Declined').length;
+    const declined = processedInternships.filter(i => i.status === 'Declined' || i.status === 'Industry Rejected').length;
     const notSuitable = processedInternships.filter(i => i.status === 'Not Suitable Site').length;
     const withdrawn = processedInternships.filter(i => i.status === 'Withdrawn').length;
     const cancelled = processedInternships.filter(i => i.status === 'Cancelled').length;
@@ -602,7 +608,7 @@ export default function WorkflowStep4Internships({
           </div>
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
-              <p className="text-[9px] text-slate-500 font-medium">Declined</p>
+              <p className="text-[9px] text-slate-500 font-medium">Industry Rejected</p>
               <h3 className="text-base font-bold text-slate-900 mt-0.5">{metrics.declined}</h3>
             </div>
             <div className="w-6 h-6 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
@@ -669,7 +675,7 @@ export default function WorkflowStep4Internships({
             </button>
             {showStatusFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
-                {['All', 'Active', 'Joined', 'Waiting to Join', 'Completed', 'Declined', 'Withdrawn', 'Cancelled'].map((s) => (
+                {['All', 'Active', 'Joined', 'Waiting to Join', 'Completed', 'Industry Rejected', 'Withdrawn', 'Cancelled', 'Student Missed Appointment'].map((s) => (
                   <button 
                     key={s}
                     onClick={() => { setStatusFilter(s); setShowStatusFilter(false); setCurrentPage(1); }}
@@ -737,7 +743,7 @@ export default function WorkflowStep4Internships({
 
         {/* ─── Status Tabs ────────────────────────────────────────────────── */}
         <div className="flex border-b border-slate-200 text-xs font-semibold text-slate-500 space-x-6 px-1 overflow-x-auto">
-          {['All Placements', 'Placement Started', 'Active', 'Waiting to Join', 'Joined', 'Declined', 'Not Suitable Site', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
+          {['All Placements', 'Placement Started', 'Active', 'Waiting to Join', 'Joined', 'Industry Rejected', 'Student Missed Appointment', 'Not Suitable Site', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
             <button
               key={tab}
               onClick={() => { setActiveStatusTab(tab); setCurrentPage(1); }}
@@ -1001,6 +1007,8 @@ export default function WorkflowStep4Internships({
           <div className={`relative bg-gradient-to-br from-slate-900 via-slate-800 to-${
             selectedInternship.status === 'Completed' ? 'purple' : 
             selectedInternship.status === 'Declined' ? 'rose' : 
+            selectedInternship.status === 'Industry Rejected' ? 'rose' :
+            selectedInternship.status === 'Student Missed Appointment' ? 'orange' :
             selectedInternship.status === 'Not Suitable Site' ? 'amber' :
             selectedInternship.status === 'Withdrawn' ? 'orange' : 
             selectedInternship.status === 'Cancelled' ? 'slate' : 'emerald'
@@ -1087,7 +1095,7 @@ export default function WorkflowStep4Internships({
             </div>
 
             {/* Show cancellation reason if exists */}
-            {(selectedInternship.status === 'Declined' || selectedInternship.status === 'Not Suitable Site' || selectedInternship.status === 'Withdrawn' || selectedInternship.status === 'Cancelled') && 
+            {(selectedInternship.status === 'Declined' || selectedInternship.status === 'Industry Rejected' || selectedInternship.status === 'Student Missed Appointment' || selectedInternship.status === 'Not Suitable Site' || selectedInternship.status === 'Withdrawn' || selectedInternship.status === 'Cancelled') && 
               selectedInternship.cancellationReason && (
                 <div className="relative mt-3 p-2 bg-white/10 rounded-xl border border-white/10">
                   <div className="flex items-start space-x-2">
@@ -1238,7 +1246,7 @@ export default function WorkflowStep4Internships({
                 </div>
                 <div className="flex justify-between border-b border-slate-100 pb-1.5">
                   <span className="text-slate-400">Status</span>
-                  <span className={`font-bold ${selectedInternship.status === 'Declined' || selectedInternship.status === 'Not Suitable Site' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  <span className={`font-bold ${selectedInternship.status === 'Declined' || selectedInternship.status === 'Industry Rejected' || selectedInternship.status === 'Not Suitable Site' ? 'text-rose-600' : 'text-emerald-600'}`}>
                     {selectedInternship.status}
                   </span>
                 </div>
@@ -1306,7 +1314,7 @@ export default function WorkflowStep4Internships({
                   onChange={e => setEditIntForm(p => ({ ...p, status: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
                 >
-                  {['Placement Started','Waiting to Join','Joined','Active','Completed','Cancelled','On Hold','Declined','Not Suitable Site','Withdrawn'].map(s => (
+                  {['Placement Started','Waiting to Join','Joined','Active','Completed','Cancelled','On Hold','Industry Rejected','Student Missed Appointment','Not Suitable Site','Withdrawn'].map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>

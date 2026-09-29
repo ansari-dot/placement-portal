@@ -1,34 +1,105 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, UserCheck, FileText, CheckCircle, XCircle, FileX, AlertCircle } from 'lucide-react';
+import {
+  Clock,
+  Loader2,
+  CalendarClock,
+  CalendarCheck,
+  Building2,
+  UserMinus,
+  XCircle,
+  MapPinOff,
+  Play,
+  CheckCircle2,
+} from 'lucide-react';
 
 export default function InternshipRequestsCard({ stats, loading }) {
   const items = [
-    { label: 'Pending', count: stats?.pending ?? 0, icon: <Clock className="text-amber-500" size={18} />, bg: 'bg-amber-50' },
-    { label: 'In Review', count: stats?.assigned ?? 0, icon: <UserCheck className="text-blue-500" size={18} />, bg: 'bg-blue-50' },
-    { label: 'Appointment', count: stats?.appointment ?? 0, icon: <FileText className="text-indigo-500" size={18} />, bg: 'bg-indigo-50' },
-    { label: 'Approved', count: stats?.placed ?? 0, icon: <CheckCircle className="text-emerald-500" size={18} />, bg: 'bg-emerald-50' },
-    { label: 'Rejected', count: stats?.failed ?? 0, icon: <XCircle className="text-rose-500" size={18} />, bg: 'bg-rose-50' },
-    { label: 'On Hold', count: stats?.withdrawn ?? 0, icon: <FileX className="text-slate-500" size={18} />, bg: 'bg-slate-100' },
-    { label: 'Declined', count: stats?.declined ?? 0, icon: <AlertCircle className="text-red-400" size={18} />, bg: 'bg-red-50' },
+    {
+      label: 'Awaiting',
+      count: stats?.awaiting ?? 0,
+      icon: <Clock className="text-slate-500" size={18} />,
+      bg: 'bg-slate-100',
+    },
+    {
+      label: 'In Progress',
+      count: stats?.inProgress ?? 0,
+      icon: <Loader2 className="text-blue-500" size={18} />,
+      bg: 'bg-blue-50',
+    },
+    {
+      label: 'Industry Contacted',
+      count: stats?.industryContacted ?? 0,
+      icon: <Building2 className="text-cyan-600" size={18} />,
+      bg: 'bg-cyan-50',
+    },
+    {
+      label: 'Appointment Scheduled',
+      count: stats?.appointmentScheduled ?? 0,
+      icon: <CalendarClock className="text-indigo-500" size={18} />,
+      bg: 'bg-indigo-50',
+    },
+    {
+      label: 'Appointment Successful',
+      count: stats?.appointmentSuccessful ?? 0,
+      icon: <CalendarCheck className="text-teal-500" size={18} />,
+      bg: 'bg-teal-50',
+    },
+    {
+      label: 'Student Withdraw',
+      count: stats?.studentWithdraw ?? 0,
+      icon: <UserMinus className="text-amber-500" size={18} />,
+      bg: 'bg-amber-50',
+    },
+    {
+      label: 'Industry Rejected',
+      count: stats?.industryRejected ?? 0,
+      icon: <XCircle className="text-rose-500" size={18} />,
+      bg: 'bg-rose-50',
+    },
+    {
+      label: 'Site Not Suitable',
+      count: stats?.notSuitableSite ?? 0,
+      icon: <MapPinOff className="text-amber-600" size={18} />,
+      bg: 'bg-amber-50',
+    },
+    {
+      label: 'Placement Started',
+      count: stats?.placementStarted ?? 0,
+      icon: <Play className="text-emerald-500" size={18} />,
+      bg: 'bg-emerald-50',
+    },
+    {
+      label: 'Placement Completed',
+      count: stats?.placementCompleted ?? 0,
+      icon: <CheckCircle2 className="text-emerald-700" size={18} />,
+      bg: 'bg-emerald-100',
+    },
   ];
 
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between w-full max-w-7xl mx-auto h-full">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-bold text-slate-900 tracking-tight">Placement Requests</h3>
-        <Link to="/workflow?step=2" className="text-xs font-semibold text-blue-600 hover:underline">View All &rsaquo;</Link>
+        <h3 className="text-base font-bold text-slate-900 tracking-tight">Placement Status</h3>
+        <Link to="/workflow?step=1" className="text-xs font-semibold text-blue-600 hover:underline">
+          View All &rsaquo;
+        </Link>
       </div>
-      <div className="grid grid-cols-7 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10 gap-2">
         {items.map((item, idx) => (
-          <div key={idx} className="flex flex-col items-center text-center p-3 rounded-xl hover:bg-slate-50/80 transition border border-transparent hover:border-slate-200">
-            <div className={`p-2.5 rounded-xl mb-2.5 ${item.bg}`}>
+          <div
+            key={idx}
+            className="min-w-0 flex flex-col items-center text-center p-2 rounded-xl hover:bg-slate-50/80 transition border border-transparent hover:border-slate-200"
+          >
+            <div className={`p-2.5 rounded-xl mb-2 ${item.bg}`}>
               {item.icon}
             </div>
             <span className="text-xl font-bold text-slate-900 mb-1 tracking-tight">
               {loading ? '...' : item.count}
             </span>
-            <span className="text-[11px] text-slate-400 font-medium leading-tight">{item.label}</span>
+            <span className="w-full min-h-8 text-[10px] text-slate-500 font-medium leading-tight text-center break-words">
+              {item.label}
+            </span>
           </div>
         ))}
       </div>

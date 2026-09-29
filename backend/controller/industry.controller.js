@@ -462,32 +462,26 @@ export const getMyIndustriesController = async (req, res) => {
     const userId = req.user._id;
     const isAdmin = req.user.role === 'Administrator';
 
-    // ── Admin shortcut: return all industries with full enrichment ─────────
-    if (isAdmin) {
-      const all = await IndustryModel.find().lean();
-      const enriched = all.map(ind => ({
-        ...ind,
-        currentlyPlacedStudents: [],
-        previouslyPlacedStudents: [],
-        currentlyPlacedCount: 0,
-        previouslyPlacedCount: 0,
-      }));
-      return res.status(200).json({ success: true, data: enriched });
-    }
-
-    // ── Coordinator path ───────────────────────────────────────────────────
-
-    // Step A: industries directly created by / credited to this user (ObjectId match)
-    const createdByIds = new Set(
-      (await IndustryModel.find({ createdBy: userId }, { _id: 1 }).lean())
-        .map(i => i._id.toString())
-    );
-
-    // Step B: find this coordinator's specifically assigned students (ObjectId-based)
+    // Admin gets every student for placement lists; coordinators get only their assigned students.
     const myStudents = await StudentModel.find(
-      { assignedCoordinator: userId },
+      isAdmin
+        ? {}
+        : {
+            $or: [
+              { assignedCoordinator: userId },
+              ...(req.user.name ? [{ assignedCoordinatorName: safeRegex(req.user.name) }] : []),
+            ],
+          },
       { _id: 1, studentId: 1, firstName: 1, lastName: 1 }
     ).lean();
+
+    // Industries credited directly to this coordinator are visible even without student links.
+    const createdByIds = isAdmin
+      ? new Set()
+      : new Set(
+          (await IndustryModel.find({ createdBy: userId }, { _id: 1 }).lean())
+            .map(i => i._id.toString())
+        );
 
     // Build a set of the students' business-level studentId strings (used in workflow sub-docs)
     const myStudentIdStrings = new Set(
@@ -534,6 +528,7 @@ export const getMyIndustriesController = async (req, res) => {
     // Fetch ALL industries once, then filter to those matching condition A or B
     const allIndustries = await IndustryModel.find().lean();
     const myIndustries = allIndustries.filter(ind => {
+      if (isAdmin) return true;
       // Condition A: ObjectId match on createdBy (created by / credited to this coordinator)
       if (createdByIds.has(ind._id.toString())) return true;
       // Condition B: one of this coordinator's specifically assigned students is linked

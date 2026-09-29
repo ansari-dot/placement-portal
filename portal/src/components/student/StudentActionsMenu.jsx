@@ -8,6 +8,8 @@ export default function StudentActionsMenu({
   hasPlacementRequest = false,
   isSnoozed = false,
   isAdmin = false,
+  allowGenerate = true,
+  allowCreateAppointment = true,
 }) {
   const hasCoordinator = !!(student?.assignedCoordinator || student?.assignedCoordinatorName);
 
@@ -25,7 +27,7 @@ export default function StudentActionsMenu({
         </button>
       ) : (
         /* Generate Placement Request — admin only; coordinators do not see this */
-        isAdmin && (
+        isAdmin && allowGenerate && (
           <button
             onClick={() => { onClose(); onAction('generateRequest', student); }}
             className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
@@ -84,13 +86,15 @@ export default function StudentActionsMenu({
         <span>Add Industry</span>
       </button>
 
-      <button
-        onClick={() => { onClose(); onAction('createAppointment', student); }}
-        className="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50 flex items-center space-x-2 transition cursor-pointer"
-      >
-        <Calendar size={14} className="text-indigo-500" />
-        <span>Create Appointment</span>
-      </button>
+      {allowCreateAppointment && (
+        <button
+          onClick={() => { onClose(); onAction('createAppointment', student); }}
+          className="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50 flex items-center space-x-2 transition cursor-pointer"
+        >
+          <Calendar size={14} className="text-indigo-500" />
+          <span>Create Appointment</span>
+        </button>
+      )}
 
       {canAssign && (
         <button

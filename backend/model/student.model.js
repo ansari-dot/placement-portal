@@ -461,6 +461,30 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+
+    // ===== Placement Status =====
+    // Tracks the student's current stage in the placement pipeline.
+    // Automatically updated by workflow service side-effects.
+    placementStatus: {
+      type: String,
+      enum: {
+        values: [
+          "Awaiting",                // No placement request generated yet
+          "In Progress",             // Placement request has been generated
+          "Industry Contacted",      // At least one industry has been contacted
+          "Appointment Scheduled",   // Appointment has been scheduled
+          "Appointment Successful",  // Appointment confirmed with successful outcome
+          "Student Withdraw",        // Student withdrew from appointment/placement
+          "Student Missed Appointment", // Student did not show (No Show)
+          "Industry Rejected",       // Industry rejected the student
+          "Not Suitable Site",       // Placement site was not suitable
+          "Placement Started",       // Placement commenced
+          "Placement Completed",     // Placement end date reached / completed
+        ],
+        message: "Invalid placement status",
+      },
+      default: "Awaiting",
+    },
   },
   {
     timestamps: true,
