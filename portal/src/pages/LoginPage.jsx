@@ -2,17 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginThunk, clearError } from '../redux/authSlice';
+import { signupUser } from '../api/authApi';
 import logo1 from '../assets/logo1.png';
 import {
   Lock, Mail, Eye, EyeOff, ShieldCheck, ArrowRight,
-  AlertCircle, Loader2, LayoutDashboard, Users, User
+  AlertCircle, Loader2, LayoutDashboard, Users, User, UserPlus, CheckCircle2
 } from 'lucide-react';
 
 export default function LoginPage() {
+  const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
+  // Signup form state
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupRole, setSignupRole] = useState('Coordinator');
+  const [signupPhone, setSignupPhone] = useState('');
+  const [signupSuccess, setSignupSuccess] = useState(false);
+  const [signupLoading, setSignupLoading] = useState(false);
+  const [signupError, setSignupError] = useState('');
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -34,9 +46,40 @@ export default function LoginPage() {
     dispatch(loginThunk({ email, password }));
   };
 
+  const handleSignupSubmit = async (e) => {
+    e.preventDefault();
+    setSignupError('');
+    if (!signupName.trim() || !signupEmail.trim() || !signupPassword.trim()) {
+      setSignupError('All fields are required.');
+      return;
+    }
+    try {
+      setSignupLoading(true);
+      await signupUser({
+        name: signupName.trim(),
+        email: signupEmail.trim(),
+        password: signupPassword.trim(),
+        role: signupRole,
+        phone: signupPhone.trim(),
+      });
+      setSignupSuccess(true);
+    } catch (err) {
+      setSignupError(err?.response?.data?.message || 'Signup failed. Please try again.');
+    } finally {
+      setSignupLoading(false);
+    }
+  };
+
   const handleQuickFill = () => {
     setEmail('wasiq.shah@mantisplacements.com');
     setPassword('Admin@123');
+    dispatch(clearError());
+  };
+
+  const toggleMode = () => {
+    setIsSignup(!isSignup);
+    setSignupSuccess(false);
+    setSignupError('');
     dispatch(clearError());
   };
 
@@ -140,20 +183,140 @@ export default function LoginPage() {
 
             {/* Title & Subtitle */}
             <div className="text-center space-y-1 pb-2">
-              <h2 className="text-2xl font-extrabold text-slate-900">Admin Portal Access</h2>
-              <p className="text-xs text-slate-500 font-normal">Sign in with your administrator credentials</p>
+              <h2 className="text-2xl font-extrabold text-slate-900">
+                {isSignup ? 'Create Account' : 'Admin Portal Access'}
+              </h2>
+              <p className="text-xs text-slate-500 font-normal">
+                {isSignup ? 'Register for access to the placement portal' : 'Sign in with your administrator credentials'}
+              </p>
             </div>
 
             {/* Error Alert */}
-            {error && (
+            {error && !isSignup && (
               <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-rose-700">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <span className="font-medium">{error}</span>
               </div>
             )}
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            {/* Signup Error Alert */}
+            {signupError && isSignup && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-rose-700">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span className="font-medium">{signupError}</span>
+              </div>
+            )}
+
+            {/* Signup Success Message */}
+            {signupSuccess && isSignup && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col items-center text-center space-y-2">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                <p className="text-sm font-bold text-emerald-700">Registration Submitted!</p>
+                <p className="text-xs text-emerald-600">Your request has been sent for admin approval. You will be able to log in once approved.</p>
+                <button
+                  type="button"
+                  onClick={toggleMode}
+                  className="text-xs font-semibold text-[#0070f3] hover:underline cursor-pointer mt-1"
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            )}
+
+            {/* Signup Form */}
+            {isSignup && !signupSuccess ? (
+              <form onSubmit={handleSignupSubmit} className="space-y-3 text-xs">
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700">Full Name</label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      required
+                      value={signupName}
+                      onChange={(e) => setSignupName(e.target.value)}
+                      placeholder="e.g. John Smith"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                    <input
+                      type="email"
+                      required
+                      value={signupEmail}
+                      onChange={(e) => setSignupEmail(e.target.value)}
+                      placeholder="e.g. john@company.com"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                    <input
+                      type="password"
+                      required
+                      value={signupPassword}
+                      onChange={(e) => setSignupPassword(e.target.value)}
+                      placeholder="Create a password"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700">Role</label>
+                  <select
+                    value={signupRole}
+                    onChange={(e) => setSignupRole(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs cursor-pointer"
+                  >
+                    <option value="Coordinator">Coordinator</option>
+                    <option value="Student">Student</option>
+                    <option value="RTO Manager">RTO Manager</option>
+                    <option value="Industry">Industry</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700">Phone Number (Optional)</label>
+                  <input
+                    type="text"
+                    value={signupPhone}
+                    onChange={(e) => setSignupPhone(e.target.value)}
+                    placeholder="e.g. +61 400 000 000"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={signupLoading}
+                  className="w-full py-3 bg-[#0070f3] hover:bg-[#005ecb] text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                >
+                  {signupLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      <span>Submit Registration Request</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : !signupSuccess ? (
+              /* Login Form */
+              <form onSubmit={handleSubmit} className="space-y-4 text-xs">
               
               {/* Email Address */}
               <div className="space-y-1">
@@ -239,6 +402,7 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+            ) : null}
 
             {/* Bottom Security Note */}
             <div className="pt-2 text-center">
@@ -246,6 +410,20 @@ export default function LoginPage() {
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
                 <span>Protected by Placements Security</span>
               </div>
+            </div>
+
+            {/* Toggle Sign In / Sign Up */}
+            <div className="pt-3 text-center">
+              <p className="text-xs text-slate-500">
+                {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button
+                  type="button"
+                  onClick={toggleMode}
+                  className="font-semibold text-[#0070f3] hover:underline cursor-pointer"
+                >
+                  {isSignup ? 'Sign In' : 'Request Access'}
+                </button>
+              </p>
             </div>
 
           </div>

@@ -435,8 +435,11 @@ export default function WorkflowPage() {
       // Student Withdraw — most recent appointment or any internship is withdrawn
       const hasStudentWithdraw =
         !hasCompleted && !hasStartedPlacement && (
+          stu.placementStatus === 'Student Withdraw' ||
           sortedAppointments.some((a) =>
             a.status === 'Withdrawn' ||
+            a.status === 'Student Withdraw' ||
+            a.appointmentOutcome === 'student_withdrawal' ||
             a.cancellationType === 'withdrawn'
           ) ||
           matchingInternships.some((i) => i.status === 'Withdrawn')
@@ -445,6 +448,7 @@ export default function WorkflowPage() {
       // Not Suitable Site — site was deemed inappropriate
       const hasNotSuitableSite =
         !hasCompleted && !hasStartedPlacement && !hasStudentWithdraw && (
+          stu.placementStatus === 'Not Suitable Site' ||
           sortedAppointments.some((a) =>
             a.status === 'Not Suitable Site' ||
             a.appointmentOutcome === 'not_suitable_site' ||
@@ -455,6 +459,7 @@ export default function WorkflowPage() {
       // Industry Rejected — industry declined the student
       const hasIndustryRejected =
         !hasCompleted && !hasStartedPlacement && !hasStudentWithdraw && !hasNotSuitableSite && (
+          stu.placementStatus === 'Industry Rejected' ||
           sortedAppointments.some((a) =>
             a.status === 'Industry Rejected' ||
             (a.status === 'Declined' && a.appointmentOutcome !== 'not_suitable_site') ||
@@ -468,7 +473,10 @@ export default function WorkflowPage() {
       const hasStudentMissed =
         !hasCompleted && !hasStartedPlacement &&
         !hasNotSuitableSite && !hasStudentWithdraw && !hasIndustryRejected &&
-        sortedAppointments.some((a) => a.status === 'No Show' || a.status === 'Student Missed Appointment');
+        (
+          stu.placementStatus === 'Student Missed Appointment' ||
+          sortedAppointments.some((a) => a.status === 'No Show' || a.status === 'Student Missed Appointment')
+        );
 
       // Appointment Successful — outcome confirmed, not yet commenced
       const hasApptSuccessful =
@@ -621,38 +629,91 @@ export default function WorkflowPage() {
         const apptStuName = norm(appt.student);
         return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
       })
-      .map((appt) => ({
-        id: appt.id || appt._id || '',
-        apptId: appt.apptId || '',
-        student: appt.student || '',
-        studentId: appt.studentId || '',
-        rto: appt.rto || '',
-        email: appt.email || '',
-        phone: appt.phone || '',
-        date: appt.date || '',
-        time: appt.time || '',
-        company: appt.company || '',
-        interviewer: appt.interviewer || '',
-        location: appt.location || '',
-        meetingType: appt.meetingType || 'In-Person',
-        position: appt.position || '',
-        linkedReq: appt.linkedReq || '',
-        linkedReqStatus: appt.linkedReqStatus || '',
-        industryContactId: appt.industryContactId || '',
-        status: appt.status || 'Scheduled',
-        // ── Needed by Step2 hasAppt check, Step3 outcome modal, Step4 status & end-date
-        commencementDate: appt.commencementDate || '',
-        expectedCompletionDate: appt.expectedCompletionDate || '',
-        appointmentOutcome: appt.appointmentOutcome || '',
-        notes: appt.notes || '',
-        cancellationReason: appt.cancellationReason || '',
-        cancellationType: appt.cancellationType || '',
-        cancellationTypeLabel: appt.cancellationTypeLabel || '',
-        cancelledAt: appt.cancelledAt || '',
-        updatedAt: appt.updatedAt || '',
-        createdAt: appt.createdAt || '',
-      }));
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet]);
+      .map((appt) => {
+        const stuDbId = norm(appt.studentId);
+        const stuName = norm(appt.student);
+
+        // Find matching student
+        const matchedStudent = workflowStudents.find((stu) => {
+          const identifiers = [
+            stu.id,
+            stu._id,
+            stu.studentId,
+            stu.name,
+            `${stu.firstName || ''} ${stu.lastName || ''}`
+          ].map(norm);
+          return identifiers.includes(stuDbId) || identifiers.includes(stuName);
+        });
+
+        // Find matching request
+        const matchedReq = (workflow?.requests || []).find((r) => {
+          const rStuId = norm(r.studentId);
+          const rStuName = norm(r.student);
+          return (
+            (rStuId && stuDbId && rStuId === stuDbId) ||
+            (rStuName && stuName && rStuName === stuName) ||
+            (appt.linkedReq && (r.id === appt.linkedReq || r.reqId === appt.linkedReq))
+          );
+        });
+
+        // Find matching contacted industry
+        const apptCompany = norm(appt.company);
+        const apptContactId = String(appt.industryContactId || '');
+        const allContacts = [
+          ...(matchedReq?.contactedIndustries || []),
+          ...(matchedStudent?.contactedIndustries || []),
+        ];
+        const matchedIndustry = allContacts.find((ci) => {
+          const ciId = String(ci._id || ci.id || '');
+          const ciName = norm(ci.organizationName);
+          return (apptContactId && ciId && apptContactId === ciId) ||
+                 (apptCompany && ciName && (apptCompany === ciName || ciName.includes(apptCompany) || apptCompany.includes(ciName)));
+        });
+
+        const contactPerson = appt.contactPerson || matchedIndustry?.contactPerson || appt.interviewer || '—';
+        const industryType = appt.industryType || matchedIndustry?.industryType || '—';
+
+        return {
+          id: appt.id || appt._id || '',
+          apptId: appt.apptId || '',
+          student: appt.student || '',
+          studentId: appt.studentId || '',
+          rto: appt.rto || '',
+          email: appt.email || '',
+          phone: appt.phone || '',
+          date: appt.date || '',
+          time: appt.time || '',
+          company: appt.company || '',
+          interviewer: appt.interviewer || '',
+          contactPerson,
+          industryType,
+          industryDetails: matchedIndustry || null,
+          studentDetails: matchedStudent || null,
+          availabilityHours: matchedStudent?.availabilityFrom && matchedStudent?.availabilityTo
+            ? `${matchedStudent.availabilityFrom} - ${matchedStudent.availabilityTo}`
+            : '09:00 AM - 05:00 PM',
+          placementHours: matchedStudent?.placementHours ?? null,
+          availabilityDays: matchedStudent?.availabilityDays || {},
+          location: appt.location || '',
+          meetingType: appt.meetingType || 'In-Person',
+          position: appt.position || '',
+          linkedReq: appt.linkedReq || '',
+          linkedReqStatus: appt.linkedReqStatus || '',
+          industryContactId: appt.industryContactId || '',
+          status: appt.status || 'Scheduled',
+          commencementDate: appt.commencementDate || '',
+          expectedCompletionDate: appt.expectedCompletionDate || '',
+          appointmentOutcome: appt.appointmentOutcome || '',
+          notes: appt.notes || '',
+          cancellationReason: appt.cancellationReason || '',
+          cancellationType: appt.cancellationType || '',
+          cancellationTypeLabel: appt.cancellationTypeLabel || '',
+          cancelledAt: appt.cancelledAt || '',
+          updatedAt: appt.updatedAt || '',
+          createdAt: appt.createdAt || '',
+        };
+      });
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents]);
 
   // ─── ✅ Map ALL appointments to internships ──────────────────────────────
   const mapInternshipsForStep4 = useCallback(() => {
@@ -935,10 +996,14 @@ export default function WorkflowPage() {
 
           if (appointmentData.status === 'Completed' || appointmentData.status === 'Confirmed') {
             targetReqStatus = 'Approved';
-          } else if (appointmentData.status === 'Withdrawn') {
-            targetReqStatus = 'Withdrawn';
-          } else if (appointmentData.status === 'Declined') {
-            targetReqStatus = 'Declined';
+          } else if (appointmentData.status === 'Withdrawn' || appointmentData.status === 'Student Withdraw') {
+            targetReqStatus = 'Student Withdraw';
+          } else if (appointmentData.status === 'Declined' || appointmentData.status === 'Industry Rejected') {
+            targetReqStatus = 'Industry Rejected';
+          } else if (appointmentData.status === 'Not Suitable Site') {
+            targetReqStatus = 'Not Suitable Site';
+          } else if (appointmentData.status === 'Student Missed Appointment' || appointmentData.status === 'No Show') {
+            targetReqStatus = 'Student Missed Appointment';
           } else if (appointmentData.status === 'Cancelled') {
             targetReqStatus = 'Cancelled';
           }
@@ -959,53 +1024,55 @@ export default function WorkflowPage() {
 
       // ── Auto-create Step 4 internship when outcome is successful ────────
       if (
-        appointmentData.appointmentOutcome === 'successful' &&
-        appointmentData.status === 'Completed' &&
-        appointmentData.commencementDate
+        appointmentData.appointmentOutcome === 'successful' ||
+        appointmentData.status === 'Confirmed' ||
+        appointmentData.status === 'Completed'
       ) {
-        const apptObj = (workflow?.appointments || []).find(
-          (a) =>
-            String(a._id) === String(appointmentId) ||
-            a.id === appointmentId ||
-            a.apptId === appointmentId
-        );
-
-        if (apptObj) {
-          // Only create if no internship already exists for this student + company
-          const alreadyExists = (workflow?.internships || []).some(
-            (i) =>
-              i.studentId === apptObj.studentId &&
-              i.company === apptObj.company
+        if (appointmentData.commencementDate) {
+          const apptObj = (workflow?.appointments || []).find(
+            (a) =>
+              String(a._id) === String(appointmentId) ||
+              a.id === appointmentId ||
+              a.apptId === appointmentId
           );
 
-          if (!alreadyExists) {
-            try {
-              const matchingReqForInt = (workflow?.requests || []).find(
-                (r) =>
-                  r.studentId === apptObj.studentId ||
-                  (apptObj.student && r.student &&
-                    r.student.toLowerCase() === apptObj.student.toLowerCase())
-              );
+          if (apptObj) {
+            // Only create if no internship already exists for this student + company
+            const alreadyExists = (workflow?.internships || []).some(
+              (i) =>
+                i.studentId === apptObj.studentId &&
+                i.company === apptObj.company
+            );
 
-              await createInternship(wfId, {
-                title: apptObj.position || matchingReqForInt?.title || 'Internship Placement',
-                student: apptObj.student,
-                studentId: apptObj.studentId,
-                company: apptObj.company,
-                rto: apptObj.rto || matchingReqForInt?.rto || '',
-                status: 'Waiting to Join',
-                start: appointmentData.commencementDate,
-                end: appointmentData.expectedCompletionDate || '',
-                duration: matchingReqForInt?.duration || '',
-                workType: matchingReqForInt?.workType || '',
-                location: apptObj.location || matchingReqForInt?.location || '',
-                coordinator: matchingReqForInt?.coordinator || '',
-                notes: appointmentData.notes || apptObj.notes || '',
-              });
-              console.log('✅ Step 4 internship auto-created for', apptObj.student);
-            } catch (intErr) {
-              // Non-fatal — Step 4 can still be created manually
-              console.warn('Auto-create internship skipped:', intErr.message);
+            if (!alreadyExists) {
+              try {
+                const matchingReqForInt = (workflow?.requests || []).find(
+                  (r) =>
+                    r.studentId === apptObj.studentId ||
+                    (apptObj.student && r.student &&
+                      r.student.toLowerCase() === apptObj.student.toLowerCase())
+                );
+
+                await createInternship(wfId, {
+                  title: apptObj.position || matchingReqForInt?.title || 'Internship Placement',
+                  student: apptObj.student,
+                  studentId: apptObj.studentId,
+                  company: apptObj.company,
+                  rto: apptObj.rto || matchingReqForInt?.rto || '',
+                  status: 'Waiting to Join',
+                  start: appointmentData.commencementDate,
+                  end: appointmentData.expectedCompletionDate || '',
+                  duration: matchingReqForInt?.duration || '',
+                  workType: matchingReqForInt?.workType || '',
+                  location: apptObj.location || matchingReqForInt?.location || '',
+                  coordinator: matchingReqForInt?.coordinator || '',
+                  notes: appointmentData.notes || apptObj.notes || '',
+                });
+                console.log('✅ Step 4 internship auto-created for', apptObj.student);
+              } catch (intErr) {
+                // Non-fatal — Step 4 can still be created manually
+                console.warn('Auto-create internship skipped:', intErr.message);
+              }
             }
           }
         }
@@ -1013,12 +1080,22 @@ export default function WorkflowPage() {
       // ────────────────────────────────────────────────────────────────────
 
       await refreshWorkflowData();
+
+      // Navigation: Only go to Step 4 if successful placement.
+      // Do NOT kick back to Step 1 on rejection/withdrawal — keep student visible in Step 3!
+      if (
+        appointmentData.appointmentOutcome === 'successful' ||
+        (appointmentData.status === 'Confirmed' && !['industry_rejected', 'student_withdrawal', 'student_missed', 'not_suitable_site'].includes(appointmentData.appointmentOutcome))
+      ) {
+        goToStep(4);
+      }
+
       return result.data;
     } catch (err) {
       console.error('Failed to update appointment:', err);
       throw err;
     }
-  }, [workflowId, workflow, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData, goToStep]);
 
   const handleDeleteAppointment = useCallback(async (appointmentId) => {
     const wfId = workflowId || workflow?._id || workflow?.id || 'default';

@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import {
   Users, Search, ChevronDown, Filter, Plus, Trash2, X,
   ShieldCheck, UserCheck, UserX, Building2, Mail, Phone,
-  Calendar, CheckCircle2, Clock, MoreVertical, Edit2
+  Calendar, CheckCircle2, Clock, MoreVertical, Edit2,
+  UserPlus, Check, XCircle, AlertCircle
 } from 'lucide-react';
 import { LivePresenceBadge, formatLastSeen } from '../../utils/presenceUtils';
 
@@ -148,6 +149,7 @@ function FilterControls({ users = [], onApplyFilters }) {
               <option value="RTO Manager">RTO Manager</option>
               <option value="Staff">Staff</option>
               <option value="Student">Student</option>
+              <option value="Industry">Industry</option>
             </select>
             <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
@@ -166,6 +168,7 @@ function FilterControls({ users = [], onApplyFilters }) {
               <option value="Active">Active</option>
               <option value="Inactive">Inactive</option>
               <option value="Suspended">Suspended</option>
+              <option value="Pending">Pending</option>
             </select>
             <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
@@ -223,6 +226,8 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
         return 'bg-teal-50 text-teal-700 border-teal-200';
       case 'Staff':
         return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'Industry':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
@@ -236,6 +241,8 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
         return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'Suspended':
         return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'Pending':
+        return 'bg-yellow-50 text-yellow-700 border-yellow-200';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
@@ -405,12 +412,28 @@ function RightSidebar({ stats, onAddUser }) {
             <span className="font-bold text-slate-900">{stats?.rtoManagerUsers ?? 0}</span>
           </div>
 
-          <div className="flex items-center justify-between py-2">
+          <div className="flex items-center justify-between py-2 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
               <span className="text-slate-600 font-semibold">Staff Members</span>
             </div>
             <span className="font-bold text-slate-900">{stats?.staffUsers ?? 0}</span>
+          </div>
+
+          <div className="flex items-center justify-between py-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span className="text-slate-600 font-semibold">Industry Partners</span>
+            </div>
+            <span className="font-bold text-slate-900">{stats?.industryUsers ?? 0}</span>
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+              <span className="text-slate-600 font-semibold">Pending Approvals</span>
+            </div>
+            <span className="font-bold text-slate-900">{stats?.pendingUsers ?? 0}</span>
           </div>
         </div>
       </div>
@@ -419,10 +442,97 @@ function RightSidebar({ stats, onAddUser }) {
 }
 
 // ==========================================
-// 5. MAIN USERS PAGE CONTENT COMPONENT
+// 5. PENDING REQUESTS COMPONENT
+// ==========================================
+function PendingRequests({ pendingUsers = [], onApproveUser, onRejectUser }) {
+  if (pendingUsers.length === 0) return null;
+
+  const getRoleBadge = (role) => {
+    switch (role) {
+      case 'Coordinator':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Student':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'RTO Manager':
+        return 'bg-teal-50 text-teal-700 border-teal-200';
+      case 'Industry':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+            <UserPlus className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-900">Pending Registration Requests</h3>
+        </div>
+        <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-lg border border-amber-200">
+          {pendingUsers.length} Pending
+        </span>
+      </div>
+
+      <div className="divide-y divide-slate-100">
+        {pendingUsers.map((user) => {
+          const uId = user.id || user._id;
+          const initials = (user.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+          return (
+            <div key={uId} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+                  {initials}
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-bold text-slate-900 text-sm">{user.name}</span>
+                  <span className="text-slate-500 text-xs">{user.email}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border inline-block ${getRoleBadge(user.role)}`}>
+                  {user.role}
+                </span>
+                <span className="text-slate-400 text-xs">
+                  {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : ''}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => onApproveUser(uId, user.name)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                    title="Approve User"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => onRejectUser(uId, user.name)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                    title="Reject User"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Reject
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 6. MAIN USERS PAGE CONTENT COMPONENT
 // ==========================================
 export default function UsersPageApp({
   users = [],
+  pendingUsers = [],
   stats,
   onFilterChange,
   onDeleteUser,
@@ -431,7 +541,9 @@ export default function UsersPageApp({
   onCloseAddModal,
   onCreateUser,
   editingUser,
-  onUpdateUser
+  onUpdateUser,
+  onApproveUser,
+  onRejectUser
 }) {
   const [modalName, setModalName] = useState('');
   const [modalEmail, setModalEmail] = useState('');
@@ -506,6 +618,13 @@ export default function UsersPageApp({
       <div className="p-6 max-w-[1600px] mx-auto w-full space-y-6">
         {/* KPI Overview */}
         <MetricsCards stats={stats} />
+
+        {/* Pending Registration Requests */}
+        <PendingRequests
+          pendingUsers={pendingUsers}
+          onApproveUser={onApproveUser}
+          onRejectUser={onRejectUser}
+        />
 
         {/* Filters */}
         <FilterControls users={users} onApplyFilters={onFilterChange} />
@@ -594,6 +713,7 @@ export default function UsersPageApp({
                     <option value="RTO Manager">RTO Manager</option>
                     <option value="Staff">Staff</option>
                     <option value="Student">Student</option>
+                    <option value="Industry">Industry</option>
                   </select>
                 </div>
                 <div>
@@ -606,6 +726,7 @@ export default function UsersPageApp({
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
                     <option value="Suspended">Suspended</option>
+                    <option value="Pending">Pending</option>
                   </select>
                 </div>
               </div>

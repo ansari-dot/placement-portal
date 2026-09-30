@@ -82,6 +82,7 @@ const initialFormData = {
   availabilityDays: {},
   availabilityFrom: '09:00 AM',
   availabilityTo: '05:00 PM',
+  placementHours: '',
   willingToRelocate: '',
   placementNotes: '',
 
@@ -217,6 +218,7 @@ export default function AddNewStudentPage() {
       if (payload.startDate) payload.startDate = new Date(payload.startDate);
       if (payload.expectedEndDate) payload.expectedEndDate = new Date(payload.expectedEndDate);
       if (payload.visaExpiryDate) payload.visaExpiryDate = new Date(payload.visaExpiryDate);
+      if (payload.placementHours !== undefined && payload.placementHours !== '') payload.placementHours = Number(payload.placementHours);
 
       const response = await createStudent(payload);
       toast.success(response?.message || 'Student profile created successfully!');

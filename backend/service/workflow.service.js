@@ -1,4 +1,4 @@
-﻿import mongoose from "mongoose";
+import mongoose from "mongoose";
 import WorkflowModel, {
   InternshipRequestModel,
   AppointmentModel,
@@ -331,6 +331,38 @@ export const createAppointment = async (workflowId, appointmentData) => {
   if (!appointmentData.apptId) {
     appointmentData.apptId = await generateApptId();
   }
+
+  // Auto-resolve contactPerson and industryType if not directly supplied
+  if (!appointmentData.contactPerson || !appointmentData.industryType) {
+    try {
+      const checkWf = (workflowId && mongoose.Types.ObjectId.isValid(workflowId))
+        ? await WorkflowModel.findById(workflowId)
+        : await WorkflowModel.findOne().sort({ createdAt: -1 });
+      if (checkWf && checkWf.requests) {
+        const studentId = appointmentData.studentId;
+        const studentName = (appointmentData.student || '').trim().toLowerCase();
+        const companyName = (appointmentData.company || '').trim().toLowerCase();
+        checkWf.requests.forEach((req) => {
+          const isStudentMatch =
+            (studentId && (req.studentId === studentId || req.id === studentId)) ||
+            (studentName && req.student && req.student.trim().toLowerCase() === studentName);
+          if (isStudentMatch && Array.isArray(req.contactedIndustries)) {
+            req.contactedIndustries.forEach((ci) => {
+              const orgName = (ci.organizationName || '').trim().toLowerCase();
+              if (
+                (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
+                (appointmentData.industryContactId && (ci._id?.toString() === appointmentData.industryContactId || ci.id === appointmentData.industryContactId))
+              ) {
+                if (!appointmentData.contactPerson && ci.contactPerson) appointmentData.contactPerson = ci.contactPerson;
+                if (!appointmentData.industryType && ci.industryType) appointmentData.industryType = ci.industryType;
+              }
+            });
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
   let appointment = null;
   try {
     appointment = await AppointmentModel.create(appointmentData);
@@ -629,63 +661,76 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
   }
   // ── End of PLACEMENT STARTED side-effects ───────────────────────────────
 
-  // ── Side-effects: PLACEMENT OUTCOME = REJECTED / WITHDRAWN / NOT SUITABLE ──
+  // ── Side-effects: PLACEMENT OUTCOME = REJECTED / WITHDRAWN / MISSED / NOT SUITABLE ──
   else if (
-    ['industry_rejected', 'student_withdrawal', 'not_suitable_site'].includes(
+    ['industry_rejected', 'student_withdrawal', 'student_missed', 'not_suitable_site'].includes(
       appointmentData.appointmentOutcome
+    ) ||
+    ['Industry Rejected', 'Student Withdraw', 'Student Missed Appointment', 'Withdrawn', 'No Show', 'Not Suitable Site'].includes(
+      appointmentData.status
     )
   ) {
-    const outcome = appointmentData.appointmentOutcome;
+    const outcome = appointmentData.appointmentOutcome ||
+      (appointmentData.status === 'Industry Rejected' ? 'industry_rejected' :
+       appointmentData.status === 'Student Withdraw' || appointmentData.status === 'Withdrawn' ? 'student_withdrawal' :
+       appointmentData.status === 'Student Missed Appointment' || appointmentData.status === 'No Show' ? 'student_missed' : 'not_suitable_site');
+
+    const outcomeStatusLabel =
+      outcome === 'industry_rejected' ? 'Industry Rejected' :
+      outcome === 'student_withdrawal' ? 'Student Withdraw' :
+      outcome === 'not_suitable_site' ? 'Not Suitable Site' :
+      outcome === 'student_missed' ? 'Student Missed Appointment' : 'Industry Rejected';
+
     const studentName = (appt.student || '').trim().toLowerCase();
     const companyName = (appt.company || '').trim().toLowerCase();
+    const studentId = appt.studentId;
 
-    // 1. Update contactedIndustries response label on matching requests (so Step 2 UI reflects it too)
-    const OUTCOME_RESPONSE_LABEL = {
-      industry_rejected: 'Industry Rejected',
-      student_withdrawal: 'Student Withdrew',
-      not_suitable_site: 'Not Suitable Site',
-    };
+    // 1. Maintain placement request in workflow — DO NOT DELETE REQUEST!
+    // Update the request status and contactedIndustries response
     if (workflow.requests && workflow.requests.length > 0) {
-      const studentId = appt.studentId;
       workflow.requests.forEach((req) => {
         const isStudentMatch =
           (studentId && (req.studentId === studentId || req.id === studentId)) ||
           (studentName && req.student && req.student.trim().toLowerCase() === studentName);
 
-        if (isStudentMatch && Array.isArray(req.contactedIndustries)) {
-          req.contactedIndustries.forEach((ci) => {
-            const orgName = (ci.organizationName || '').trim().toLowerCase();
-            if (
-              (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
-              (appt.industryContactId && (ci._id?.toString() === appt.industryContactId || ci.id === appt.industryContactId))
-            ) {
-              ci.response = OUTCOME_RESPONSE_LABEL[outcome] || 'Update';
-            }
-          });
+        if (isStudentMatch) {
+          req.status = outcomeStatusLabel;
+          if (Array.isArray(req.contactedIndustries)) {
+            req.contactedIndustries.forEach((ci) => {
+              const orgName = (ci.organizationName || '').trim().toLowerCase();
+              if (
+                (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
+                (appt.industryContactId && (ci._id?.toString() === appt.industryContactId || ci.id === appt.industryContactId))
+              ) {
+                ci.response = outcomeStatusLabel;
+              }
+            });
+          }
         }
       });
       await workflow.save({ validateBeforeSave: false });
     }
 
-    // 2. Look up student + email (does not save/change the student's placementStatus —
-    //    the student stays in the workflow to be re-placed, so we don't overwrite their status here)
+    // 2. Look up student and update placementStatus to outcomeStatusLabel WITHOUT removing coordinator!
     const { studentDoc, email: toEmail } = await resolveStudentAndEmail(appt);
 
-    // ── Set placementStatus on the student based on outcome ──────────────
-    const OUTCOME_PLACEMENT_STATUS = {
-      industry_rejected:  'Industry Rejected',
-      student_withdrawal: 'Student Withdraw',
-      not_suitable_site:  'Not Suitable Site',
-    };
     if (studentDoc) {
       try {
-        studentDoc.placementStatus = OUTCOME_PLACEMENT_STATUS[outcome] || 'In Progress';
+        studentDoc.placementStatus = outcomeStatusLabel;
+        if (Array.isArray(studentDoc.contactedIndustries)) {
+          studentDoc.contactedIndustries.forEach((ci) => {
+            const orgName = (ci.organizationName || '').trim().toLowerCase();
+            if (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) {
+              ci.response = outcomeStatusLabel;
+            }
+          });
+        }
         await studentDoc.save({ validateModifiedOnly: true });
       } catch (psSaveErr) {
-        console.warn('[Workflow] placementStatus outcome save skipped:', psSaveErr.message);
+        console.warn('[Workflow] Student placementStatus save skipped:', psSaveErr.message);
       }
     } else {
-      // studentDoc not found via resolveStudentAndEmail — try a direct update
+      // Fallback: try direct update by studentId / _id
       try {
         const stuQuery = [];
         if (appt.studentId) {
@@ -695,84 +740,64 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
         if (stuQuery.length > 0) {
           await StudentModel.findOneAndUpdate(
             { $or: stuQuery },
-            { placementStatus: OUTCOME_PLACEMENT_STATUS[outcome] || 'In Progress' },
+            { placementStatus: outcomeStatusLabel },
             { runValidators: false }
           );
         }
       } catch (psErr) {
-        console.warn('[Workflow] placementStatus outcome fallback update skipped:', psErr.message);
+        console.warn('[Workflow] Student placementStatus fallback update skipped:', psErr.message);
       }
     }
-    // ─────────────────────────────────────────────────────────────────────
 
-    console.log('[Workflow] Placement-outcome email attempt →', {
+    // 3. Keep appointment in Step 3 with updated status
+    if (workflow.appointments[appointmentIndex]) {
+      workflow.appointments[appointmentIndex].status = outcomeStatusLabel;
+      workflow.appointments[appointmentIndex].appointmentOutcome = outcome;
+      workflow.appointments[appointmentIndex].cancellationReason = appointmentData.notes || appointmentData.cancellationReason || '';
+      await workflow.save({ validateBeforeSave: false });
+    }
+
+    console.log('[Workflow] Placement-outcome processed →', {
       outcome,
       student: appt.student,
       company: appt.company,
-      toEmail: toEmail || '(missing)',
     });
 
     if (toEmail) {
       try {
-        const emailResult = await sendPlacementOutcomeEmail({
+        await sendPlacementOutcomeEmail({
           toEmail,
           studentName: appt.student || studentDoc?.name || 'Student',
           companyName: appt.company || 'the placement site',
           outcome,
-          reason: appointmentData.cancellationReason || appt.cancellationReason || '',
+          reason: appointmentData.cancellationReason || appointmentData.notes || appt.cancellationReason || '',
           studentId: appt.studentId || '',
         });
-        console.log('[Workflow] Placement-outcome email result:', emailResult);
       } catch (emailErr) {
-        console.error('[Workflow] Placement-outcome email FAILED to send:', emailErr.message);
+        console.error('[Workflow] Placement-outcome email error:', emailErr.message);
       }
-    } else {
-      console.warn(
-        '[Workflow] Skipped placement-outcome email — no email address available for',
-        appt.student
-      );
     }
 
-    // 3. In-app notification
+    // 4. In-app notification
     try {
       const OUTCOME_TITLE = {
-        industry_rejected: 'Industry Rejected Student',
-        student_withdrawal: 'Student Withdrew from Placement',
-        not_suitable_site: 'Placement Site Not Suitable',
+        industry_rejected: 'Industry Rejected Student - Returned to Step 1',
+        student_withdrawal: 'Student Withdrew - Returned to Step 1',
+        student_missed: 'Student Missed Appointment - Returned to Step 1',
+        not_suitable_site: 'Placement Site Not Suitable - Returned to Step 1',
       };
       await NotificationModel.create({
         title: OUTCOME_TITLE[outcome] || 'Placement Update',
-        desc: `${appt.student}'s placement at ${appt.company}: ${OUTCOME_RESPONSE_LABEL[outcome] || 'Updated'}.`,
+        desc: `${appt.student} has returned to Step 1 (${outcome.replace('_', ' ')}).`,
         type: 'system',
         isRead: false,
-        link: '/workflow?step=4',
+        link: '/workflow?step=1',
       });
     } catch (notifErr) {
       console.warn('[Workflow] Placement outcome notification failed:', notifErr.message);
     }
   }
   // ── End of PLACEMENT OUTCOME side-effects ───────────────────────────────
-
-  // ── Side-effects: NO SHOW → Student Missed Appointment ──────────────────
-  else if (appointmentData.status === 'No Show') {
-    try {
-      const stuQuery = [];
-      if (appt.studentId) {
-        stuQuery.push({ studentId: appt.studentId });
-        if (mongoose.Types.ObjectId.isValid(appt.studentId)) stuQuery.push({ _id: appt.studentId });
-      }
-      if (stuQuery.length > 0) {
-        await StudentModel.findOneAndUpdate(
-          { $or: stuQuery },
-          { placementStatus: 'Student Missed Appointment' },
-          { runValidators: false }
-        );
-      }
-    } catch (psErr) {
-      console.warn('[Workflow] placementStatus→StudentMissedAppointment update skipped:', psErr.message);
-    }
-  }
-  // ── End of NO SHOW side-effects ─────────────────────────────────────────
 
   try {
     if (actualDbId && mongoose.Types.ObjectId.isValid(actualDbId)) {

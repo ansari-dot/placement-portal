@@ -597,10 +597,13 @@ export default function WorkflowStep2Requests({
       case 'Appointment': return 'bg-cyan-50 text-cyan-600';
       case 'Offered':
       case 'Approved': return 'bg-emerald-50 text-emerald-600';
-      case 'Withdrawn': return 'bg-amber-50 text-amber-700';
+      case 'Withdrawn':
+      case 'Student Withdraw': return 'bg-amber-50 text-amber-700';
       case 'Declined':
       case 'Rejected':
-      case 'Cancelled': return 'bg-rose-50 text-rose-600';
+      case 'Industry Rejected': return 'bg-rose-50 text-rose-600';
+      case 'Not Suitable Site': return 'bg-purple-50 text-purple-700';
+      case 'Student Missed Appointment': return 'bg-rose-50 text-rose-600';
       case 'Closed': return 'bg-slate-100 text-slate-500';
       default: return 'bg-slate-100 text-slate-500';
     }

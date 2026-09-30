@@ -27,12 +27,12 @@ const router = express.Router();
 
 // ===== Workflow CRUD =====
 router.post("/", createWorkflowController);
-router.get("/", getAllWorkflowsController);
+router.get("/", softAuth, getAllWorkflowsController);
 router.get("/dashboard", getWorkflowDashboardDataController);
 router.get("/students", protectRoute, getWorkflowStudentsController);
 // ── Placement alert check (can be called manually or by scheduler) ──
 router.post("/check-placement-alerts", checkPlacementAlertsController);
-router.get("/:id", getWorkflowByIdController);
+router.get("/:id", softAuth, getWorkflowByIdController);
 router.put("/:id", updateWorkflowController);
 router.delete("/:id", deleteWorkflowController);
 

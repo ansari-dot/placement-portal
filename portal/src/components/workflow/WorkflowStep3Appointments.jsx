@@ -3,10 +3,10 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { calculatePlacementEndDate, getCalculationSummary } from '../../utils/dateCalculation';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
-  FileText, CheckCircle2, UserX, Clock, Plus, Filter,
+  FileText, CheckCircle2, UserX, Clock, Plus,
   X, Mail, Phone, MapPin, Building2, Check,
   Briefcase, ShieldCheck, ArrowUpRight, Download, CalendarClock, Video, Users,
-  Trash2, Search, Edit3, AlertCircle, MessageCircle
+  Search, Edit3, AlertCircle, MessageCircle, Eye, MoreVertical, Trash2
 } from 'lucide-react';
 
 export default function WorkflowStep3Appointments({
@@ -206,34 +206,22 @@ export default function WorkflowStep3Appointments({
     }
   };
 
-  // Cancel / Outcome Modal State
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  const [cancelType, setCancelType] = useState('student');
-  const [cancelAppointmentId, setCancelAppointmentId] = useState(null);
+  // View Details Modal State
+  const [showViewDetailsModal, setShowViewDetailsModal] = useState(false);
+  const [actionMenuApptId, setActionMenuApptId] = useState(null);
+  const [deleteConfirmAppt, setDeleteConfirmAppt] = useState(null);
+  const [isDeletingAppt, setIsDeletingAppt] = useState(false);
+
+  // Outcome / Change Status Modal State
   const [showOutcomeModal, setShowOutcomeModal] = useState(false);
   const [appointmentOutcome, setAppointmentOutcome] = useState('successful');
   const [commencementDate, setCommencementDate] = useState('');
   const [expectedCompletionDate, setExpectedCompletionDate] = useState('');
   const [outcomeNotes, setOutcomeNotes] = useState('');
-
-  // ─── Delete Confirm Modal ─────────────────────────────────────────────────
-  const [deleteConfirmAppt, setDeleteConfirmAppt] = useState(null);
-  const [isDeletingAppt, setIsDeletingAppt] = useState(false);
+  const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
 
   // Filtering State
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilters, setStatusFilters] = useState({
-    Scheduled: true,
-    Completed: true,
-    'No Show': true,
-    Rescheduled: true,
-    Cancelled: true,
-    Withdrawn: true,
-    Declined: true,
-    'Industry Rejected': true,
-    'Not Suitable Site': true
-  });
 
   const showToast = (message) => {
     setToast(message);
@@ -293,71 +281,42 @@ export default function WorkflowStep3Appointments({
     return `${start.dateNum} ${start.monthShort} – ${end.dateNum} ${end.monthShort}`;
   }, [weekDays]);
 
-  // Filtered appointments list based on status filters & search
+  // Filtered appointments list based on search only – ALL outcomes stay in Step 3
   const filteredAppointments = useMemo(() => {
     return appointments.filter(appt => {
-      const statusMatch = statusFilters[appt.status] !== false;
-      if (!statusMatch) return false;
-
       if (searchTerm.trim() !== '') {
         const query = searchTerm.toLowerCase();
-        const studentMatch = appt.student?.toLowerCase().includes(query);
-        const companyMatch = appt.company?.toLowerCase().includes(query);
-        const interviewerMatch = appt.interviewer?.toLowerCase().includes(query);
-        const idMatch = (appt.apptId || appt.id)?.toLowerCase().includes(query);
-        return studentMatch || companyMatch || interviewerMatch || idMatch;
+        const studentMatch = (appt.student || '').toLowerCase().includes(query);
+        const companyMatch = (appt.company || '').toLowerCase().includes(query);
+        const interviewerMatch = (appt.contactPerson || appt.interviewer || '').toLowerCase().includes(query);
+        const industryTypeMatch = (appt.industryType || '').toLowerCase().includes(query);
+        const idMatch = (appt.apptId || appt.id || '').toLowerCase().includes(query);
+        return studentMatch || companyMatch || interviewerMatch || industryTypeMatch || idMatch;
       }
       return true;
     });
-  }, [appointments, statusFilters, searchTerm]);
+  }, [appointments, searchTerm]);
 
-  // Filter count
-  const filterCount = useMemo(() => {
-    const disabledCount = Object.values(statusFilters).filter(val => !val).length;
-    return disabledCount > 0 ? Object.keys(statusFilters).length - disabledCount : 0;
-  }, [statusFilters]);
-
-  // Calculate dynamic metrics
+  // Calculate dynamic metrics for scheduled appointments
   const metrics = useMemo(() => {
     const todayYMD = formatDateToYMD(new Date());
     const weekYMDs = weekDays.map(w => w.fullDateStr);
 
     let todayCount = 0;
     let thisWeekCount = 0;
-    let completedCount = 0;
-    let noShowCount = 0;
-    let rescheduledCount = 0;
-    let upcomingCount = 0;
-    let cancelledCount = 0;
-    let withdrawnCount = 0;
-    let declinedCount = 0;
 
-    appointments.forEach(appt => {
+    filteredAppointments.forEach(appt => {
       const apptDateStr = appt.date ? appt.date.split('T')[0] : '';
       if (apptDateStr === todayYMD) todayCount++;
       if (weekYMDs.includes(apptDateStr)) thisWeekCount++;
-
-      if (appt.status === 'Completed') completedCount++;
-      else if (appt.status === 'No Show') noShowCount++;
-      else if (appt.status === 'Rescheduled') rescheduledCount++;
-      else if (appt.status === 'Cancelled') cancelledCount++;
-      else if (appt.status === 'Withdrawn') withdrawnCount++;
-      else if (appt.status === 'Declined' || appt.status === 'Industry Rejected') declinedCount++;
-      else if (appt.status === 'Scheduled') upcomingCount++;
     });
 
     return {
+      totalCount: filteredAppointments.length,
       todayCount,
       thisWeekCount,
-      completedCount,
-      noShowCount,
-      rescheduledCount,
-      upcomingCount,
-      cancelledCount,
-      withdrawnCount,
-      declinedCount
     };
-  }, [appointments, weekDays]);
+  }, [filteredAppointments, weekDays]);
 
   // Function to match appointments to calendar grid cell
   const getAppointmentsForCell = (dayObj, timeSlotStr) => {
@@ -406,6 +365,7 @@ export default function WorkflowStep3Appointments({
           badge: 'bg-emerald-100 text-emerald-700 border-emerald-300'
         };
       case 'No Show':
+      case 'Student Missed Appointment':
         return {
           bg: 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100',
           sub: 'text-rose-600',
@@ -424,6 +384,7 @@ export default function WorkflowStep3Appointments({
           badge: 'bg-slate-200 text-slate-700 border-slate-300'
         };
       case 'Withdrawn':
+      case 'Student Withdraw':
         return {
           bg: 'bg-orange-50 border-orange-200 text-orange-900 hover:bg-orange-100',
           sub: 'text-orange-600',
@@ -438,9 +399,9 @@ export default function WorkflowStep3Appointments({
         };
       case 'Not Suitable Site':
         return {
-          bg: 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100',
-          sub: 'text-amber-700',
-          badge: 'bg-amber-100 text-amber-800 border-amber-400'
+          bg: 'bg-purple-50 border-purple-200 text-purple-900 hover:bg-purple-100',
+          sub: 'text-purple-600',
+          badge: 'bg-purple-100 text-purple-700 border-purple-300'
         };
       default:
         return {
@@ -449,6 +410,153 @@ export default function WorkflowStep3Appointments({
           badge: 'bg-blue-100 text-blue-700 border-blue-300'
         };
     }
+  };
+
+  // Helper to resolve student object for an appointment
+  const resolveStudentForAppt = (appt) => {
+    if (!appt) return null;
+    if (appt.studentDetails) return appt.studentDetails;
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const apptStuId = norm(appt.studentId);
+    const apptStuName = norm(appt.student);
+    return (students || []).find((s) => {
+      const sDbId = norm(s.id || s._id);
+      const sBizId = norm(s.studentId);
+      const sName = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`);
+      return (
+        (apptStuId && (sDbId === apptStuId || sBizId === apptStuId)) ||
+        (apptStuName && sName === apptStuName)
+      );
+    }) || null;
+  };
+
+  // Helper to resolve industry contact for an appointment
+  const resolveIndustryForAppt = (appt) => {
+    if (!appt) return null;
+    if (appt.industryDetails) return appt.industryDetails;
+
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const apptCompany = norm(appt.company);
+    const apptContactId = String(appt.industryContactId || '');
+
+    // 1. Search requests contacted industries
+    for (const req of requests) {
+      if (Array.isArray(req.contactedIndustries)) {
+        const ind = req.contactedIndustries.find(ci =>
+          (apptContactId && String(ci.id || ci._id || '') === apptContactId) ||
+          (apptCompany && norm(ci.organizationName) === apptCompany)
+        );
+        if (ind) return ind;
+      }
+    }
+
+    // 2. Search student contacted industries
+    const student = resolveStudentForAppt(appt);
+    if (student && Array.isArray(student.contactedIndustries)) {
+      const ind = student.contactedIndustries.find(ci =>
+        (apptContactId && String(ci.id || ci._id || '') === apptContactId) ||
+        (apptCompany && norm(ci.organizationName) === apptCompany)
+      );
+      if (ind) return ind;
+    }
+
+    return null;
+  };
+
+  // Helper to get contact person for an appointment
+  const getContactPersonForAppointment = (appt) => {
+    if (!appt) return '';
+    if (appt.contactPerson && appt.contactPerson !== '—') return appt.contactPerson;
+    if (appt.industryDetails?.contactPerson) return appt.industryDetails.contactPerson;
+
+    const ind = resolveIndustryForAppt(appt);
+    if (ind?.contactPerson) return ind.contactPerson;
+
+    return appt.interviewer || '—';
+  };
+
+  // Helper to get industry type for an appointment
+  const getIndustryTypeForAppointment = (appt) => {
+    if (!appt) return '';
+    if (appt.industryType && appt.industryType !== '—') return appt.industryType;
+    if (appt.industryDetails?.industryType) return appt.industryDetails.industryType;
+
+    const ind = resolveIndustryForAppt(appt);
+    if (ind?.industryType) return ind.industryType;
+
+    return '—';
+  };
+
+  const DAYS_OF_WEEK = [
+    { key: 'monday', label: 'Monday', short: 'Mon' },
+    { key: 'tuesday', label: 'Tuesday', short: 'Tue' },
+    { key: 'wednesday', label: 'Wednesday', short: 'Wed' },
+    { key: 'thursday', label: 'Thursday', short: 'Thu' },
+    { key: 'friday', label: 'Friday', short: 'Fri' },
+    { key: 'saturday', label: 'Saturday', short: 'Sat' },
+    { key: 'sunday', label: 'Sunday', short: 'Sun' },
+  ];
+
+  const DAY_ALIASES = {
+    monday: ['monday', 'mon', 'mo', 'm'],
+    tuesday: ['tuesday', 'tue', 'tues', 'tu'],
+    wednesday: ['wednesday', 'wed', 'w'],
+    thursday: ['thursday', 'thu', 'thur', 'thurs', 'th'],
+    friday: ['friday', 'fri', 'f'],
+    saturday: ['saturday', 'sat', 'sa'],
+    sunday: ['sunday', 'sun', 'su'],
+  };
+
+  const isDayAvailable = (studentOrAppt, dayKey) => {
+    if (!studentOrAppt) return false;
+    const days =
+      studentOrAppt.availabilityDays ||
+      studentOrAppt.studentDetails?.availabilityDays ||
+      studentOrAppt.days ||
+      (studentOrAppt.student && resolveStudentForAppt(studentOrAppt)?.availabilityDays);
+
+    if (!days) return false;
+
+    const targetKey = String(dayKey || '').trim().toLowerCase();
+    const aliases = DAY_ALIASES[targetKey] || [targetKey];
+
+    // If Map
+    if (days instanceof Map) {
+      for (const [k, v] of days.entries()) {
+        const normK = String(k).trim().toLowerCase();
+        if ((aliases.includes(normK) || aliases.some((a) => normK.startsWith(a))) && Boolean(v)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // If Array: e.g. ['Mon', 'Tue', 'Wed'] or ['Monday', 'Tuesday']
+    if (Array.isArray(days)) {
+      return days.some((d) => {
+        const normD = String(d).trim().toLowerCase();
+        return aliases.includes(normD) || aliases.some((a) => normD.startsWith(a));
+      });
+    }
+
+    // If plain Object: e.g. { Mon: true, Tue: true } or { Monday: true }
+    if (typeof days === 'object') {
+      for (const [k, v] of Object.entries(days)) {
+        const normK = String(k).trim().toLowerCase();
+        if ((aliases.includes(normK) || aliases.some((a) => normK.startsWith(a))) && Boolean(v)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // If string: e.g. "Mon, Tue, Wed"
+    if (typeof days === 'string') {
+      const lower = days.toLowerCase();
+      return aliases.some((a) => lower.includes(a));
+    }
+
+    return false;
   };
 
   // Get contacted industries for selected student
@@ -651,6 +759,20 @@ export default function WorkflowStep3Appointments({
           cancellationReason: '',
           cancellationType: '',
         };
+      } else if (appointmentOutcome === 'not_suitable_site') {
+        status = 'Not Suitable Site';
+        cancellationType = 'site';
+        cancellationReason = outcomeNotes || 'Placement site was not suitable for the student';
+        payload = {
+          ...payload,
+          status,
+          cancellationReason,
+          cancellationType,
+          cancellationTypeLabel: 'Not Suitable Site',
+          appointmentOutcome: 'not_suitable_site',
+          commencementDate: '',
+          expectedCompletionDate: '',
+        };
       } else if (appointmentOutcome === 'industry_rejected') {
         status = 'Industry Rejected';
         cancellationType = 'industry';
@@ -666,7 +788,7 @@ export default function WorkflowStep3Appointments({
           expectedCompletionDate: '',
         };
       } else if (appointmentOutcome === 'student_withdrawal') {
-        status = 'Withdrawn';
+        status = 'Student Withdraw';
         cancellationType = 'withdrawn';
         cancellationReason = outcomeNotes || 'Student withdrew from placement';
         payload = {
@@ -674,22 +796,22 @@ export default function WorkflowStep3Appointments({
           status,
           cancellationReason,
           cancellationType,
-          cancellationTypeLabel: 'Student Withdrew',
+          cancellationTypeLabel: 'Student Withdraw',
           appointmentOutcome: 'student_withdrawal',
           commencementDate: '',
           expectedCompletionDate: '',
         };
-      } else if (appointmentOutcome === 'not_suitable_site') {
-        status = 'Not Suitable Site';
+      } else if (appointmentOutcome === 'student_missed') {
+        status = 'Student Missed Appointment';
         cancellationType = 'student';
-        cancellationReason = outcomeNotes || 'Placement site was not suitable for the student';
+        cancellationReason = outcomeNotes || 'Student missed the appointment';
         payload = {
           ...payload,
           status,
           cancellationReason,
           cancellationType,
-          cancellationTypeLabel: 'Not Suitable Site',
-          appointmentOutcome: 'not_suitable_site',
+          cancellationTypeLabel: 'Student Missed Appointment',
+          appointmentOutcome: 'student_missed',
           commencementDate: '',
           expectedCompletionDate: '',
         };
@@ -701,73 +823,20 @@ export default function WorkflowStep3Appointments({
         status,
         notes: payload.notes,
         appointmentOutcome: payload.appointmentOutcome,
-        commencementDate: payload.commencementDate || prev.commencementDate || '',
-        expectedCompletionDate: payload.expectedCompletionDate || prev.expectedCompletionDate || '',
+        commencementDate: payload.commencementDate || prev?.commencementDate || '',
+        expectedCompletionDate: payload.expectedCompletionDate || prev?.expectedCompletionDate || '',
         cancellationReason,
         cancellationType,
       }));
       setShowOutcomeModal(false);
       showToast(
         appointmentOutcome === 'successful'
-          ? 'Appointment recorded as successful'
-          : 'Outcome saved and student returned to workflow'
+          ? 'Appointment confirmed! Placement moved to Step 4'
+          : `Appointment status updated to ${status}`
       );
     } catch (err) {
       console.error('Failed to update appointment outcome:', err);
       showToast('Failed to save appointment outcome');
-    }
-  };
-
-  // Handle Cancel - Open Modal instead of direct cancel
-  const handleCancelClick = () => {
-    if (!selectedAppointment) return;
-    setCancelAppointmentId(selectedAppointment.id || selectedAppointment._id);
-    setCancelReason('');
-    setCancelType('student');
-    setShowCancelModal(true);
-  };
-
-  // Handle Confirm Cancel with Reason
-  const handleConfirmCancel = async () => {
-    if (!cancelReason.trim()) {
-      showToast('Please provide a reason for cancellation');
-      return;
-    }
-
-    if (onUpdateAppointment && cancelAppointmentId) {
-      try {
-        const statusMap = {
-          student: 'Declined',
-          industry: 'Industry Rejected',
-          withdrawn: 'Withdrawn',
-          other: 'Cancelled'
-        };
-
-        const newStatus = statusMap[cancelType] || 'Cancelled';
-
-        const payload = {
-          status: newStatus,
-          cancellationReason: cancelReason,
-          cancellationType: cancelType,
-          cancelledAt: new Date().toISOString()
-        };
-
-        await onUpdateAppointment(cancelAppointmentId, payload);
-        showToast(`Appointment ${newStatus} successfully`);
-        setShowCancelModal(false);
-        setCancelReason('');
-        setCancelType('student');
-        setSelectedAppointment(prev => ({
-          ...prev,
-          status: newStatus,
-          cancellationReason: cancelReason,
-          cancellationType: cancelType,
-          cancelledAt: payload.cancelledAt
-        }));
-      } catch (err) {
-        console.error('Failed to cancel appointment:', err);
-        showToast('Failed to cancel appointment: ' + (err.message || 'Unknown error'));
-      }
     }
   };
 
@@ -843,30 +912,6 @@ export default function WorkflowStep3Appointments({
     }
   };
 
-  // Handle Delete Appointment — opens confirmation modal
-  const handleDelete = (apptId, appt) => {
-    setDeleteConfirmAppt(appt || { id: apptId });
-  };
-
-  const handleConfirmedDeleteAppt = async () => {
-    const apptId = deleteConfirmAppt?.id || deleteConfirmAppt?._id || deleteConfirmAppt?.apptId;
-    if (!apptId) return;
-    setIsDeletingAppt(true);
-    try {
-      if (onDeleteAppointment) {
-        await onDeleteAppointment(apptId);
-      }
-      showToast('Appointment deleted successfully');
-      setShowDrawer(false);
-      setSelectedAppointment(null);
-    } catch (err) {
-      showToast('Failed to delete appointment');
-    } finally {
-      setIsDeletingAppt(false);
-      setDeleteConfirmAppt(null);
-    }
-  };
-
   // Export CSV Handler
   const handleExport = (format) => {
     setShowExportMenu(false);
@@ -921,86 +966,36 @@ export default function WorkflowStep3Appointments({
       {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
 
-        {/* Dynamic Metrics Row */}
-        <div className="grid grid-cols-2 md:grid-cols-8 gap-2.5">
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Today's</p>
-              <div className="w-5 h-5 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
-                <CalendarIcon className="w-2.5 h-2.5" />
-              </div>
+        {/* Dynamic Scheduled Appointments Metrics Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Scheduled</p>
+              <h3 className="text-xl font-bold text-slate-900 mt-1">{metrics.totalCount}</h3>
             </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.todayCount}</h3>
+            <div className="w-10 h-10 bg-blue-50 text-[#0147A6] rounded-xl flex items-center justify-center">
+              <CalendarIcon className="w-5 h-5" />
+            </div>
           </div>
 
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">This Week</p>
-              <div className="w-5 h-5 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center">
-                <FileText className="w-2.5 h-2.5" />
-              </div>
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Today's Appointments</p>
+              <h3 className="text-xl font-bold text-slate-900 mt-1">{metrics.todayCount}</h3>
             </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.thisWeekCount}</h3>
+            <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+              <Clock className="w-5 h-5" />
+            </div>
           </div>
 
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Scheduled</p>
-              <div className="w-5 h-5 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
-                <CalendarIcon className="w-2.5 h-2.5" />
-              </div>
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">This Week's Appointments</p>
+              <h3 className="text-xl font-bold text-slate-900 mt-1">{metrics.thisWeekCount}</h3>
             </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.upcomingCount}</h3>
-          </div>
-
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Completed</p>
-              <div className="w-5 h-5 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
-                <CheckCircle2 className="w-2.5 h-2.5" />
-              </div>
+            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
+              <FileText className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.completedCount}</h3>
-          </div>
-
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Rescheduled</p>
-              <div className="w-5 h-5 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center">
-                <Clock className="w-2.5 h-2.5" />
-              </div>
-            </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.rescheduledCount}</h3>
-          </div>
-
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Industry Rejected</p>
-              <div className="w-5 h-5 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
-                <X className="w-2.5 h-2.5" />
-              </div>
-            </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.declinedCount}</h3>
-          </div>
-
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Withdrawn</p>
-              <div className="w-5 h-5 bg-orange-50 text-orange-600 rounded-lg flex items-center justify-center">
-                <UserX className="w-2.5 h-2.5" />
-              </div>
-            </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.withdrawnCount}</h3>
-          </div>
-
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex justify-between items-start">
-              <p className="text-[9px] text-slate-500 font-medium">Cancelled</p>
-              <div className="w-5 h-5 bg-slate-50 text-slate-600 rounded-lg flex items-center justify-center">
-                <AlertCircle className="w-2.5 h-2.5" />
-              </div>
-            </div>
-            <h3 className="text-base font-bold text-slate-900 mt-1">{metrics.cancelledCount}</h3>
           </div>
         </div>
 
@@ -1072,55 +1067,6 @@ export default function WorkflowStep3Appointments({
                   <CalendarIcon className="w-3 h-3 text-slate-400" />
                   <span>{weekRangeLabel}</span>
                 </div>
-              </div>
-
-              {/* Filters Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="px-2.5 py-2 bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-100 whitespace-nowrap"
-                >
-                  <Filter className="w-3 h-3 text-blue-600" />
-                  <span>Filters</span>
-                  {filterCount > 0 && (
-                    <span className="w-4 h-4 bg-blue-600 text-white rounded-full text-[9px] flex items-center justify-center font-bold">{filterCount}</span>
-                  )}
-                </button>
-                {showFilters && (
-                  <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status Filters</p>
-                    <div className="space-y-1.5">
-                      {['Scheduled', 'Completed', 'No Show', 'Rescheduled', 'Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected', 'Not Suitable Site'].map(st => (
-                        <label key={st} className="flex items-center space-x-2 text-[11px] text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={statusFilters[st] !== false}
-                            onChange={(e) => setStatusFilters(prev => ({ ...prev, [st]: e.target.checked }))}
-                            className="rounded accent-blue-600"
-                          />
-                          <span>{st}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="pt-2 border-t border-slate-100 flex justify-between">
-                      <button
-                        onClick={() => {
-                          setStatusFilters({ Scheduled: true, Completed: true, 'No Show': true, Rescheduled: true, Cancelled: true, Withdrawn: true, Declined: true, 'Industry Rejected': true, 'Not Suitable Site': true });
-                          showToast('Reset status filters');
-                        }}
-                        className="text-[10px] font-bold text-slate-500 hover:underline"
-                      >
-                        Select All
-                      </button>
-                      <button
-                        onClick={() => setShowFilters(false)}
-                        className="py-1 px-3 bg-[#0147A6] text-white text-[10px] font-bold rounded-lg hover:bg-blue-700"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="w-px h-6 bg-slate-200 shrink-0"></div>
@@ -1347,8 +1293,8 @@ export default function WorkflowStep3Appointments({
 
           {/* MAIN VIEW CONTENT: List View or Calendar View */}
           {activeTab === 'List View' ? (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="overflow-x-auto">
+            <div className={`bg-white rounded-2xl border border-slate-200 shadow-xs ${actionMenuApptId ? 'overflow-visible' : 'overflow-hidden'}`}>
+              <div className={`${actionMenuApptId ? 'overflow-visible' : 'overflow-x-auto'} min-h-[300px]`}>
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
@@ -1357,8 +1303,8 @@ export default function WorkflowStep3Appointments({
                       <th className="p-4">Company & Position</th>
                       <th className="p-4">Date & Time</th>
                       <th className="p-4">Type & Location</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4">Reason</th>
+                      <th className="p-4">Contact Person</th>
+                      <th className="p-4">Industry Type</th>
                       <th className="p-4 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1398,27 +1344,88 @@ export default function WorkflowStep3Appointments({
                             <p className="text-[10px] text-slate-400 truncate max-w-[140px]">{appt.location || 'N/A'}</p>
                           </td>
                           <td className="p-4 whitespace-nowrap">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${badgeStyle.badge}`}>
-                              {appt.status}
+                            <span className="text-xs font-semibold text-slate-800">{getContactPersonForAppointment(appt) || '—'}</span>
+                          </td>
+                          <td className="p-4 max-w-[140px]">
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 truncate">
+                              {getIndustryTypeForAppointment(appt) || '—'}
                             </span>
                           </td>
-                          <td className="p-4 max-w-[120px]">
-                            {appt.cancellationReason ? (
-                              <span className="text-[9px] text-slate-500 truncate block" title={appt.cancellationReason}>
-                                {appt.cancellationReason.length > 30 ? appt.cancellationReason.substring(0, 30) + '...' : appt.cancellationReason}
-                              </span>
-                            ) : (
-                              <span className="text-[9px] text-slate-300">—</span>
-                            )}
-                          </td>
-                          <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => handleDelete(appt.id || appt._id, appt)}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg inline-flex"
-                              title="Delete Appointment"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                          <td className="p-4 text-right relative overflow-visible" onClick={(e) => e.stopPropagation()}>
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rowKey = appt.id || appt._id || i;
+                                  setActionMenuApptId(prev => prev === rowKey ? null : rowKey);
+                                }}
+                                className={`w-8 h-8 rounded-lg inline-flex items-center justify-center transition border cursor-pointer ${
+                                  actionMenuApptId === (appt.id || appt._id || i)
+                                    ? 'bg-[#0147A6] text-white border-[#0147A6] shadow-sm'
+                                    : 'bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#0147A6] border-slate-200 hover:border-blue-300 shadow-xs'
+                                }`}
+                                title="Actions"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {actionMenuApptId === (appt.id || appt._id || i) && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActionMenuApptId(null);
+                                    }}
+                                  />
+                                  <div className={`absolute right-0 ${
+                                    i >= Math.max(1, filteredAppointments.length - 2) && filteredAppointments.length > 1
+                                      ? 'bottom-full mb-1.5'
+                                      : 'top-full mt-1.5'
+                                  } w-60 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150`}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedAppointment(appt);
+                                        setShowViewDetailsModal(true);
+                                        setActionMenuApptId(null);
+                                      }}
+                                      className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-[#0147A6] flex items-center gap-2.5 font-medium transition cursor-pointer"
+                                    >
+                                      <Eye className="w-4 h-4 text-[#0147A6]" />
+                                      <span>View Details</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedAppointment(appt);
+                                        handleOpenOutcomeModal();
+                                        setActionMenuApptId(null);
+                                      }}
+                                      className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-[#0147A6] flex items-center gap-2.5 font-medium transition cursor-pointer"
+                                    >
+                                      <CheckCircle2 className="w-4 h-4 text-[#0147A6]" />
+                                      <span>Change Appointment Status</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteConfirmAppt(appt);
+                                        setActionMenuApptId(null);
+                                      }}
+                                      className="w-full text-left px-3.5 py-2.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 font-medium transition cursor-pointer border-t border-slate-100"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-rose-500" />
+                                      <span>Delete Appointment</span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1482,9 +1489,9 @@ export default function WorkflowStep3Appointments({
                                   </div>
                                   <p className="text-[10px] truncate font-medium opacity-85 mt-0.5">{apptItem.company}</p>
                                   <div className="flex items-center justify-between mt-1">
-                                    <p className={`text-[9px] font-bold ${badgeStyle.sub}`}>{apptItem.time}</p>
-                                    <span className={`text-[8px] font-extrabold px-1 rounded ${badgeStyle.sub}`}>
-                                      {apptItem.status}
+                                    <p className="text-[9px] font-bold text-blue-700">{apptItem.time}</p>
+                                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 truncate max-w-[80px]" title={getContactPersonForAppointment(apptItem)}>
+                                      {getContactPersonForAppointment(apptItem) || 'Scheduled'}
                                     </span>
                                   </div>
                                 </div>
@@ -1500,35 +1507,13 @@ export default function WorkflowStep3Appointments({
 
               {/* Legend Footer */}
               <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium flex-wrap gap-4">
-                <div className="flex items-center space-x-6">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-                    <span>Scheduled</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-                    <span>Completed</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-rose-500"></span>
-                    <span>Industry Rejected</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-orange-500"></span>
-                    <span>Withdrawn</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-amber-500"></span>
-                    <span>Rescheduled</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-slate-400"></span>
-                    <span>Cancelled</span>
-                  </div>
+                <div className="flex items-center space-x-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                  <span className="text-[11px] font-medium text-slate-600">Scheduled Interviews ({filteredAppointments.length})</span>
                 </div>
 
                 <div className="text-[11px] text-slate-400">
-                  Showing {filteredAppointments.length} of {appointments.length} appointments
+                  Showing {filteredAppointments.length} scheduled appointment{filteredAppointments.length === 1 ? '' : 's'}
                 </div>
               </div>
 
@@ -1561,7 +1546,7 @@ export default function WorkflowStep3Appointments({
 
       {/* Right Drawer / Detail Panel */}
       {showDrawer && selectedAppointment && (
-        <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-xl shrink-0 overflow-hidden self-start">
+        <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-xl shrink-0 overflow-hidden self-start sticky top-4">
           <div className={`relative bg-gradient-to-br from-slate-900 via-slate-800 to-${
             selectedAppointment.status === 'Completed' ? 'emerald' :
             selectedAppointment.status === 'Declined' ? 'rose' :
@@ -1577,8 +1562,8 @@ export default function WorkflowStep3Appointments({
                   <h4 className="font-bold text-white text-sm tracking-wide">
                     {selectedAppointment.apptId || selectedAppointment.id || 'APPT'}
                   </h4>
-                  <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border ${getStatusBadgeStyle(selectedAppointment.status).badge}`}>
-                    {selectedAppointment.status}
+                  <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-blue-900/60 text-cyan-200 border-cyan-500/40">
+                    {getContactPersonForAppointment(selectedAppointment) || 'Scheduled'}
                   </span>
                 </div>
                 <p className="text-xs font-semibold text-slate-200 mt-1.5">{selectedAppointment.position || 'Internship Interview'}</p>
@@ -1812,6 +1797,39 @@ export default function WorkflowStep3Appointments({
                   )}
                 </div>
 
+                {/* ── Student Availability ─────────────────────────────── */}
+                {(() => {
+                  const stuMatch = resolveStudentForAppt(selectedAppointment);
+                  if (!stuMatch) return null;
+                  const availableDaysStr = DAYS_OF_WEEK
+                    .filter(d => isDayAvailable(stuMatch, d.key))
+                    .map(d => d.short)
+                    .join(', ');
+                  return (
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 space-y-2">
+                      <p className="text-[9px] font-bold text-blue-500 uppercase tracking-wider">Student Availability</p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <p className="text-[9px] text-slate-400">Hours</p>
+                          <p className="text-xs font-bold text-slate-800">{stuMatch.placementHours || '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-slate-400">Days</p>
+                          <p className="text-xs font-bold text-slate-800 truncate" title={availableDaysStr || '—'}>
+                            {availableDaysStr || '—'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-slate-400">Time</p>
+                          <p className="text-xs font-bold text-slate-800 truncate">
+                            {(stuMatch.availabilityFrom || '09:00 AM') + ' - ' + (stuMatch.availabilityTo || '05:00 PM')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* ── Outcome Result Card (shown after outcome is saved) ─── */}
                 {selectedAppointment.appointmentOutcome && (
                   <div className={`rounded-xl border p-3 space-y-2
@@ -1914,63 +1932,50 @@ export default function WorkflowStep3Appointments({
 
                 <div className="pt-3 border-t border-slate-100 space-y-2">
                   <h5 className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Quick Status Actions</span>
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#0147A6]" />
+                    <span>Appointment Actions</span>
                   </h5>
 
-                  {/* Once placement is confirmed, show a "Placement Started" badge instead of action buttons */}
-                  {selectedAppointment.status === 'Confirmed' && selectedAppointment.appointmentOutcome === 'successful' ? (
-                    <div className="w-full py-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-center space-x-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span className="text-xs font-bold text-emerald-700">Placement Started</span>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Confirm Appointment & Move to Placement Button */}
-                      <button
-                        onClick={handleConfirmAppointmentDirect}
-                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer shadow-xs text-xs"
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-white" />
-                        <span>Confirm Appointment &amp; Placement</span>
-                      </button>
+                  {/* View Details Button */}
+                  <button
+                    onClick={() => setShowViewDetailsModal(true)}
+                    className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-[#0147A6] font-bold rounded-xl flex items-center justify-center space-x-2 transition cursor-pointer text-xs"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>View Full Details</span>
+                  </button>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={() => {
-                            setIsRescheduling(!isRescheduling);
-                            setRescheduleDate(selectedAppointment.date || '');
-                            setRescheduleTime(selectedAppointment.time || '');
-                          }}
-                          className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-                        >
-                          <CalendarClock className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Reschedule</span>
-                        </button>
-                        <button
-                          onClick={handleCancelClick}
-                          className="py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          <span>Cancel Appt</span>
-                        </button>
-                      </div>
+                  {/* Change Appointment Status Button */}
+                  <button
+                    onClick={handleOpenOutcomeModal}
+                    className="w-full py-2.5 bg-[#0147A6] hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center space-x-2 transition cursor-pointer shadow-xs text-xs"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Change Appointment Status</span>
+                  </button>
 
-                      <button
-                        onClick={handleOpenOutcomeModal}
-                        className={`w-full py-2 font-semibold rounded-xl flex items-center justify-center space-x-2 transition-colors cursor-pointer text-[11px]
-                          ${selectedAppointment.appointmentOutcome
-                            ? 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                          }`}
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>
-                          {selectedAppointment.appointmentOutcome ? 'Edit Outcome Details' : 'Set Outcome Details'}
-                        </span>
-                      </button>
-                    </>
-                  )}
+                  {/* Delete Appointment Button */}
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmAppt(selectedAppointment)}
+                    className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Delete Appointment</span>
+                  </button>
+
+                  {/* Reschedule Button */}
+                  <button
+                    onClick={() => {
+                      setIsRescheduling(!isRescheduling);
+                      setRescheduleDate(selectedAppointment.date || '');
+                      setRescheduleTime(selectedAppointment.time || '');
+                    }}
+                    className="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px]"
+                  >
+                    <CalendarClock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{isRescheduling ? 'Cancel Reschedule' : 'Reschedule Appointment'}</span>
+                  </button>
                 </div>
               </>
             )}
@@ -2165,18 +2170,7 @@ export default function WorkflowStep3Appointments({
                   </div>
                 )}
 
-                {/* ── Delete ────────────────────────────────────────────── */}
-                {!isEditingDetails && (
-                  <div className="pt-1">
-                    <button
-                      onClick={() => handleDelete(selectedAppointment.id || selectedAppointment._id, selectedAppointment)}
-                      className="w-full py-2 bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl flex items-center justify-center space-x-2 hover:bg-rose-100 transition"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete Appointment</span>
-                    </button>
-                  </div>
-                )}
+
               </div>
             )}
 
@@ -2232,6 +2226,173 @@ export default function WorkflowStep3Appointments({
         </div>
       )}
 
+      {/* ─── VIEW DETAILS MODAL ──────────────────────────────────────────── */}
+      {showViewDetailsModal && selectedAppointment && (() => {
+        const ind = resolveIndustryForAppt(selectedAppointment);
+        const stu = resolveStudentForAppt(selectedAppointment);
+        const contactPerson = getContactPersonForAppointment(selectedAppointment);
+        const industryType = getIndustryTypeForAppointment(selectedAppointment);
+
+        const addressParts = [
+          ind?.address,
+          ind?.suburb,
+          ind?.state,
+          ind?.postCode,
+        ].filter(Boolean);
+        const fullAddress = addressParts.length ? addressParts.join(', ') : null;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                    <Eye className="w-4 h-4 text-[#0147A6]" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">View Details</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {selectedAppointment.student} · {selectedAppointment.company}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowViewDetailsModal(false)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Scrollable Body */}
+              <div className="overflow-y-auto px-6 py-5 space-y-6">
+
+                {/* ── Industry Details ─────────────────────────────────── */}
+                <div>
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Building2 className="w-3.5 h-3.5 text-[#0147A6]" />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Industry Details</span>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl border border-slate-200 divide-y divide-slate-100">
+                    <div className="flex items-start px-4 py-3 gap-3">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Name</span>
+                      <span className="text-xs text-slate-800 font-medium">{selectedAppointment.company || '—'}</span>
+                    </div>
+                    <div className="flex items-start px-4 py-3 gap-3">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Type</span>
+                      <span className="text-xs text-slate-700">{industryType || '—'}</span>
+                    </div>
+                    <div className="flex items-start px-4 py-3 gap-3">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Contact Person</span>
+                      <span className="text-xs text-slate-700">{contactPerson || '—'}</span>
+                    </div>
+                    {ind?.phone && (
+                      <div className="flex items-start px-4 py-3 gap-3">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Phone</span>
+                        <span className="text-xs text-slate-700 flex items-center gap-1.5">
+                          <Phone className="w-3 h-3 text-slate-400" /> {ind.phone}
+                        </span>
+                      </div>
+                    )}
+                    {ind?.email && (
+                      <div className="flex items-start px-4 py-3 gap-3">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Email</span>
+                        <span className="text-xs text-slate-700 flex items-center gap-1.5">
+                          <Mail className="w-3 h-3 text-slate-400" /> {ind.email}
+                        </span>
+                      </div>
+                    )}
+                    {fullAddress && (
+                      <div className="flex items-start px-4 py-3 gap-3">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Address</span>
+                        <span className="text-xs text-slate-700 flex items-start gap-1.5">
+                          <MapPin className="w-3 h-3 text-slate-400 mt-0.5 shrink-0" /> {fullAddress}
+                        </span>
+                      </div>
+                    )}
+                    {ind?.notes && (
+                      <div className="flex items-start px-4 py-3 gap-3">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Notes</span>
+                        <span className="text-xs text-slate-600 leading-relaxed">{ind.notes}</span>
+                      </div>
+                    )}
+                    <div className="flex items-start px-4 py-3 gap-3">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase w-28 shrink-0 pt-0.5">Appt. Schedule</span>
+                      <span className="text-xs text-slate-700 flex items-center gap-1.5">
+                        <CalendarClock className="w-3 h-3 text-slate-400" />
+                        {selectedAppointment.date
+                          ? new Date(selectedAppointment.date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+                          : '—'}
+                        {selectedAppointment.time ? ` at ${selectedAppointment.time}` : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Student Availability ─────────────────────────────── */}
+                <div>
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Clock className="w-3.5 h-3.5 text-[#0147A6]" />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Student Availability</span>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase w-20 shrink-0">Hours</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-slate-800">
+                          {(stu?.availabilityFrom || selectedAppointment?.studentDetails?.availabilityFrom || '09:00 AM')} – {(stu?.availabilityTo || selectedAppointment?.studentDetails?.availabilityTo || '05:00 PM')}
+                        </span>
+                        {(stu?.placementHours ?? selectedAppointment?.placementHours ?? selectedAppointment?.studentDetails?.placementHours) ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0147A6] border border-blue-200">
+                            {(stu?.placementHours ?? selectedAppointment?.placementHours ?? selectedAppointment?.studentDetails?.placementHours)} Placement Hours
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase w-20 shrink-0">Days</span>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {DAYS_OF_WEEK.map(({ key, short, label }) => {
+                          const available = isDayAvailable(stu || selectedAppointment, key);
+                          return (
+                            <span
+                              key={key}
+                              title={label}
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                available
+                                  ? 'bg-[#0147A6] text-white border-[#0147A6] shadow-xs'
+                                  : 'bg-white text-slate-300 border-slate-200'
+                              }`}
+                            >
+                              {available && <Check className="w-3 h-3 text-white" />}
+                              <span>{short}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end px-6 py-4 bg-slate-50 border-t border-slate-100 shrink-0">
+                <button
+                  onClick={() => setShowViewDetailsModal(false)}
+                  className="px-5 py-2 bg-[#0147A6] text-white text-xs font-semibold rounded-xl hover:bg-blue-700 transition"
+                >
+                  Close
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ─── APPOINTMENT OUTCOME MODAL ───────────────────────────────────── */}
       {showOutcomeModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -2244,7 +2405,7 @@ export default function WorkflowStep3Appointments({
                   <Check className="w-4 h-4 text-[#0147A6]" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Set Outcome Details</h3>
+                  <h3 className="text-sm font-bold text-slate-900">Change Appointment Status</h3>
                   <p className="text-[10px] text-slate-400 mt-0.5">
                     {selectedAppointment?.student} · {selectedAppointment?.company}
                   </p>
@@ -2287,7 +2448,7 @@ export default function WorkflowStep3Appointments({
                     },
                     {
                       value: 'student_withdrawal',
-                      label: 'Student Withdrawal',
+                      label: 'Student Withdraw',
                       sub: 'Student withdrew / opted out',
                       icon: <UserX className="w-4 h-4" />,
                       active: 'border-orange-500 bg-orange-50 text-orange-800',
@@ -2296,8 +2457,17 @@ export default function WorkflowStep3Appointments({
                     },
                     {
                       value: 'not_suitable_site',
-                      label: 'Not Suitable Site',
-                      sub: 'Placement site not appropriate',
+                      label: 'Site Not Suitable',
+                      sub: 'Placement site is not suitable',
+                      icon: <MapPin className="w-4 h-4" />,
+                      active: 'border-purple-500 bg-purple-50 text-purple-800',
+                      icon_c: 'text-purple-600',
+                      idle: 'border-slate-200 hover:border-purple-300 hover:bg-purple-50/50'
+                    },
+                    {
+                      value: 'student_missed',
+                      label: 'Student Missed Appointment',
+                      sub: 'Student did not attend',
                       icon: <AlertCircle className="w-4 h-4" />,
                       active: 'border-amber-500 bg-amber-50 text-amber-800',
                       icon_c: 'text-amber-600',
@@ -2409,9 +2579,9 @@ export default function WorkflowStep3Appointments({
                 >
                   <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                   <span>
-                    {appointmentOutcome === 'industry_rejected' && 'Appointment will be marked as Industry Rejected. Student returns to workflow for re-placement.'}
-                    {appointmentOutcome === 'student_withdrawal' && 'Appointment will be marked as Withdrawn. Student returns to workflow for re-placement.'}
-                    {appointmentOutcome === 'not_suitable_site' && 'Appointment will be marked as Not Suitable Site. Student returns to workflow — site deemed not appropriate.'}
+                    {appointmentOutcome === 'industry_rejected' && 'Appointment will be marked as Industry Rejected. Student returns to Step 1 – Students.'}
+                    {appointmentOutcome === 'student_withdrawal' && 'Appointment will be marked as Withdrawn. Student returns to Step 1 – Students.'}
+                    {appointmentOutcome === 'student_missed' && 'Appointment will be marked as Student Missed Appointment. Student returns to Step 1 – Students.'}
                   </span>
                 </div>
               )}
@@ -2432,7 +2602,7 @@ export default function WorkflowStep3Appointments({
                         ? 'Why did the industry reject the student? (e.g. over-qualified, position filled)'
                         : appointmentOutcome === 'student_withdrawal'
                           ? 'Why did the student withdraw? (e.g. personal reasons, found other opportunity)'
-                          : 'Why was the site not suitable? (e.g. safety concerns, mismatch of skills)'
+                          : 'Why did the student miss the appointment? (e.g. no-show, uncontactable)'
                   }
                   className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-none placeholder:text-slate-300"
                 />
@@ -2469,134 +2639,75 @@ export default function WorkflowStep3Appointments({
         </div>
       )}
 
-      {/* ─── CANCEL APPOINTMENT MODAL ──────────────────────────────────────── */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Cancel Appointment</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Please provide reason for cancellation</p>
-              </div>
-              <button onClick={() => setShowCancelModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cancellation Type *</label>
-                <select
-                  value={cancelType}
-                  onChange={(e) => setCancelType(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
-                >
-                  <option value="student">Student's Request / Decision</option>
-                  <option value="industry">Industry / Employer Rejected</option>
-                  <option value="withdrawn">Student Withdrew (will join later)</option>
-                  <option value="other">Other Reason</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Detailed Reason *</label>
-                <textarea
-                  rows={4}
-                  placeholder={
-                    cancelType === 'student' 
-                      ? 'e.g. Student found another opportunity, Student not interested anymore...'
-                      : cancelType === 'industry'
-                      ? 'e.g. Position filled, Industry changed requirements, Budget constraints...'
-                      : cancelType === 'withdrawn'
-                      ? 'e.g. Student requested to join after 2 weeks, Personal reasons...'
-                      : 'Please provide detailed reason...'
-                  }
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
-                />
-              </div>
-
-              {cancelType === 'withdrawn' && (
-                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
-                  <p className="text-[10px] text-amber-800 font-medium">
-                    💡 Student will join later. They will appear in "Waiting to Join" list.
-                  </p>
-                </div>
-              )}
-
-              {cancelType === 'industry' && (
-                <div className="bg-rose-50 p-3 rounded-xl border border-rose-200">
-                  <p className="text-[10px] text-rose-800 font-medium">
-                    Industry rejected the student. This will be marked as "Industry Rejected" in placements.
-                  </p>
-                </div>
-              )}
-
-              {cancelType === 'student' && (
-                <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
-                  <p className="text-[10px] text-blue-800 font-medium">
-                    Student requested cancellation. This will be marked as "Declined" for student, or "Industry Rejected" if the industry cancelled.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex space-x-2 pt-2">
-              <button
-                onClick={handleConfirmCancel}
-                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-              >
-                Confirm Cancellation
-              </button>
-              <button
-                onClick={() => setShowCancelModal(false)}
-                className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── DELETE CONFIRM MODAL ─────────────────────────────────────────── */}
+      {/* ─── DELETE APPOINTMENT CONFIRMATION MODAL ───────────────────────── */}
       {deleteConfirmAppt && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start space-x-3">
               <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Delete Appointment</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Delete appointment for <span className="font-semibold text-slate-800">{deleteConfirmAppt.student}</span>
-                  {deleteConfirmAppt.company ? <> at <span className="font-semibold">{deleteConfirmAppt.company}</span></> : ''}? This action cannot be undone.
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Are you sure you want to delete the appointment for{' '}
+                  <span className="font-semibold text-slate-800">{deleteConfirmAppt.student}</span>
+                  {deleteConfirmAppt.company ? (
+                    <> at <span className="font-semibold text-slate-800">{deleteConfirmAppt.company}</span></>
+                  ) : ''}? This action cannot be undone.
                 </p>
               </div>
             </div>
-            <div className="flex space-x-2 pt-1">
+            <div className="flex space-x-2 pt-2">
               <button
+                type="button"
                 onClick={() => setDeleteConfirmAppt(null)}
                 disabled={isDeletingAppt}
-                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 disabled={isDeletingAppt}
-                onClick={handleConfirmedDeleteAppt}
-                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+                onClick={async () => {
+                  const targetId = deleteConfirmAppt.id || deleteConfirmAppt._id || deleteConfirmAppt.apptId;
+                  if (!targetId || !onDeleteAppointment) return;
+                  setIsDeletingAppt(true);
+                  try {
+                    await onDeleteAppointment(targetId);
+                    if (selectedAppointment && (selectedAppointment.id === targetId || selectedAppointment._id === targetId || selectedAppointment.apptId === targetId)) {
+                      setSelectedAppointment(null);
+                      setShowDrawer(false);
+                    }
+                    showToast('Appointment deleted successfully');
+                    setDeleteConfirmAppt(null);
+                  } catch (err) {
+                    console.error('Failed to delete appointment:', err);
+                    showToast('Failed to delete appointment');
+                  } finally {
+                    setIsDeletingAppt(false);
+                  }
+                }}
+                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50 flex items-center justify-center space-x-2 cursor-pointer"
               >
-                {isDeletingAppt
-                  ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Deleting...</span></>
-                  : <><Trash2 className="w-3.5 h-3.5"/><span>Delete Appointment</span></>}
+                {isDeletingAppt ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
