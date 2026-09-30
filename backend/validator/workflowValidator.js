@@ -247,15 +247,27 @@ export const appointmentSchema = z.object({
     .optional()
     .default(""),
 
-  // ✅ FIX: Added 'Withdrawn', 'Declined', 'Confirmed', 'Not Suitable Site', and 'Industry Rejected'
+  contactPerson: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  industryType: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+
+  // Status values
   status: z
-    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show", "Withdrawn", "Declined", "Confirmed", "Not Suitable Site", "Industry Rejected"])
+    .enum(["Scheduled", "Completed", "Cancelled", "Rescheduled", "No Show", "Withdrawn", "Declined", "Confirmed", "Not Suitable Site", "Industry Rejected", "Student Withdraw", "Student Missed Appointment"])
     .optional()
     .default("Scheduled"),
 
   // ── Outcome fields (Set Outcome Details) ─────────────────────────────────
   appointmentOutcome: z
-    .enum(["successful", "industry_rejected", "student_withdrawal", "not_suitable_site", ""])
+    .enum(["successful", "industry_rejected", "student_withdrawal", "student_missed", "not_suitable_site", ""])
     .or(z.string().trim())
     .optional()
     .default(""),

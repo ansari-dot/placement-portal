@@ -111,6 +111,84 @@ export const getAllUsersController = async (req, res) => {
   }
 };
 
+// GET /users/pending - Fetch all pending registration requests
+export const getPendingUsersController = async (req, res) => {
+  try {
+    const pendingUsers = await UserModel.find({ status: 'Pending' }).sort({ createdAt: -1 });
+    res.status(200).json({
+      success: true,
+      data: pendingUsers,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// PATCH /users/:id/approve - Approve a pending user
+export const approveUserController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await UserModel.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.status !== 'Pending') {
+      return res.status(400).json({ success: false, message: 'Only pending users can be approved' });
+    }
+
+    user.status = 'Active';
+    await user.save();
+
+    // Notify the user
+    try {
+      await NotificationModel.create({
+        title: 'Account Approved',
+        desc: `Your account has been approved. You can now log in.`,
+        type: 'system',
+        link: '/',
+        recipient: user._id,
+      });
+    } catch (notifyErr) {
+      console.error('Failed to notify user:', notifyErr);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `${user.name}'s account has been approved`,
+      data: user,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// PATCH /users/:id/reject - Reject and delete a pending user
+export const rejectUserController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await UserModel.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.status !== 'Pending') {
+      return res.status(400).json({ success: false, message: 'Only pending users can be rejected' });
+    }
+
+    await UserModel.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: `${user.name}'s registration request has been rejected`,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // GET /users/stats - Aggregated metrics
 export const getUserStatsController = async (req, res) => {
   try {
@@ -121,7 +199,9 @@ export const getUserStatsController = async (req, res) => {
       coordinatorUsers,
       rtoManagerUsers,
       staffUsers,
-      inactiveUsers
+      industryUsers,
+      inactiveUsers,
+      pendingUsers
     ] = await Promise.all([
       UserModel.countDocuments(),
       UserModel.countDocuments({ status: 'Active' }),
@@ -129,7 +209,9 @@ export const getUserStatsController = async (req, res) => {
       UserModel.countDocuments({ role: 'Coordinator' }),
       UserModel.countDocuments({ role: 'RTO Manager' }),
       UserModel.countDocuments({ role: 'Staff' }),
+      UserModel.countDocuments({ role: 'Industry' }),
       UserModel.countDocuments({ status: { $ne: 'Active' } }),
+      UserModel.countDocuments({ status: 'Pending' }),
     ]);
 
     const startOfMonth = new Date();
@@ -146,7 +228,9 @@ export const getUserStatsController = async (req, res) => {
         coordinatorUsers,
         rtoManagerUsers,
         staffUsers,
+        industryUsers,
         inactiveUsers,
+        pendingUsers,
         newThisMonth,
       },
     });

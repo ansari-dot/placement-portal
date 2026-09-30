@@ -180,6 +180,21 @@ const appointmentSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    contactPerson: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    industryType: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    industryContactId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     linkedReq: {
       type: String,
       trim: true,

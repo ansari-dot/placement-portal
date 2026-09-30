@@ -1,3 +1,4 @@
+import StudentModel from "../model/student.model.js";
 import {
   createWorkflow,
   getAllWorkflows,
@@ -41,6 +42,65 @@ const handleValidationError = (error, res) => {
   return res.status(400).json({ message: error.message, success: false });
 };
 
+// Filter workflow subdocuments dynamically: Coordinators only see their assigned students, Admins see all
+const filterWorkflowForUser = async (workflow, user) => {
+  if (!workflow) return workflow;
+  if (!user || user.role === 'Administrator') return workflow;
+
+  try {
+    const assignedStudents = await StudentModel.find(
+      {
+        $or: [
+          { assignedCoordinator: user._id },
+          { assignedCoordinator: String(user._id) },
+          { assignedCoordinatorName: user.name },
+          { assignedCoordinatorEmail: user.email },
+        ]
+      },
+      { _id: 1, studentId: 1, firstName: 1, lastName: 1, name: 1 }
+    );
+
+    const allowedKeys = new Set();
+    assignedStudents.forEach((stu) => {
+      if (stu._id) allowedKeys.add(String(stu._id).toLowerCase());
+      if (stu.studentId) allowedKeys.add(String(stu.studentId).toLowerCase());
+      const fullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim().toLowerCase();
+      const name = String(stu.name || fullName).trim().toLowerCase();
+      if (name) allowedKeys.add(name);
+    });
+
+    const wfObj = workflow.toObject ? workflow.toObject() : JSON.parse(JSON.stringify(workflow));
+
+    if (Array.isArray(wfObj.appointments)) {
+      wfObj.appointments = wfObj.appointments.filter((a) => {
+        const aId = String(a.studentId || '').toLowerCase();
+        const aName = String(a.student || '').toLowerCase();
+        return allowedKeys.has(aId) || allowedKeys.has(aName);
+      });
+    }
+
+    if (Array.isArray(wfObj.requests)) {
+      wfObj.requests = wfObj.requests.filter((r) => {
+        const rId = String(r.studentId || '').toLowerCase();
+        const rName = String(r.student || '').toLowerCase();
+        return allowedKeys.has(rId) || allowedKeys.has(rName);
+      });
+    }
+
+    if (Array.isArray(wfObj.students)) {
+      wfObj.students = wfObj.students.filter((s) => {
+        const sId = String(s._id || s.id || s.studentId || '').toLowerCase();
+        return allowedKeys.has(sId);
+      });
+    }
+
+    return wfObj;
+  } catch (err) {
+    console.warn("filterWorkflowForUser error:", err.message);
+    return workflow;
+  }
+};
+
 export const createWorkflowController = async (req, res) => {
   try {
     if (!req.body || Object.keys(req.body).length === 0) {
@@ -63,10 +123,13 @@ export const createWorkflowController = async (req, res) => {
 export const getAllWorkflowsController = async (req, res) => {
   try {
     const workflows = await getAllWorkflows();
+    const filteredWorkflows = await Promise.all(
+      workflows.map((wf) => filterWorkflowForUser(wf, req.user))
+    );
     res.status(200).json({
       message: "Workflows fetched successfully",
       success: true,
-      data: workflows,
+      data: filteredWorkflows,
     });
   } catch (error) {
     res.status(500).json({ message: error.message, success: false });
@@ -85,10 +148,12 @@ export const getWorkflowByIdController = async (req, res) => {
       });
     }
 
+    const filteredWorkflow = await filterWorkflowForUser(workflow, req.user);
+
     res.status(200).json({
       message: "Workflow fetched successfully",
       success: true,
-      data: workflow,
+      data: filteredWorkflow,
     });
   } catch (error) {
     res.status(500).json({ message: error.message, success: false });

@@ -25,6 +25,21 @@ export const deleteUser = async (id) => {
   return response.data;
 };
 
+export const fetchPendingUsers = async () => {
+  const response = await api.get('/users/pending');
+  return response.data;
+};
+
+export const approveUser = async (id) => {
+  const response = await api.patch(`/users/${id}/approve`);
+  return response.data;
+};
+
+export const rejectUser = async (id) => {
+  const response = await api.patch(`/users/${id}/reject`);
+  return response.data;
+};
+
 export const fetchScoreStats = async () => {
   const response = await api.get('/users/score-stats');
   return response.data;

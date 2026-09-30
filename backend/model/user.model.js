@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['Administrator', 'Coordinator', 'RTO Manager', 'Staff', 'Student'],
+    enum: ['Administrator', 'Coordinator', 'RTO Manager', 'Staff', 'Student', 'Industry'],
     default: 'Staff',
   },
   department: {
@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Active', 'Inactive', 'Suspended'],
+    enum: ['Active', 'Inactive', 'Suspended', 'Pending'],
     default: 'Active',
   },
   phone: {

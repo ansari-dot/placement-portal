@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   loginController,
+  signupController,
   logoutController,
   getMeController,
   heartbeatController,
@@ -11,6 +12,7 @@ import { protectRoute } from '../middlewares/auth.middleware.js';
 const router = express.Router();
 
 router.post('/login', loginController);
+router.post('/signup', signupController);
 router.post('/logout', logoutController);
 router.get('/me', protectRoute, getMeController);
 router.post('/heartbeat', protectRoute, heartbeatController);

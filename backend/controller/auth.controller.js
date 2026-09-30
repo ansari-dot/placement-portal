@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import UserModel from '../model/user.model.js';
 import StudentModel from '../model/student.model.js';
 import RtoModel from '../model/rto.model.js';
+import NotificationModel from '../model/notification.model.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mantis_portal_super_secret_key_2026';
 
@@ -80,6 +81,61 @@ export const loginController = async (req, res) => {
       success: true,
       message: 'Logged in successfully',
       user: userObj,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// POST /auth/signup - Public registration (creates user with Pending status)
+export const signupController = async (req, res) => {
+  try {
+    const { name, email, password, role, phone } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
+    }
+
+    const allowedRoles = ['Coordinator', 'Student', 'RTO Manager', 'Industry'];
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role selected' });
+    }
+
+    const existingUser = await UserModel.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'User with this email already exists' });
+    }
+
+    const user = await UserModel.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password: password.trim(),
+      role: role,
+      status: 'Pending',
+      phone: phone || '',
+      department: role === 'Industry' ? 'Industry Partner' : 'Placement Operations',
+    });
+
+    // Notify admins about the new signup request
+    try {
+      const admins = await UserModel.find({ role: 'Administrator', status: 'Active' });
+      for (const admin of admins) {
+        await NotificationModel.create({
+          title: 'New User Registration Request',
+          desc: `${name} (${role}) has requested access. Please review and approve.`,
+          type: 'system',
+          link: '/users',
+          recipient: admin._id,
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Failed to notify admins:', notifyErr);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration request submitted successfully! Please wait for admin approval.',
+      data: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
