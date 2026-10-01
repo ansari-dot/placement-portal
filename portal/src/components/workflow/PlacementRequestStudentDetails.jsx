@@ -66,6 +66,14 @@ const formatHistoryDate = (value) => {
     : date.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
+const displayDetail = (value) => {
+  if (value === null || value === undefined || value === '') return 'Not specified';
+  if (value instanceof Date) return formatHistoryDate(value);
+  if (Array.isArray(value)) return value.length ? value.map(entry => typeof entry === 'object' ? (entry?.name || entry?.label || '') : entry).filter(Boolean).join(', ') || 'Not specified' : 'Not specified';
+  if (typeof value === 'object') return asText(value) || 'Not specified';
+  return String(value);
+};
+
 const DAY_MAP = {
   mon: 'Monday', monday: 'Monday',
   tue: 'Tuesday', tuesday: 'Tuesday',
@@ -251,7 +259,22 @@ export default function PlacementRequestStudentDetails({ request, editable, onCl
   const displayPhone = student?.phoneNumber || request?.studentPhone || '';
   const displayAddress = [student?.address, student?.suburb, student?.state, student?.postCode]
     .filter(Boolean).join(', ') || request?.studentAddress || '';
+  const contactedIndustries = request?.contactedIndustries?.length
+    ? request.contactedIndustries
+    : (student?.contactedIndustries || []);
   const noPlacementData = !loadingStudent && !hasPlacementData(student);
+  const requestChanges = request?.changeHistory || [];
+  const requestHistoryEvents = requestChanges.map((entry) => ({
+    title: 'Placement Request Updated',
+    date: entry.changedAt,
+    by: entry.changedBy,
+    description: (entry.changes || []).map((change) => {
+      const previous = displayDetail(change.from);
+      const next = displayDetail(change.to);
+      return `${change.field || 'Field'}: ${previous} → ${next}`;
+    }).join('\n'),
+  }));
+  const allProcessHistory = [...requestHistoryEvents, ...(Array.isArray(processHistory) ? processHistory : [])];
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-3 sm:p-6">
@@ -328,6 +351,68 @@ export default function PlacementRequestStudentDetails({ request, editable, onCl
                 Click <strong>Edit Placement Details</strong> (from the Actions menu) to add placement information for this student.
               </p>
             </div>
+          )}
+
+          {!loadingStudent && (
+            <>
+              <section className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                <h3 className="font-bold text-slate-800">Placement Request Details</h3>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    ['Request ID', request?.reqId || request?.id],
+                    ['Request Date', request?.createdAt || request?.date],
+                    ['Request Status', request?.status],
+                    ['Priority', request?.priority],
+                    ['Assigned Coordinator', request?.coordinatorName],
+                    ['Coordinator Assignment Date', request?.assignedCoordinatorAt],
+                    ['RTO', request?.rto || student?.assignedRto],
+                    ['Course / Placement', request?.title || student?.courseQualification],
+                    ['Industry', request?.company],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <p className="font-semibold text-slate-500">{label}</p>
+                      <p className="mt-1 text-slate-800">{label.toLowerCase().includes('date') && value ? formatHistoryDate(value) : displayDetail(value)}</p>
+                    </div>
+                  ))}
+                  {request?.notes && <div className="sm:col-span-2 lg:col-span-3"><p className="font-semibold text-slate-500">Request Notes</p><p className="mt-1 whitespace-pre-wrap text-slate-800">{request.notes}</p></div>}
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="font-bold text-slate-800">Student Information</h3>
+                <div className="grid gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    ['Student ID', student?.studentId || request?.studentId],
+                    ['Full Name', `${student?.firstName || ''} ${student?.lastName || ''}`.trim() || student?.name || request?.student],
+                    ['Preferred Name', student?.preferredName],
+                    ['Date of Birth', student?.dateOfBirth],
+                    ['Gender', student?.gender],
+                    ['Email', student?.emailAddress || student?.email || request?.studentEmail],
+                    ['Phone', [student?.phoneCode, student?.phoneNumber].filter(Boolean).join(' ') || request?.studentPhone],
+                    ['Alternate Phone', [student?.altPhoneCode, student?.alternatePhone].filter(Boolean).join(' ')],
+                    ['Address', displayAddress],
+                    ['Nationality', student?.nationality],
+                    ['Languages', student?.language],
+                    ['Course / Qualification', student?.courseQualification],
+                    ['Specialisation', student?.specialisation],
+                    ['Course Level', student?.courseLevel],
+                    ['Study Mode', student?.studyMode],
+                    ['Institute', student?.institute],
+                    ['Campus', student?.campus],
+                    ['Enrolment ID', student?.enrollmentId],
+                    ['Attendance Status', student?.attendanceStatus],
+                    ['Academic Status', student?.academicStatus],
+                    ['Visa Status', student?.visaStatus],
+                    ['Work Rights', student?.workRights],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <p className="font-semibold text-slate-500">{label}</p>
+                      <p className="mt-1 break-words text-slate-800">{label === 'Date of Birth' && value ? formatHistoryDate(value) : displayDetail(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </>
           )}
 
           {placementRecord && (
@@ -597,8 +682,8 @@ export default function PlacementRequestStudentDetails({ request, editable, onCl
           {/* ── Contacted Industries (from request, not student) ── */}
           <section className="space-y-3 border-t border-slate-100 pt-4">
             <h3 className="font-bold text-slate-800">Contacted Industries</h3>
-            {(request?.contactedIndustries || []).length > 0 ? (
-              request.contactedIndustries.map((industry, idx) => (
+            {contactedIndustries.length > 0 ? (
+              contactedIndustries.map((industry, idx) => (
                 <article key={industry.id || idx} className="rounded-lg border border-slate-200 p-3">
                   <p className="font-bold text-slate-800">{industry.organizationName || 'Industry'}</p>
                   <p className="mt-1 text-slate-600">
@@ -626,12 +711,12 @@ export default function PlacementRequestStudentDetails({ request, editable, onCl
             )}
           </section>
 
-          {Array.isArray(processHistory) && (
+          {(Array.isArray(processHistory) || requestChanges.length > 0) && (
             <section className="space-y-3 border-t border-slate-100 pt-4">
-              <h3 className="font-bold text-slate-800">Placement Process & Status History</h3>
-              {processHistory.length > 0 ? (
+              <h3 className="font-bold text-slate-800">Placement Request Change History</h3>
+              {allProcessHistory.length > 0 ? (
                 <ol className="space-y-3">
-                  {processHistory.map((event, index) => (
+                  {allProcessHistory.map((event, index) => (
                     <li key={`${event.title}-${event.date || 'undated'}-${index}`} className="relative flex gap-3">
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-cyan-600 ring-4 ring-cyan-50" />
                       <div className="min-w-0 flex-1 rounded-lg bg-slate-50 px-3 py-2">

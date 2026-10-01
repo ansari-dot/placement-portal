@@ -6,7 +6,7 @@ import {
   Search, Filter, Download, Plus, MoreVertical,
   ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List,
   X, XCircle, Building2, User, Calendar, Clock, CheckCircle2,
-  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Trash2, Eye, Edit, CheckSquare, FileText, UserCheck, Copy
+  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Eye, Edit, CheckSquare, FileText, UserCheck, Copy
 } from 'lucide-react';
 import { fetchJobs } from '../../api/jobApi';
 import { createIndustry, fetchIndustries } from '../../api/industryApi';
@@ -26,7 +26,6 @@ export default function WorkflowStep2Requests({
   onNext,
   onCreateRequest,
   onUpdateRequest,
-  onDeleteRequest,
   onAddContact,
   students = [],
   activeStudent = null,
@@ -124,9 +123,6 @@ export default function WorkflowStep2Requests({
   const [editRequest, setEditRequest] = useState(null); // item being edited
   const [editForm, setEditForm] = useState({ status: '', company: '', rto: '', priority: 'Normal', notes: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  // ─── Delete Confirm Modal ────────────────────────────────────────────────
-  const [deleteConfirmReq, setDeleteConfirmReq] = useState(null);
-  const [isDeletingReq, setIsDeletingReq] = useState(false);
   const [assignCoordinatorTarget, setAssignCoordinatorTarget] = useState(null);
   const [placementDetailsTarget, setPlacementDetailsTarget] = useState(null);
   const [changePriorityTarget, setChangePriorityTarget] = useState(null);
@@ -437,9 +433,6 @@ export default function WorkflowStep2Requests({
         studentId: item.studentId || '',
       };
       setAssignCoordinatorTarget(target);
-    } else if (action === 'delete') {
-      // Open confirm modal — do NOT delete immediately
-      setDeleteConfirmReq(item);
     }
   };
 
@@ -610,6 +603,10 @@ export default function WorkflowStep2Requests({
   };
 
   const currentContacts = (contactRecordsMap[selectedRequest?.dbId || selectedRequest?.id] || []);
+  const currentRequestPriority = changePriorityTarget?.priority || 'Normal';
+  const allowedPriorityChanges = currentRequestPriority === 'Urgent'
+    ? ['Normal', 'Snooze', 'Inactive']
+    : ['Urgent', 'Snooze', 'Inactive'];
 
   return (
     <>
@@ -838,10 +835,6 @@ export default function WorkflowStep2Requests({
                   <button onClick={() => handleBulkAction('Status update')} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                     <CheckSquare className="w-3.5 h-3.5 text-slate-400" />
                     <span>Update Status</span>
-                  </button>
-                  <button onClick={() => handleBulkAction('Delete')} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Selected</span>
                   </button>
                 </div>
               )}
@@ -1631,7 +1624,7 @@ export default function WorkflowStep2Requests({
                     { value: 'Urgent',   hint: 'Urgent Priority',              style: 'rose'   },
                     { value: 'Inactive', hint: 'Inactive — returns to Step 1', style: 'violet' },
                     { value: 'Snooze',   hint: 'Snooze — returns to Step 1',  style: 'amber'  },
-                  ].map(({ value, hint, style }) => {
+                  ].filter(({ value }) => allowedPriorityChanges.includes(value)).map(({ value, hint, style }) => {
                     const selected = changePriority === value;
                     const palettes = {
                       blue:   selected ? 'bg-blue-50 border-blue-600 text-blue-700'       : 'border-slate-200 hover:border-blue-300',
@@ -1830,49 +1823,6 @@ export default function WorkflowStep2Requests({
         </div>
       )}
 
-      {/* ─── DELETE CONFIRM MODAL ────────────────────────────────────────── */}
-      {deleteConfirmReq && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-start space-x-3">
-              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                <Trash2 className="w-4.5 h-4.5" size={18} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Delete Request</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Delete placement request <span className="font-semibold text-slate-800">{deleteConfirmReq.reqId}</span> for <span className="font-semibold">{deleteConfirmReq.student}</span>? This cannot be undone.
-                </p>
-              </div>
-            </div>
-            <div className="flex space-x-2 pt-1">
-              <button
-                onClick={() => setDeleteConfirmReq(null)}
-                disabled={isDeletingReq}
-                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={isDeletingReq}
-                onClick={async () => {
-                  const dbId = deleteConfirmReq.id || deleteConfirmReq.reqId || deleteConfirmReq._id;
-                  if (!dbId) { setDeleteConfirmReq(null); return; }
-                  setIsDeletingReq(true);
-                  try {
-                    if (onDeleteRequest) await onDeleteRequest(dbId);
-                    showToast('Request deleted');
-                  } catch (err) { showToast('Failed to delete'); }
-                  finally { setIsDeletingReq(false); setDeleteConfirmReq(null); }
-                }}
-                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
-              >
-                {isDeletingReq ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Deleting...</span></> : <><Trash2 className="w-3.5 h-3.5"/><span>Delete</span></>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
 
     {assignCoordinatorTarget && (
