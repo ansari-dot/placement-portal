@@ -35,7 +35,7 @@ export function getDailyWorkingHours(fromStr, toStr) {
 /**
  * Normalizes availability days into an array of JS day numbers (0 = Sun, 1 = Mon, ..., 6 = Sat)
  */
-export function getAvailableDayIndices(availabilityDays) {
+export function getAvailableDayIndices(availabilityDays, requireExplicitDays = false) {
   const DAY_MAP = {
     sun: 0, sunday: 0,
     mon: 1, monday: 1,
@@ -48,7 +48,7 @@ export function getAvailableDayIndices(availabilityDays) {
 
   if (!availabilityDays) {
     // Default to standard working days (Mon - Fri)
-    return [1, 2, 3, 4, 5];
+    return requireExplicitDays ? [] : [1, 2, 3, 4, 5];
   }
 
   const indices = new Set();
@@ -73,7 +73,7 @@ export function getAvailableDayIndices(availabilityDays) {
   }
 
   // If no days were marked as available, fallback to Mon-Fri
-  return indices.size > 0 ? Array.from(indices).sort() : [1, 2, 3, 4, 5];
+  return indices.size > 0 ? Array.from(indices).sort() : (requireExplicitDays ? [] : [1, 2, 3, 4, 5]);
 }
 
 /**
@@ -91,23 +91,32 @@ export function calculatePlacementEndDate(
   placementHours,
   availabilityDays,
   availabilityFrom = '09:00 AM',
-  availabilityTo = '05:00 PM'
+  availabilityTo = '05:00 PM',
+  { requireCompleteSchedule = false } = {}
 ) {
   if (!commencementDate) return '';
 
-  const startDate = new Date(commencementDate);
+  const startText = String(commencementDate).split('T')[0];
+  const startParts = startText.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const startDate = startParts
+    ? new Date(Number(startParts[1]), Number(startParts[2]) - 1, Number(startParts[3]))
+    : new Date(commencementDate);
   if (isNaN(startDate.getTime())) return '';
 
   const totalHours = Number(placementHours);
   if (!totalHours || totalHours <= 0) {
+    if (requireCompleteSchedule) return '';
     // Fallback: 12 weeks standard duration if placement hours not specified
     const defaultEnd = new Date(startDate);
     defaultEnd.setDate(defaultEnd.getDate() + 12 * 7);
     return defaultEnd.toISOString().split('T')[0];
   }
 
+  if (requireCompleteSchedule && (!availabilityDays || !availabilityFrom || !availabilityTo)) return '';
+
   const hoursPerDay = getDailyWorkingHours(availabilityFrom, availabilityTo);
-  const availableDayIndices = getAvailableDayIndices(availabilityDays);
+  const availableDayIndices = getAvailableDayIndices(availabilityDays, requireCompleteSchedule);
+  if (requireCompleteSchedule && availableDayIndices.length === 0) return '';
 
   // We iterate day by day starting on commencementDate
   const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());

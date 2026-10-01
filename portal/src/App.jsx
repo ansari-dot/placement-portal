@@ -17,6 +17,7 @@ import TheRTOPage from "./pages/TheRTOPage";
 import IndustryPage from "./pages/IndustryPage";
 import JobPage from "./pages/JobPage";
 import UsersPage from "./pages/UsersPage";
+import UserLogPage from "./pages/UserLogPage";
 
 import { useHeartbeat } from "./hooks/useHeartbeat";
 
@@ -110,6 +111,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <UsersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/user-log"
+        element={
+          <ProtectedRoute>
+            <UserLogPage />
           </ProtectedRoute>
         }
       />

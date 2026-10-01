@@ -22,14 +22,31 @@ export const loginController = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials. User not found.' });
     }
 
+    if (user.status === 'Pending') {
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_PENDING_APPROVAL',
+        message: 'Your registration is waiting for Administrator approval.',
+      });
+    }
+
     if (user.status !== 'Active') {
-      return res.status(403).json({ success: false, message: 'Your account is inactive. Please contact administration.' });
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_INACTIVE',
+        message: 'Your account is inactive. Please contact administration.',
+      });
     }
 
     // Verify password with bcryptjs
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    // Upgrade any legacy plaintext password after a valid login; the save hook hashes it.
+    if (!/^\$2[aby]\$\d{2}\$/.test(user.password || '')) {
+      user.password = password;
     }
 
     // Update last login & set online

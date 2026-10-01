@@ -293,6 +293,14 @@ export const updateUserController = async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
+    // Keep account fields within the values supported by the Users screen.
+    const editableFields = ['name', 'email', 'password', 'role', 'department', 'status', 'phone', 'avatar'];
+    Object.keys(updateData).forEach((field) => {
+      if (!editableFields.includes(field)) delete updateData[field];
+    });
+
+    if (updateData.email) updateData.email = updateData.email.toLowerCase().trim();
+
     // Don't overwrite password with empty string if not provided
     if (!updateData.password) {
       delete updateData.password;
@@ -309,16 +317,33 @@ export const updateUserController = async (req, res) => {
       }
     }
 
-    const updated = await UserModel.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
-
-    if (!updated) {
+    const currentUser = await UserModel.findById(id);
+    if (!currentUser) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    const isRemovingAdminAccess = currentUser.role === 'Administrator' &&
+      (updateData.role && updateData.role !== 'Administrator' || updateData.status && updateData.status !== 'Active');
+    if (isRemovingAdminAccess) {
+      const activeAdminCount = await UserModel.countDocuments({ role: 'Administrator', status: 'Active' });
+      if (activeAdminCount <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'The last active Administrator cannot be deactivated or changed to another role.',
+        });
+      }
+    }
+
+    // Use document.save() so changing a password runs the model's bcrypt hook.
+    Object.assign(currentUser, updateData);
+    const updated = await currentUser.save();
+    const userResponse = updated.toObject();
+    delete userResponse.password;
 
     res.status(200).json({
       success: true,
       message: 'User updated successfully',
-      data: updated,
+      data: userResponse,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

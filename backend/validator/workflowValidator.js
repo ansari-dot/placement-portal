@@ -42,6 +42,7 @@ export const workflowSchema = z.object({
 
 // ===== Internship Request Schema (Step 2) =====
 export const internshipRequestSchema = z.object({
+  updatedBy: z.string().optional(),
   reqId: z
     .string()
     .trim()

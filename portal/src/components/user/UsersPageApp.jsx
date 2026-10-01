@@ -324,10 +324,12 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
                   <td className="py-4 px-4 text-right space-x-1">
                     <button
                       onClick={() => onEditUser && onEditUser(user)}
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex cursor-pointer"
-                      title="Edit User"
+                      className="px-2 py-1.5 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center gap-1.5 cursor-pointer font-semibold"
+                      title="Change user role or account status"
+                      aria-label={`Change role or status for ${user.name}`}
                     >
                       <Edit2 className="w-4 h-4" />
+                      <span>Manage</span>
                     </button>
                     <button
                       onClick={() => onDeleteUser && onDeleteUser(uId, user.name)}
@@ -702,7 +704,7 @@ export default function UsersPageApp({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Role</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">User Role</label>
                   <select
                     value={modalRole}
                     onChange={(e) => setModalRole(e.target.value)}
@@ -717,7 +719,7 @@ export default function UsersPageApp({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Account Status</label>
                   <select
                     value={modalStatus}
                     onChange={(e) => setModalStatus(e.target.value)}
