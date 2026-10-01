@@ -10,6 +10,7 @@ import {
   AlertCircle, ThumbsUp, ThumbsDown, UserX, Calendar as CalendarIcon,
   Info, ExternalLink, MessageCircle
 } from 'lucide-react';
+import PlacementRequestStudentDetails from './PlacementRequestStudentDetails';
 
 export default function WorkflowStep4Internships({ 
   internships = [], 
@@ -47,7 +48,7 @@ export default function WorkflowStep4Internships({
   const [toast, setToast] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
-  const [activeStatusTab, setActiveStatusTab] = useState('All Placements');
+  const [activeStatusTab, setActiveStatusTab] = useState('All');
 
   // ─── Edit Internship Modal ────────────────────────────────────────────────
   const [editInternship, setEditInternship] = useState(null);
@@ -56,6 +57,12 @@ export default function WorkflowStep4Internships({
   // ─── Delete Confirm Modal ─────────────────────────────────────────────────
   const [deleteConfirmInt, setDeleteConfirmInt] = useState(null);
   const [isDeletingInt, setIsDeletingInt] = useState(false);
+  // ─── Add Commencement Date Modal ──────────────────────────────────────────
+  const [commencementItem, setCommencementItem] = useState(null);
+  const [commencementForm, setCommencementForm] = useState({ startDate: '', endDate: '' });
+  const [isSavingCommencement, setIsSavingCommencement] = useState(false);
+  // ─── View Full Details Student Modal ──────────────────────────────────────
+  const [viewDetailsStudent, setViewDetailsStudent] = useState(null);
 
   const showToast = (message) => {
     setToast(message);
@@ -94,6 +101,7 @@ export default function WorkflowStep4Internships({
       case 'Declined': return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Industry Rejected': return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Student Missed Appointment': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Student Withdraw': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Not Suitable Site': return 'bg-amber-50 text-amber-800 border-amber-400';
       case 'Withdrawn': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Cancelled': return 'bg-slate-100 text-slate-600 border-slate-200';
@@ -125,7 +133,7 @@ export default function WorkflowStep4Internships({
       const startDate = parseLocalDate(startStr);
 
       // Terminal statuses that are always honoured regardless of dates
-      if (['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Not Suitable Site', 'Withdrawn', 'Cancelled'].includes(storedStatus)) return storedStatus;
+      if (['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Student Withdraw', 'Not Suitable Site', 'Withdrawn', 'Cancelled'].includes(storedStatus)) return storedStatus;
 
       // "Completed" is only valid once end date has actually passed
       if (storedStatus === 'Completed') {
@@ -164,9 +172,11 @@ export default function WorkflowStep4Internships({
             item.start || item.date,
             item.end
           );
+          const rawId = item.intId || item.apptId || '';
+          const cleanedId = rawId ? `PL-${rawId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(index + 1).padStart(3, '0')}`;
           result.push({
             id,
-            intId: item.intId || item.apptId || `INT-${String(index + 1).padStart(6, '0')}`,
+            intId: cleanedId,
             student: item.student || 'Unknown Student',
             studentId: item.studentId || '',
             company: item.company || 'Unknown Company',
@@ -251,8 +261,8 @@ export default function WorkflowStep4Internships({
           status = 'Industry Rejected';
           cancellationReason = appt.cancellationReason || 'Industry rejected the student';
           cancellationType = appt.cancellationType || 'industry';
-        } else if (appt.status === 'Withdrawn') {
-          status = 'Withdrawn';
+        } else if (appt.status === 'Withdrawn' || appt.status === 'Student Withdraw' || appt.appointmentOutcome === 'student_withdrawal') {
+          status = 'Student Withdraw';
           cancellationReason = appt.cancellationReason || 'Student withdrew from placement';
           cancellationType = appt.cancellationType || 'withdrawn';
         } else if (appt.status === 'Cancelled') {
@@ -271,9 +281,11 @@ export default function WorkflowStep4Internships({
         const uniqueId = apptId || `INT-appt-${Date.now()}-${index}`;
         if (!seenIds.has(uniqueId)) {
           seenIds.add(uniqueId);
+          const rawApptId = appt.apptId || '';
+          const cleanedApptId = rawApptId ? `PL-${rawApptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`;
           result.push({
             id: uniqueId,
-            intId: appt.apptId || `INT-${String(result.length + 1).padStart(6, '0')}`,
+            intId: cleanedApptId,
             student: studentName,
             studentId: studentId,
             company: appt.company || 'Unknown Company',
@@ -334,7 +346,7 @@ export default function WorkflowStep4Internships({
   // Helper to check if placement is ending soon or ended
   const getEndingStatus = (item) => {
     if (!item) return null;
-    if (item.status === 'Withdrawn' || item.status === 'Declined' || item.status === 'Industry Rejected' || item.status === 'Student Missed Appointment' || item.status === 'Cancelled') {
+    if (item.status === 'Withdrawn' || item.status === 'Student Withdraw' || item.status === 'Declined' || item.status === 'Industry Rejected' || item.status === 'Student Missed Appointment' || item.status === 'Cancelled') {
       return null;
     }
 
@@ -428,9 +440,14 @@ export default function WorkflowStep4Internships({
     const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
     const matchesCompany = companyFilter === 'All' || item.company === companyFilter;
     const matchesStatusTab = 
+      activeStatusTab === 'All' || 
       activeStatusTab === 'All Placements' || 
       activeStatusTab === 'All Internships' || 
-      (activeStatusTab === 'Ending Soon' ? Boolean(getEndingStatus(item)) : item.status === activeStatusTab);
+      (activeStatusTab === 'Ending Soon' ? Boolean(getEndingStatus(item)) :
+       activeStatusTab === 'Appointment Successful' ? (item.status === 'Confirmed' || item.status === 'Waiting to Join' || item.status === 'Appointment Successful') :
+       activeStatusTab === 'Student Withdraw' ? (item.status === 'Withdrawn' || item.status === 'Student Withdraw') :
+       activeStatusTab === 'Placement Completed' ? (item.status === 'Completed' || item.status === 'Placement Completed') :
+       item.status === activeStatusTab);
     return matchesSearch && matchesStatus && matchesCompany && matchesStatusTab;
   });
 
@@ -509,7 +526,7 @@ export default function WorkflowStep4Internships({
     
     if (action === 'view') {
       setSelectedInternship(item);
-      setShowDrawer(true);
+      setViewDetailsStudent(item);
     } else if (action === 'edit') {
       // Open proper edit modal
       setEditIntForm({
@@ -526,6 +543,80 @@ export default function WorkflowStep4Internships({
       } else {
         showToast('Cannot delete: No ID found');
       }
+    }
+  };
+
+  const findStudentForPlacement = (item) => {
+    if (!item) return null;
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const targetId = norm(item.studentId);
+    const targetName = norm(item.student);
+    return (students || []).find(s => {
+      const sDbId = norm(s.id || s._id);
+      const sBizId = norm(s.studentId);
+      const sName = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`);
+      return (targetId && (sDbId === targetId || sBizId === targetId)) || (targetName && sName === targetName);
+    }) || null;
+  };
+
+  const handleOpenCommencementModal = (item) => {
+    const stu = findStudentForPlacement(item);
+    const initialStart = (item.start && item.start !== 'TBD') ? String(item.start).split('T')[0] : new Date().toISOString().split('T')[0];
+    const initialEnd = item.end ? String(item.end).split('T')[0] : calculatePlacementEndDate(
+      initialStart,
+      stu?.placementHours,
+      stu?.availabilityDays,
+      stu?.availabilityFrom,
+      stu?.availabilityTo
+    );
+    setCommencementItem({ ...item, resolvedStudent: stu });
+    setCommencementForm({
+      startDate: initialStart,
+      endDate: initialEnd || ''
+    });
+  };
+
+  const handleCommencementStartChange = (newStart) => {
+    const stu = commencementItem?.resolvedStudent || findStudentForPlacement(commencementItem);
+    const computedEnd = calculatePlacementEndDate(
+      newStart,
+      stu?.placementHours,
+      stu?.availabilityDays,
+      stu?.availabilityFrom,
+      stu?.availabilityTo
+    );
+    setCommencementForm({
+      startDate: newStart,
+      endDate: computedEnd || ''
+    });
+  };
+
+  const handleSaveCommencement = async () => {
+    if (!commencementItem) return;
+    const dbId = commencementItem._appointmentId || commencementItem.id || commencementItem.intId;
+    if (!onUpdateInternship) {
+      showToast('Update function not available');
+      return;
+    }
+    setIsSavingCommencement(true);
+    try {
+      await onUpdateInternship(dbId, {
+        student: commencementItem.student,
+        studentId: commencementItem.studentId,
+        company: commencementItem.company,
+        title: commencementItem.title,
+        start: commencementForm.startDate,
+        commencementDate: commencementForm.startDate,
+        end: commencementForm.endDate,
+        expectedCompletionDate: commencementForm.endDate,
+        status: 'Placement Started',
+      });
+      showToast('Commencement & Expected Completion Date updated!');
+      setCommencementItem(null);
+    } catch (err) {
+      showToast('Failed to save dates');
+    } finally {
+      setIsSavingCommencement(false);
     }
   };
 
@@ -675,7 +766,7 @@ export default function WorkflowStep4Internships({
             </button>
             {showStatusFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
-                {['All', 'Active', 'Joined', 'Waiting to Join', 'Completed', 'Industry Rejected', 'Withdrawn', 'Cancelled', 'Student Missed Appointment'].map((s) => (
+                {['All', 'Active', 'Joined', 'Waiting to Join', 'Completed', 'Industry Rejected', 'Student Withdraw', 'Withdrawn', 'Cancelled', 'Student Missed Appointment'].map((s) => (
                   <button 
                     key={s}
                     onClick={() => { setStatusFilter(s); setShowStatusFilter(false); setCurrentPage(1); }}
@@ -743,7 +834,7 @@ export default function WorkflowStep4Internships({
 
         {/* ─── Status Tabs ────────────────────────────────────────────────── */}
         <div className="flex border-b border-slate-200 text-xs font-semibold text-slate-500 space-x-6 px-1 overflow-x-auto">
-          {['All Placements', 'Placement Started', 'Active', 'Waiting to Join', 'Joined', 'Industry Rejected', 'Student Missed Appointment', 'Not Suitable Site', 'Withdrawn', 'Cancelled', 'Completed'].map((tab) => (
+          {['All', 'Appointment Successful', 'Student Withdraw', 'Student Missed Appointment', 'Industry Rejected', 'Placement Started', 'Ending Soon', 'Placement Completed'].map((tab) => (
             <button
               key={tab}
               onClick={() => { setActiveStatusTab(tab); setCurrentPage(1); }}
@@ -753,7 +844,11 @@ export default function WorkflowStep4Internships({
             >
               {tab}
               <span className="ml-1.5 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
-                {tab === 'All Placements' || tab === 'All Internships' ? filteredInternships.length : 
+                {tab === 'All' ? filteredInternships.length : 
+                  tab === 'Ending Soon' ? filteredInternships.filter(i => Boolean(getEndingStatus(i))).length :
+                  tab === 'Appointment Successful' ? filteredInternships.filter(i => i.status === 'Confirmed' || i.status === 'Waiting to Join' || i.status === 'Appointment Successful').length :
+                  tab === 'Student Withdraw' ? filteredInternships.filter(i => i.status === 'Withdrawn' || i.status === 'Student Withdraw').length :
+                  tab === 'Placement Completed' ? filteredInternships.filter(i => i.status === 'Completed' || i.status === 'Placement Completed').length :
                   filteredInternships.filter(i => i.status === tab).length}
               </span>
             </button>
@@ -776,10 +871,10 @@ export default function WorkflowStep4Internships({
                   </th>
                   <th className="p-4">ID</th>
                   <th className="p-4">Student</th>
-                  <th className="p-4">Company</th>
-                  <th className="p-4">Role</th>
+                  <th className="p-4">Industry Name</th>
+                  <th className="p-4">Commencement / Placement Date</th>
+                  <th className="p-4">Expected Completion Date</th>
                   <th className="p-4">Status</th>
-                  <th className="p-4">Start → End</th>
                   <th className="p-4">Progress</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
@@ -788,6 +883,34 @@ export default function WorkflowStep4Internships({
                 {paginatedInternships.map((item, i) => {
                   const isSelected = selectedInternship ? selectedInternship.id === item.id : false;
                   const isRowSelected = selectedRows.includes(item.intId);
+
+                  // Derive sub-status under student name as per user specification:
+                  // Terminal status takes priority (e.g. Industry Rejected, Student Withdraw, etc.)
+                  // Otherwise:
+                  // Waiting to Join if commencement date not yet added.
+                  // Placement Started when commencement date entered and <= today.
+                  // Completed when expected completion date is over.
+                  const getStudentSubStatus = () => {
+                    const now = new Date();
+                    const terminalStatuses = ['Industry Rejected', 'Student Withdraw', 'Withdrawn', 'Student Missed Appointment', 'Not Suitable Site', 'Cancelled', 'Declined'];
+                    if (terminalStatuses.includes(item.status)) {
+                      return { label: item.status, color: getStatusColor(item.status) };
+                    }
+
+                    const hasCommencement = Boolean(item.start && item.start !== 'TBD');
+                    const endDate = item.end ? new Date(item.end) : null;
+                    const isEndPassed = endDate && !isNaN(endDate.getTime()) && endDate <= now;
+
+                    if (item.status === 'Completed' || isEndPassed) {
+                      return { label: 'Completed', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+                    }
+                    if (hasCommencement && (item.status === 'Placement Started' || item.status === 'Active' || item.status === 'Joined')) {
+                      return { label: 'Placement Started', color: 'bg-emerald-50 text-emerald-800 border-emerald-300' };
+                    }
+                    return { label: 'Waiting to Join', color: 'bg-amber-50 text-amber-700 border-amber-200' };
+                  };
+                  const subStatus = getStudentSubStatus();
+
                   return (
                     <tr 
                       key={i} 
@@ -795,7 +918,7 @@ export default function WorkflowStep4Internships({
                     >
                       <td className="p-4" onClick={(e) => e.stopPropagation()}>
                         <input 
-                          type="checkbox" 
+                           type="checkbox" 
                           className="rounded border-slate-300 accent-blue-600"
                           checked={isRowSelected}
                           onChange={() => handleSelectRow(item.intId)}
@@ -823,27 +946,11 @@ export default function WorkflowStep4Internships({
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center space-x-1.5 flex-wrap">
+                          <div className="flex items-center space-x-1.5 flex-wrap mt-0.5">
                             <p className="text-[11px] text-slate-400">{item.studentId}</p>
-                            {(() => {
-                              const endingInfo = getEndingStatus(item);
-                              if (endingInfo && endingInfo.type === 'ending_soon' && item.status === 'Active') {
-                                return (
-                                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-full inline-flex items-center space-x-0.5" title="Placement ending soon">
-                                    <Clock className="w-2.5 h-2.5 mr-0.5 text-amber-600" />
-                                    <span>Ending Soon</span>
-                                  </span>
-                                );
-                              }
-                              if (endingInfo && endingInfo.type === 'ended') {
-                                return (
-                                  <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded-full">
-                                    Ended
-                                  </span>
-                                );
-                              }
-                              return null;
-                            })()}
+                            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${subStatus.color}`}>
+                              {subStatus.label}
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -852,21 +959,17 @@ export default function WorkflowStep4Internships({
                         <span>{item.company}</span>
                       </td>
                       <td className="p-4 text-slate-600">
-                        {item.title}
-                      </td>
-                      <td className="p-4">
-                        <span
-                          onClick={() => { setSelectedInternship(item); setShowDrawer(true); }}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border cursor-pointer hover:opacity-80 transition ${getStatusColor(item.status)}`}
-                          title="Click to view details"
-                        >
-                          {item.status}
-                        </span>
+                        <div className="flex items-center space-x-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="font-medium">{formatDate(item.start)}</span>
+                        </div>
                       </td>
                       <td className="p-4">
                         <div className="flex flex-col">
-                          <span className="text-slate-600">{formatDate(item.start)}</span>
-                          <span className="text-[9px] text-slate-400">→ {formatDate(item.end)}</span>
+                          <div className="flex items-center space-x-1.5">
+                            <CalendarIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="font-medium text-slate-700">{formatDate(item.end)}</span>
+                          </div>
                           {(() => {
                             const endingInfo = getEndingStatus(item);
                             if (endingInfo && endingInfo.messageSummary && item.status === 'Active') {
@@ -879,6 +982,15 @@ export default function WorkflowStep4Internships({
                             return null;
                           })()}
                         </div>
+                      </td>
+                      <td className="p-4">
+                        <span
+                          onClick={() => { setSelectedInternship(item); setShowDrawer(true); }}
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border cursor-pointer hover:opacity-80 transition ${getStatusColor(item.status)}`}
+                          title="Click to view details"
+                        >
+                          {item.status}
+                        </span>
                       </td>
                       <td className="p-4 w-32">
                         <div className="flex items-center space-x-2">
@@ -896,7 +1008,18 @@ export default function WorkflowStep4Internships({
                           <MoreVertical className="w-4 h-4 text-slate-400 hover:text-slate-600" />
                         </button>
                         {showRowMenu === item.intId && (
-                          <div className="absolute right-4 top-10 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
+                          <div className="absolute right-4 top-10 w-52 bg-white rounded-xl border border-slate-200 shadow-xl z-50 p-1.5 space-y-0.5 text-left">
+                            <button 
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setShowRowMenu(null);
+                                handleOpenCommencementModal(item);
+                              }} 
+                              className="w-full text-left px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg flex items-center space-x-2"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                              <span>Add Commencement Date</span>
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); handleRowAction('view', item); }} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                               <Eye className="w-3.5 h-3.5 text-slate-400" />
                               <span>View Details</span>
@@ -907,7 +1030,7 @@ export default function WorkflowStep4Internships({
                             </button>
                             <button onClick={(e) => { e.stopPropagation(); handleRowAction('delete', item); }} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete Internship</span>
+                              <span>Delete Placement</span>
                             </button>
                           </div>
                         )}
@@ -1282,8 +1405,10 @@ export default function WorkflowStep4Internships({
 
           <div className="p-4 border-t border-slate-100 space-y-2">
             <button 
-              onClick={() => showToast('Opening full details...')}
-              className="w-full py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] text-white text-xs font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500"
+              onClick={() => {
+                setViewDetailsStudent(selectedInternship);
+              }}
+              className="w-full py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] text-white text-xs font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>View Full Details</span>
@@ -1391,42 +1516,139 @@ export default function WorkflowStep4Internships({
         </div>
       )}
 
-      {/* ─── DELETE CONFIRM MODAL ─────────────────────────────────────────── */}
-      {deleteConfirmInt && (
+      {/* ─── ADD COMMENCEMENT DATE MODAL ─────────────────────────────────── */}
+      {commencementItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-start space-x-3">
-              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                <Trash2 className="w-4 h-4" />
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Add Commencement Date</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{commencementItem.intId} · {commencementItem.student}</p>
+                </div>
               </div>
+              <button 
+                onClick={() => setCommencementItem(null)} 
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Student Schedule Summary Card */}
+            {commencementItem.resolvedStudent && (
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Placement Required:</span>
+                  <span className="font-bold text-slate-800">{commencementItem.resolvedStudent.placementHours || 0} Hours</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Daily Availability:</span>
+                  <span className="font-semibold text-slate-700">
+                    {commencementItem.resolvedStudent.availabilityFrom || '09:00'} – {commencementItem.resolvedStudent.availabilityTo || '17:00'} (8 hrs/day)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Available Days:</span>
+                  <span className="font-semibold text-blue-700">
+                    {(() => {
+                      const days = commencementItem.resolvedStudent.availabilityDays;
+                      if (!days) return 'Mon – Fri';
+                      if (typeof days === 'object' && !Array.isArray(days)) {
+                        const active = Object.entries(days).filter(([_, v]) => Boolean(v)).map(([k]) => k);
+                        return active.length > 0 ? active.join(', ') : 'Not set';
+                      }
+                      if (Array.isArray(days)) return days.join(', ');
+                      return String(days);
+                    })()}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4 text-xs">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Delete Internship</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Delete internship record for <span className="font-semibold text-slate-800">{deleteConfirmInt.student}</span>
-                  {deleteConfirmInt.company ? <> at <span className="font-semibold">{deleteConfirmInt.company}</span></> : ''}? This cannot be undone.
+                <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                  Commencement / Placement Start Date <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={commencementForm.startDate}
+                  onChange={(e) => handleCommencementStartChange(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs font-medium"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Changing this start date automatically updates the Expected Completion Date below based on student availability and required hours.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Expected Completion Date</span>
+                  <span className="text-[10px] font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Auto-calculated or Manual
+                  </span>
+                </label>
+                <input
+                  type="date"
+                  value={commencementForm.endDate}
+                  onChange={(e) => setCommencementForm(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs font-medium"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  You can accept the automatically calculated date or manually adjust it if needed.
                 </p>
               </div>
             </div>
-            <div className="flex space-x-2 pt-1">
+
+            <div className="flex space-x-2.5 pt-2">
               <button
-                onClick={() => setDeleteConfirmInt(null)}
-                disabled={isDeletingInt}
+                onClick={() => setCommencementItem(null)}
+                disabled={isSavingCommencement}
                 className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                disabled={isDeletingInt}
-                onClick={handleConfirmedDeleteInt}
-                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
+                disabled={isSavingCommencement || !commencementForm.startDate}
+                onClick={handleSaveCommencement}
+                className="flex-[2] py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
               >
-                {isDeletingInt
-                  ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Deleting...</span></>
-                  : <><Trash2 className="w-3.5 h-3.5"/><span>Delete</span></>}
+                {isSavingCommencement ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Save Commencement Date</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─── FULL STUDENT DETAILS MODAL ──────────────────────────────────── */}
+      {viewDetailsStudent && (
+        <PlacementRequestStudentDetails
+          request={{
+            studentId: viewDetailsStudent.studentId,
+            studentDbId: viewDetailsStudent.studentId || viewDetailsStudent.id,
+            student: viewDetailsStudent.student,
+            company: viewDetailsStudent.company,
+            status: viewDetailsStudent.status,
+            studentRecord: findStudentForPlacement(viewDetailsStudent),
+            ...((requests || []).find(r => r.studentId === viewDetailsStudent.studentId || r.student === viewDetailsStudent.student) || {})
+          }}
+          editable={false}
+          onClose={() => setViewDetailsStudent(null)}
+        />
       )}
     </div>
   );
