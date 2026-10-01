@@ -54,6 +54,18 @@ const documentLink = (value) => {
   return value?.url || value?.file || value?.path || '';
 };
 
+const formatHistoryDate = (value) => {
+  const dateOnly = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+      .toLocaleDateString('en-AU', { dateStyle: 'medium' });
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? String(value || 'Date not recorded')
+    : date.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
 const DAY_MAP = {
   mon: 'Monday', monday: 'Monday',
   tue: 'Tuesday', tuesday: 'Tuesday',
@@ -90,7 +102,7 @@ const hasPlacementData = (student) => {
   return hasIndustry || hasSite || hasHours || hasDays || hasNotes || hasLicence || hasLocation;
 };
 
-export default function PlacementRequestStudentDetails({ request, editable, onClose, onSaved }) {
+export default function PlacementRequestStudentDetails({ request, editable, onClose, onSaved, processHistory = null, placementRecord = null }) {
   const [student, setStudent] = useState(request?.studentRecord || null);
   const [loadingStudent, setLoadingStudent] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -260,6 +272,17 @@ export default function PlacementRequestStudentDetails({ request, editable, onCl
               {displayPhone && <span>{displayPhone}</span>}
               {displayAddress && <span>{displayAddress}</span>}
             </div>
+            {placementRecord && (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-blue-50 px-2.5 py-1.5 text-[11px] text-slate-700">
+                <span><strong>Status:</strong> {placementRecord.status || 'Waiting to Join'}</span>
+                <span><strong>Industry:</strong> {placementRecord.company || 'Not specified'}</span>
+                <span><strong>Commencement:</strong> {placementRecord.start ? formatHistoryDate(placementRecord.start) : 'Not entered'}</span>
+                <span><strong>Expected completion:</strong> {placementRecord.end ? formatHistoryDate(placementRecord.end) : 'Not entered'}</span>
+                <span><strong>Placement hours:</strong> {student?.placementHours || 'Not specified'}</span>
+                <span><strong>Available days:</strong> {Object.entries(form.availabilityDays || {}).filter(([, available]) => available).map(([day]) => day).join(', ') || 'Not specified'}</span>
+                <span><strong>Available hours:</strong> {[form.availabilityFrom, form.availabilityTo].filter(Boolean).join(' – ') || 'Not specified'}</span>
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -305,6 +328,36 @@ export default function PlacementRequestStudentDetails({ request, editable, onCl
                 Click <strong>Edit Placement Details</strong> (from the Actions menu) to add placement information for this student.
               </p>
             </div>
+          )}
+
+          {placementRecord && (
+            <section className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+              <h3 className="font-bold text-slate-800">Step 4 Placement Dates</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="font-semibold text-slate-500">Placement Status</p>
+                  <p className="mt-1 text-slate-800">{placementRecord.status || 'Waiting to Join'}</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-500">Industry</p>
+                  <p className="mt-1 text-slate-800">{placementRecord.company || 'Not specified'}</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-500">Commencement / Placement Date</p>
+                  <p className="mt-1 text-slate-800">{placementRecord.start ? formatHistoryDate(placementRecord.start) : 'Not entered'}</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-500">Expected Completion Date</p>
+                  <p className="mt-1 text-slate-800">{placementRecord.end ? formatHistoryDate(placementRecord.end) : 'Not entered'}</p>
+                </div>
+                {(placementRecord._appointmentDate || placementRecord._appointmentTime) && (
+                  <div className="sm:col-span-2">
+                    <p className="font-semibold text-slate-500">Appointment</p>
+                    <p className="mt-1 text-slate-800">{[placementRecord._appointmentDate, placementRecord._appointmentTime].filter(Boolean).join(' at ')}</p>
+                  </div>
+                )}
+              </div>
+            </section>
           )}
 
           {/* ── Placement Preferences ── */}
@@ -572,6 +625,33 @@ export default function PlacementRequestStudentDetails({ request, editable, onCl
               <p className="text-slate-400">No contacted industries recorded yet.</p>
             )}
           </section>
+
+          {Array.isArray(processHistory) && (
+            <section className="space-y-3 border-t border-slate-100 pt-4">
+              <h3 className="font-bold text-slate-800">Placement Process & Status History</h3>
+              {processHistory.length > 0 ? (
+                <ol className="space-y-3">
+                  {processHistory.map((event, index) => (
+                    <li key={`${event.title}-${event.date || 'undated'}-${index}`} className="relative flex gap-3">
+                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-cyan-600 ring-4 ring-cyan-50" />
+                      <div className="min-w-0 flex-1 rounded-lg bg-slate-50 px-3 py-2">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                          <p className="font-semibold text-slate-800">{event.title}</p>
+                          <time className="text-[10px] text-slate-500">
+                            {event.date ? formatHistoryDate(event.date) : 'Date not recorded'}
+                          </time>
+                        </div>
+                        {event.description && <p className="mt-1 whitespace-pre-wrap text-slate-600">{event.description}</p>}
+                        {event.by && <p className="mt-1 text-[10px] text-slate-400">By {event.by}</p>}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="text-slate-400">No process history has been recorded yet.</p>
+              )}
+            </section>
+          )}
 
           {/* ── Placement Notes ── */}
           <section className="space-y-3 border-t border-slate-100 pt-4">

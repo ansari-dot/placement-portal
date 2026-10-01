@@ -1,7 +1,7 @@
 // src/components/workflow/WorkflowStep4Internships.jsx
 import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
-import { calculatePlacementEndDate } from '../../utils/dateCalculation';
+import { calculatePlacementEndDate, getDailyWorkingHours } from '../../utils/dateCalculation';
 import { 
   Search, Filter, Download, Plus, MoreVertical, 
   ChevronDown, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
@@ -98,6 +98,8 @@ export default function WorkflowStep4Internships({
       case 'Joined': return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'Waiting to Join': return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'Completed': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'Placement Completed': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'Appointment Successful': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'Declined': return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Industry Rejected': return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Student Missed Appointment': return 'bg-orange-50 text-orange-700 border-orange-200';
@@ -131,9 +133,12 @@ export default function WorkflowStep4Internships({
       const now = new Date();
       const endDate = parseLocalDate(endStr);
       const startDate = parseLocalDate(startStr);
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
       // Terminal statuses that are always honoured regardless of dates
       if (['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Student Withdraw', 'Not Suitable Site', 'Withdrawn', 'Cancelled'].includes(storedStatus)) return storedStatus;
+
+      if (endDate && !isNaN(endDate.getTime()) && endDate < todayStart) return 'Completed';
 
       // "Completed" is only valid once end date has actually passed
       if (storedStatus === 'Completed') {
@@ -152,7 +157,7 @@ export default function WorkflowStep4Internships({
         if (endDate && !isNaN(endDate.getTime()) && endDate <= now) {
           return 'Completed'; // end date passed → now truly completed
         }
-        if (startDate && !isNaN(startDate.getTime()) && startDate <= now) {
+        if (startDate && !isNaN(startDate.getTime())) {
           return 'Placement Started';
         }
         return 'Waiting to Join';
@@ -169,7 +174,7 @@ export default function WorkflowStep4Internships({
           seenIds.add(id);
           const computedStatus = recomputeStatus(
             item.status,
-            item.start || item.date,
+            item.start,
             item.end
           );
           const rawId = item.intId || item.apptId || '';
@@ -183,7 +188,7 @@ export default function WorkflowStep4Internships({
             title: item.title || item.position || 'Internship Placement',
             rto: item.rto || 'TBD',
             status: computedStatus,
-            start: item.start || item.date || new Date().toISOString().split('T')[0],
+            start: item.start || '',
             end: item.end || '',
             duration: item.duration || '12 weeks',
             workType: item.workType || item.meetingType || 'In-Person',
@@ -198,6 +203,9 @@ export default function WorkflowStep4Internships({
             _appointmentDate: item._appointmentDate || item.date,
             _appointmentTime: item._appointmentTime || item.time,
             _appointmentStatus: item._appointmentStatus || item.status,
+            linkedReq: item.linkedReq || '',
+            createdAt: item.createdAt || '',
+            updatedAt: item.updatedAt || '',
             cancellationReason: item.cancellationReason || '',
             cancellationType: item.cancellationType || '',
             contactedIndustries: item.contactedIndustries || [],
@@ -220,7 +228,7 @@ export default function WorkflowStep4Internships({
         const studentName = appt.student || 'Unknown Student';
         const studentId = appt.studentId || '';
         
-        const startDate = appt.commencementDate || appt.date || new Date().toISOString().split('T')[0];
+        const startDate = appt.commencementDate || '';
 
         // Look up student record so we can use their hours + availability for the end-date calc
         const stuRecord = students.find(s =>
@@ -228,21 +236,19 @@ export default function WorkflowStep4Internships({
           (appt.student && s.name && s.name.trim().toLowerCase() === appt.student.trim().toLowerCase())
         );
 
-        const endDateCalc = appt.expectedCompletionDate || calculatePlacementEndDate(
+        const endDateCalc = appt.expectedCompletionDate || (startDate ? calculatePlacementEndDate(
           startDate,
           stuRecord?.placementHours,
           stuRecord?.availabilityDays,
           stuRecord?.availabilityFrom,
-          stuRecord?.availabilityTo
-        );
+          stuRecord?.availabilityTo,
+          { requireCompleteSchedule: true }
+        ) : '');
 
         let status = 'Waiting to Join';
         let cancellationReason = '';
         let cancellationType = '';
         
-        const now = new Date();
-        const hasCommenced = appt.commencementDate && new Date(appt.commencementDate) <= now;
-
         if (appt.status === 'Completed' || appt.status === 'Confirmed') {
           // Use recomputeStatus to derive display status based on actual dates
           status = recomputeStatus(appt.status, startDate, appt.expectedCompletionDate || endDateCalc);
@@ -272,7 +278,7 @@ export default function WorkflowStep4Internships({
           status = 'Student Missed Appointment';
           cancellationReason = 'Student did not show up for appointment';
           cancellationType = 'student';
-        } else if (hasCommenced) {
+        } else if (appt.commencementDate) {
           status = 'Placement Started';
         } else if (appt.status === 'Scheduled') {
           status = 'Waiting to Join';
@@ -307,6 +313,12 @@ export default function WorkflowStep4Internships({
             _appointmentDate: appt.date,
             _appointmentTime: appt.time,
             _appointmentStatus: appt.status,
+            linkedReq: appt.linkedReq || '',
+            createdAt: appt.createdAt || '',
+            updatedAt: appt.updatedAt || '',
+            appointmentOutcome: appt.appointmentOutcome || '',
+            confirmedAt: appt.confirmedAt || '',
+            cancelledAt: appt.cancelledAt || '',
             cancellationReason: cancellationReason || appt.cancellationReason || '',
             cancellationType: cancellationType || appt.cancellationType || '',
             contactedIndustries: appt.contactedIndustries || [],
@@ -361,7 +373,8 @@ export default function WorkflowStep4Internships({
 
     const now = new Date();
     const end = parseLocalDate(item.end);
-    const endDatePassed = end && !isNaN(end.getTime()) && end <= now;
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endDatePassed = end && !isNaN(end.getTime()) && end < todayStart;
 
     // Only show "Ended (Completed)" badge when the actual end date has passed
     if (item.status === 'Completed') {
@@ -443,7 +456,7 @@ export default function WorkflowStep4Internships({
       activeStatusTab === 'All' || 
       activeStatusTab === 'All Placements' || 
       activeStatusTab === 'All Internships' || 
-      (activeStatusTab === 'Ending Soon' ? Boolean(getEndingStatus(item)) :
+      (activeStatusTab === 'Ending Soon' ? getEndingStatus(item)?.type === 'ending_soon' :
        activeStatusTab === 'Appointment Successful' ? (item.status === 'Confirmed' || item.status === 'Waiting to Join' || item.status === 'Appointment Successful') :
        activeStatusTab === 'Student Withdraw' ? (item.status === 'Withdrawn' || item.status === 'Student Withdraw') :
        activeStatusTab === 'Placement Completed' ? (item.status === 'Completed' || item.status === 'Placement Completed') :
@@ -529,8 +542,14 @@ export default function WorkflowStep4Internships({
       setViewDetailsStudent(item);
     } else if (action === 'edit') {
       // Open proper edit modal
+      const currentStatus = item.status === 'Completed' ? 'Placement Completed'
+        : item.status === 'Withdrawn' ? 'Student Withdraw'
+        : item.status === 'Declined' ? 'Industry Rejected'
+        : item.status === 'Confirmed' ? (item.start ? 'Placement Started' : 'Appointment Successful')
+        : ['Active', 'Joined'].includes(item.status) ? 'Placement Started'
+        : item.status;
       setEditIntForm({
-        status:  item.status || 'Waiting to Join',
+        status:  currentStatus || 'Waiting to Join',
         company: item.company || '',
         title:   item.title || '',
         notes:   item.notes || '',
@@ -551,23 +570,105 @@ export default function WorkflowStep4Internships({
     const norm = (v) => String(v || '').trim().toLowerCase();
     const targetId = norm(item.studentId);
     const targetName = norm(item.student);
-    return (students || []).find(s => {
+    const student = (students || []).find(s => {
       const sDbId = norm(s.id || s._id);
       const sBizId = norm(s.studentId);
       const sName = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`);
       return (targetId && (sDbId === targetId || sBizId === targetId)) || (targetName && sName === targetName);
-    }) || null;
+    });
+    if (student) return student;
+    const request = (requests || []).find((entry) =>
+      (item.linkedReq && [entry.id, entry._id, entry.reqId].some((id) => norm(id) === norm(item.linkedReq))) ||
+      (item.studentId && norm(entry.studentId) === targetId) ||
+      (item.student && norm(entry.student) === targetName)
+    );
+    if (!request) return null;
+    return {
+      ...(request.studentRecord || {}),
+      placementHours: request.studentRecord?.placementHours ?? request.placementHours ?? null,
+      availabilityDays: request.studentRecord?.availabilityDays || request.availabilityDays || {},
+      availabilityFrom: request.studentRecord?.availabilityFrom || request.availabilityFrom || '',
+      availabilityTo: request.studentRecord?.availabilityTo || request.availabilityTo || '',
+    };
+  };
+
+  const getPlacementProcessHistory = (item) => {
+    const student = findStudentForPlacement(item);
+    const same = (left, right) => String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
+    const request = (requests || []).find((entry) =>
+      (item.linkedReq && [entry.id, entry._id, entry.reqId].some((id) => same(id, item.linkedReq))) ||
+      (item.studentId && same(entry.studentId, item.studentId)) ||
+      (item.student && same(entry.student, item.student))
+    );
+    const history = [];
+    const add = (title, date, description = '', by = '') => history.push({ title, date: date || '', description, by });
+
+    if (student?.createdAt) add('Student added in Step 1', student.createdAt);
+    if (request) {
+      add('Placement Request generated', request.createdAt || request.date, request.reqId ? `Request ID: ${request.reqId}` : '');
+      (request.changeHistory || []).forEach((entry) => {
+        const summary = (entry.changes || []).map((change) => {
+          const display = (value) => value === null || value === undefined
+            ? 'empty'
+            : typeof value === 'object' ? JSON.stringify(value) : String(value);
+          const from = display(change.from);
+          const to = display(change.to);
+          return `${change.field}: ${from} → ${to}`;
+        }).join('\n');
+        add('Placement Request updated', entry.changedAt, summary, entry.changedBy);
+      });
+    }
+    (student?.coordinatorHistory || []).forEach((entry) => {
+      const coordinator = entry.coordinatorName || entry.previousCoordinatorName || 'Coordinator';
+      add(`Coordinator ${String(entry.action || 'assigned').toLowerCase()}`, entry.date, coordinator, entry.assignedBy);
+    });
+    if (student?.assignedCoordinatorName && student?.assignedCoordinatorAt) {
+      add('Current coordinator assigned', student.assignedCoordinatorAt, student.assignedCoordinatorName);
+    }
+    (request?.contactedIndustries || student?.contactedIndustries || []).forEach((industry) => {
+      add('Industry contacted', industry.contactedDate, `${industry.organizationName || 'Industry'}${industry.response ? ` · ${industry.response}` : ''}`, industry.addedByName);
+    });
+
+    const studentAppointments = (appointments || []).filter((appt) =>
+      (item.studentId && same(appt.studentId, item.studentId)) || (item.student && same(appt.student, item.student))
+    );
+    studentAppointments.forEach((appt) => {
+      add('Appointment scheduled', appt.createdAt || appt.date, `${appt.company || 'Industry'}${appt.date ? ` · ${appt.date}` : ''}${appt.time ? ` at ${appt.time}` : ''}`);
+      if (appt.appointmentOutcome || appt.status && !['Scheduled', 'Confirmed'].includes(appt.status)) {
+        add(`Appointment status: ${appt.appointmentOutcome || appt.status}`, appt.cancelledAt || appt.updatedAt || appt.confirmedAt, appt.cancellationReason || appt.notes || '');
+      } else if (appt.status === 'Confirmed' || appt.appointmentOutcome === 'successful') {
+        add('Appointment Successful', appt.confirmedAt || appt.updatedAt);
+      }
+      if (appt.commencementDate) add('Placement Started', appt.commencementDate, appt.company || '');
+      if (appt.expectedCompletionDate) add('Expected Completion Date set', appt.updatedAt, appt.expectedCompletionDate);
+      if (['Completed', 'Placement Completed'].includes(appt.status)) {
+        add('Placement Completed', appt.expectedCompletionDate || appt.updatedAt, appt.company || '');
+      }
+    });
+
+    if (item.start) add('Placement commencement date', item.start, item.company || '');
+    if (item.end) add('Expected placement completion date', item.updatedAt, item.end);
+    if (!studentAppointments.length && item.createdAt) add('Placement record created', item.createdAt, item.company || '');
+    if (item.status) add(`Placement status: ${item.status}`, item.updatedAt || item.start || item.createdAt, item.company || '');
+    return history.sort((a, b) => {
+      const aTime = a.date ? new Date(a.date).getTime() : 0;
+      const bTime = b.date ? new Date(b.date).getTime() : 0;
+      return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+    });
   };
 
   const handleOpenCommencementModal = (item) => {
     const stu = findStudentForPlacement(item);
-    const initialStart = (item.start && item.start !== 'TBD') ? String(item.start).split('T')[0] : new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const initialStart = (item.start && item.start !== 'TBD') ? String(item.start).split('T')[0] : localToday;
     const initialEnd = item.end ? String(item.end).split('T')[0] : calculatePlacementEndDate(
       initialStart,
       stu?.placementHours,
       stu?.availabilityDays,
       stu?.availabilityFrom,
-      stu?.availabilityTo
+      stu?.availabilityTo,
+      { requireCompleteSchedule: true }
     );
     setCommencementItem({ ...item, resolvedStudent: stu });
     setCommencementForm({
@@ -583,7 +684,8 @@ export default function WorkflowStep4Internships({
       stu?.placementHours,
       stu?.availabilityDays,
       stu?.availabilityFrom,
-      stu?.availabilityTo
+      stu?.availabilityTo,
+      { requireCompleteSchedule: true }
     );
     setCommencementForm({
       startDate: newStart,
@@ -845,7 +947,7 @@ export default function WorkflowStep4Internships({
               {tab}
               <span className="ml-1.5 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
                 {tab === 'All' ? filteredInternships.length : 
-                  tab === 'Ending Soon' ? filteredInternships.filter(i => Boolean(getEndingStatus(i))).length :
+                  tab === 'Ending Soon' ? filteredInternships.filter(i => getEndingStatus(i)?.type === 'ending_soon').length :
                   tab === 'Appointment Successful' ? filteredInternships.filter(i => i.status === 'Confirmed' || i.status === 'Waiting to Join' || i.status === 'Appointment Successful').length :
                   tab === 'Student Withdraw' ? filteredInternships.filter(i => i.status === 'Withdrawn' || i.status === 'Student Withdraw').length :
                   tab === 'Placement Completed' ? filteredInternships.filter(i => i.status === 'Completed' || i.status === 'Placement Completed').length :
@@ -874,7 +976,7 @@ export default function WorkflowStep4Internships({
                   <th className="p-4">Industry Name</th>
                   <th className="p-4">Commencement / Placement Date</th>
                   <th className="p-4">Expected Completion Date</th>
-                  <th className="p-4">Status</th>
+                  <th className="p-4">Placement Status</th>
                   <th className="p-4">Progress</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
@@ -925,7 +1027,8 @@ export default function WorkflowStep4Internships({
                         />
                       </td>
                       <td className="p-4 font-bold text-slate-900">{item.intId}</td>
-                      <td className="py-3 px-2 flex items-center space-x-3">
+                      <td className="py-3 px-2">
+                        <div className="flex items-center space-x-3">
                         <div className="relative shrink-0">
                           <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
                             {item.student ? item.student[0] : '?'}
@@ -953,10 +1056,13 @@ export default function WorkflowStep4Internships({
                             </span>
                           </div>
                         </div>
+                        </div>
                       </td>
-                      <td className="p-4 text-slate-600 font-medium flex items-center space-x-1.5 pt-5">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{item.company}</span>
+                      <td className="p-4 text-slate-600 font-medium">
+                        <div className="flex items-center space-x-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{item.company}</span>
+                        </div>
                       </td>
                       <td className="p-4 text-slate-600">
                         <div className="flex items-center space-x-1.5">
@@ -1018,15 +1124,11 @@ export default function WorkflowStep4Internships({
                               className="w-full text-left px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg flex items-center space-x-2"
                             >
                               <Calendar className="w-3.5 h-3.5 text-blue-500" />
-                              <span>Add Commencement Date</span>
+                              <span>{item.start ? 'Change Commencement Date' : 'Add Commencement Date'}</span>
                             </button>
                             <button onClick={(e) => { e.stopPropagation(); handleRowAction('view', item); }} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                               <Eye className="w-3.5 h-3.5 text-slate-400" />
                               <span>View Details</span>
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleRowAction('edit', item); }} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
-                              <Edit className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Edit Status</span>
                             </button>
                             <button onClick={(e) => { e.stopPropagation(); handleRowAction('delete', item); }} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1433,13 +1535,13 @@ export default function WorkflowStep4Internships({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Placement Status</label>
                 <select
                   value={editIntForm.status}
                   onChange={e => setEditIntForm(p => ({ ...p, status: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
                 >
-                  {['Placement Started','Waiting to Join','Joined','Active','Completed','Cancelled','On Hold','Industry Rejected','Student Missed Appointment','Not Suitable Site','Withdrawn'].map(s => (
+                  {['Appointment Successful', 'Waiting to Join', 'Placement Started', 'Placement Completed', 'Student Withdraw', 'Student Missed Appointment', 'Industry Rejected'].map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -1526,7 +1628,7 @@ export default function WorkflowStep4Internships({
                   <Calendar className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Add Commencement Date</h3>
+                  <h3 className="text-sm font-bold text-slate-900">{commencementItem.start ? 'Change Commencement Date' : 'Add Commencement Date'}</h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">{commencementItem.intId} · {commencementItem.student}</p>
                 </div>
               </div>
@@ -1542,13 +1644,21 @@ export default function WorkflowStep4Internships({
             {commencementItem.resolvedStudent && (
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Placement Required:</span>
-                  <span className="font-bold text-slate-800">{commencementItem.resolvedStudent.placementHours || 0} Hours</span>
+          <span className="text-slate-500 font-medium">Placement Required:</span>
+                  <span className="font-bold text-slate-800">
+                    {commencementItem.resolvedStudent.placementHours
+                      ? `${commencementItem.resolvedStudent.placementHours} Hours`
+                      : 'Not specified'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 font-medium">Daily Availability:</span>
                   <span className="font-semibold text-slate-700">
-                    {commencementItem.resolvedStudent.availabilityFrom || '09:00'} – {commencementItem.resolvedStudent.availabilityTo || '17:00'} (8 hrs/day)
+                    {commencementItem.resolvedStudent.availabilityFrom || '09:00 AM'} – {commencementItem.resolvedStudent.availabilityTo || '05:00 PM'} (
+                      {getDailyWorkingHours(
+                        commencementItem.resolvedStudent.availabilityFrom,
+                        commencementItem.resolvedStudent.availabilityTo
+                      )} hrs/day)
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1566,6 +1676,11 @@ export default function WorkflowStep4Internships({
                     })()}
                   </span>
                 </div>
+                {!commencementItem.resolvedStudent.placementHours && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                    Placement Hours are missing from this student record. Enter the Expected Completion Date manually, or add Placement Hours to the student profile for automatic calculation.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1639,13 +1754,15 @@ export default function WorkflowStep4Internships({
         <PlacementRequestStudentDetails
           request={{
             studentId: viewDetailsStudent.studentId,
-            studentDbId: viewDetailsStudent.studentId || viewDetailsStudent.id,
+            studentDbId: findStudentForPlacement(viewDetailsStudent)?.id || viewDetailsStudent.studentDbId || viewDetailsStudent.id,
             student: viewDetailsStudent.student,
             company: viewDetailsStudent.company,
             status: viewDetailsStudent.status,
             studentRecord: findStudentForPlacement(viewDetailsStudent),
             ...((requests || []).find(r => r.studentId === viewDetailsStudent.studentId || r.student === viewDetailsStudent.student) || {})
           }}
+          placementRecord={viewDetailsStudent}
+          processHistory={getPlacementProcessHistory(viewDetailsStudent)}
           editable={false}
           onClose={() => setViewDetailsStudent(null)}
         />

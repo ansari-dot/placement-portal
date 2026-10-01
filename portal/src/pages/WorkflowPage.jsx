@@ -593,6 +593,7 @@ export default function WorkflowPage() {
           studentRecord: student || null,
           studentAddress: [student?.address, student?.suburb, student?.state, student?.postCode].filter(Boolean).join(', '),
           availabilityDays: student?.availabilityDays || {},
+          placementHours: student?.placementHours ?? null,
           availabilityFrom: student?.availabilityFrom || '',
           availabilityTo: student?.availabilityTo || '',
           coordinatorName: student?.assignedCoordinatorName || assignedCoordinator?.name || requestCoordinator?.name || req.coordinator || '',
@@ -612,6 +613,9 @@ export default function WorkflowPage() {
             (req.createdAt
               ? new Date(req.createdAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
               : ''),
+          createdAt: req.createdAt || null,
+          updatedAt: req.updatedAt || null,
+          changeHistory: req.changeHistory || [],
         };
       });
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators]);
@@ -759,7 +763,7 @@ export default function WorkflowPage() {
         );
       });
 
-      const startDate = appt.commencementDate || appt.date || new Date().toISOString().split('T')[0];
+      const startDate = appt.commencementDate || '';
       let calculatedEnd = appt.expectedCompletionDate || '';
       if (!calculatedEnd && startDate) {
         calculatedEnd = calculatePlacementEndDate(
@@ -770,16 +774,6 @@ export default function WorkflowPage() {
           stuMatch?.availabilityTo
         );
       }
-      if (!calculatedEnd && startDate) {
-        const start = new Date(startDate);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 12 * 7);
-        calculatedEnd = end.toISOString().split('T')[0];
-      }
-
-      const now = new Date();
-      const hasCommenced = appt.commencementDate && new Date(appt.commencementDate) <= now;
-
       // ── Resolve the correct status from appointment fields ─────────────────
       const resolveApptStatus = (a) => {
         if (a.status === 'Completed') return { status: 'Completed', cancellationReason: '', cancellationType: '' };
@@ -798,7 +792,7 @@ export default function WorkflowPage() {
         if (a.status === 'Cancelled') return { status: 'Cancelled', cancellationReason: a.cancellationReason || 'Appointment was cancelled', cancellationType: '' };
         if (a.status === 'No Show') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
         if (a.status === 'Student Missed Appointment') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
-        if (a.status === 'Confirmed' || (a.commencementDate && new Date(a.commencementDate) <= new Date())) return { status: 'Placement Started', cancellationReason: '', cancellationType: '' };
+        if (a.commencementDate) return { status: 'Placement Started', cancellationReason: '', cancellationType: '' };
         return { status: 'Waiting to Join', cancellationReason: '', cancellationType: '' };
       };
 
@@ -835,6 +829,12 @@ export default function WorkflowPage() {
         _appointmentDate: appt.date,
         _appointmentTime: appt.time,
         _appointmentStatus: appt.status,
+        linkedReq: appt.linkedReq || '',
+        createdAt: appt.createdAt || '',
+        updatedAt: appt.updatedAt || '',
+        appointmentOutcome: appt.appointmentOutcome || '',
+        confirmedAt: appt.confirmedAt || '',
+        cancelledAt: appt.cancelledAt || '',
         cancellationReason: cancellationReason || appt.cancellationReason || '',
         cancellationType: cancellationType || appt.cancellationType || '',
         contactedIndustries: appt.contactedIndustries || [],
@@ -844,7 +844,7 @@ export default function WorkflowPage() {
     });
 
     return result;
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, visibleWorkflowStudents]);
 
   // ─── Request handlers ──────────────────────────────────────────────────────
 
@@ -880,7 +880,10 @@ export default function WorkflowPage() {
             rest.status = 'New';
           }
           rest.returnedToStep1 = ['Inactive', 'Snooze'].includes(rest.priority);
-          const result = await updateInternshipRequest(wfId, realId, rest);
+          const result = await updateInternshipRequest(wfId, realId, {
+            ...rest,
+            updatedBy: authUser?.name || authUser?.email || 'User',
+          });
 
           // ── Sync Student.internshipPriority so Score tab reflects the change ──
           // The Score backend reads Student.internshipPriority directly; the workflow
@@ -900,7 +903,10 @@ export default function WorkflowPage() {
     }
 
     try {
-      const result = await updateInternshipRequest(wfId, requestId, requestData);
+      const result = await updateInternshipRequest(wfId, requestId, {
+        ...requestData,
+        updatedBy: authUser?.name || authUser?.email || 'User',
+      });
 
       // ── Sync Student.internshipPriority for direct request updates (Step 2) ──
       // When a request's priority is changed directly (e.g. from the Step 2 requests
@@ -925,7 +931,7 @@ export default function WorkflowPage() {
       console.error('Failed to update request:', err);
       throw err;
     }
-  }, [workflowId, workflow, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData, authUser]);
 
   const handleDeleteRequest = useCallback(async (requestId) => {
     const wfId = workflowId || workflow?._id || workflow?.id || 'default';

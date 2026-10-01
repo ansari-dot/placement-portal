@@ -78,7 +78,7 @@ const internshipRequestSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-     contactedIndustries: [
+    contactedIndustries: [
       {
         organizationName: { type: String, trim: true, default: "" },
         email: { type: String, trim: true, default: "" },
@@ -99,6 +99,19 @@ const internshipRequestSchema = new mongoose.Schema(
         addedByName:   { type: String, trim: true, default: "" },
         addedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       }
+    ],
+    changeHistory: [
+      {
+        changedAt: { type: Date, default: Date.now },
+        changedBy: { type: String, trim: true, default: 'User' },
+        changes: [
+          {
+            field: { type: String, trim: true },
+            from: { type: mongoose.Schema.Types.Mixed },
+            to: { type: mongoose.Schema.Types.Mixed },
+          },
+        ],
+      },
     ],
     notes: {
       type: String,

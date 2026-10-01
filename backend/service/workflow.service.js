@@ -204,6 +204,20 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
   const actualDbId = matchedRequest._id;
 
   const { contactedIndustries: newContacts, ...otherFields } = requestData || {};
+  const requestChanges = Object.entries(otherFields)
+    .filter(([field]) => field !== 'updatedBy')
+    .flatMap(([field, value]) => {
+      const before = matchedRequest[field];
+      if (JSON.stringify(before ?? null) === JSON.stringify(value ?? null)) return [];
+      return [{ field, from: before ?? null, to: value ?? null }];
+    });
+  if (Array.isArray(newContacts) && newContacts.length > 0) {
+    requestChanges.push({
+      field: 'Contacted Industries',
+      from: matchedRequest.contactedIndustries.length,
+      to: matchedRequest.contactedIndustries.length + newContacts.length,
+    });
+  }
 
   // Push new contact records — never overwrite the existing array
   if (Array.isArray(newContacts) && newContacts.length > 0) {
@@ -211,8 +225,16 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
   }
 
   Object.keys(otherFields).forEach((key) => {
+    if (key === 'updatedBy') return;
     matchedRequest[key] = otherFields[key];
   });
+  if (requestChanges.length > 0) {
+    matchedRequest.changeHistory.push({
+      changedAt: new Date(),
+      changedBy: String(requestData?.updatedBy || 'User'),
+      changes: requestChanges,
+    });
+  }
 
   await workflow.save({ validateBeforeSave: false });
 
@@ -246,10 +268,16 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
           { runValidators: false }
         );
       }
-      if (Object.keys(otherFields).length > 0) {
-        await InternshipRequestModel.findByIdAndUpdate(actualDbId, otherFields, {
-          runValidators: false,
-        });
+      if (Object.keys(otherFields).some((key) => key !== 'updatedBy')) {
+        const { updatedBy, ...persistedFields } = otherFields;
+        await InternshipRequestModel.findByIdAndUpdate(actualDbId, {
+          $set: persistedFields,
+          ...(requestChanges.length ? { $push: { changeHistory: matchedRequest.changeHistory[matchedRequest.changeHistory.length - 1] } } : {}),
+        }, { runValidators: false });
+      } else if (requestChanges.length) {
+        await InternshipRequestModel.findByIdAndUpdate(actualDbId, {
+          $push: { changeHistory: matchedRequest.changeHistory[matchedRequest.changeHistory.length - 1] },
+        }, { runValidators: false });
       }
     } else if (matchedRequest.reqId) {
       if (Array.isArray(newContacts) && newContacts.length > 0) {
@@ -258,10 +286,19 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
           { $push: { contactedIndustries: { $each: newContacts } } }
         );
       }
-      if (Object.keys(otherFields).length > 0) {
+      if (Object.keys(otherFields).some((key) => key !== 'updatedBy')) {
+        const { updatedBy, ...persistedFields } = otherFields;
+        if (Object.keys(persistedFields).length > 0) {
+          await InternshipRequestModel.updateOne(
+            { reqId: matchedRequest.reqId },
+            { $set: persistedFields }
+          );
+        }
+      }
+      if (requestChanges.length > 0) {
         await InternshipRequestModel.updateOne(
           { reqId: matchedRequest.reqId },
-          { $set: otherFields }
+          { $push: { changeHistory: matchedRequest.changeHistory[matchedRequest.changeHistory.length - 1] } }
         );
       }
     }
@@ -962,7 +999,14 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
           if (mongoose.Types.ObjectId.isValid(studentId)) stuQuery.push({ _id: studentId });
         }
         if (stuQuery.length > 0) {
-          const newPs = internshipData.status === 'Completed' ? 'Placement Completed' : 'Placement Started';
+          const hasCommencementDate = Boolean(internshipData.commencementDate || internshipData.start || workflow.internships[internshipIndex].start);
+          const status = internshipData.status;
+          const newPs = ['Completed', 'Placement Completed'].includes(status) ? 'Placement Completed'
+            : ['Withdrawn', 'Student Withdraw'].includes(status) ? 'Student Withdraw'
+            : status === 'Industry Rejected' ? 'Industry Rejected'
+            : status === 'Student Missed Appointment' ? 'Student Missed Appointment'
+            : hasCommencementDate ? 'Placement Started'
+            : 'Appointment Successful';
           await StudentModel.findOneAndUpdate(
             { $or: stuQuery },
             { placementStatus: newPs },
@@ -997,15 +1041,17 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
 
     // Map display status back to appointment status without wiping placement-critical fields
     if (internshipData.status) {
-      if (internshipData.status === 'Completed')                    appt.status = 'Completed';
+      if (internshipData.status === 'Completed' || internshipData.status === 'Placement Completed') appt.status = 'Completed';
+      else if (internshipData.status === 'Appointment Successful') appt.status = 'Confirmed';
+      else if (internshipData.status === 'Placement Started' || internshipData.status === 'Waiting to Join') appt.status = 'Confirmed';
       else if (internshipData.status === 'Declined')                appt.status = 'Declined';
       else if (internshipData.status === 'Industry Rejected')       appt.status = 'Industry Rejected';
       else if (internshipData.status === 'Student Missed Appointment') appt.status = 'No Show';
-      else if (internshipData.status === 'Withdrawn')               appt.status = 'Withdrawn';
+      else if (internshipData.status === 'Withdrawn' || internshipData.status === 'Student Withdraw') appt.status = 'Withdrawn';
       else if (internshipData.status === 'Cancelled')               appt.status = 'Cancelled';
       // For all active/in-progress statuses keep the appointment as Confirmed so
       // placement-start side-effects (email, student status) are not undone
-      // 'Waiting to Join', 'Joined', 'Active', 'On Hold', 'Placement Started' → keep Confirmed
+      // Active placement statuses keep the appointment Confirmed.
     }
     if (internshipData.company) appt.company = internshipData.company;
     if (internshipData.title)   appt.position = internshipData.title;
@@ -1049,9 +1095,9 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
       title: internshipData.title || appt.position || 'Internship Placement',
       rto: appt.rto || 'TBD',
       // Preserve the display status from the form — this is what the coordinator set
-      status: internshipData.status || 'Waiting to Join',
+      status: internshipData.status === 'Placement Completed' ? 'Completed' : (internshipData.status || 'Waiting to Join'),
       // Use placement start/end dates — not the appointment interview date
-      start: internshipData.start || internshipData.commencementDate || appt.commencementDate || appt.date || new Date().toISOString().split('T')[0],
+      start: internshipData.start || internshipData.commencementDate || appt.commencementDate || '',
       end: internshipData.end || internshipData.expectedCompletionDate || appt.expectedCompletionDate || '',
       duration: '12 weeks',
       notes: internshipData.notes !== undefined ? internshipData.notes : (appt.notes || ''),
@@ -1078,10 +1124,12 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
         }
       }
       if (stuQuery.length > 0) {
-        let newPlacementStatus = 'Placement Started'; // default for all active internship states
-        if (internshipData.status === 'Completed') {
-          newPlacementStatus = 'Placement Completed';
-        }
+        const placementStatus = internshipData.status;
+        let newPlacementStatus = appt.commencementDate ? 'Placement Started' : 'Appointment Successful';
+        if (['Completed', 'Placement Completed'].includes(placementStatus)) newPlacementStatus = 'Placement Completed';
+        else if (['Withdrawn', 'Student Withdraw'].includes(placementStatus)) newPlacementStatus = 'Student Withdraw';
+        else if (placementStatus === 'Industry Rejected') newPlacementStatus = 'Industry Rejected';
+        else if (placementStatus === 'Student Missed Appointment') newPlacementStatus = 'Student Missed Appointment';
         await StudentModel.findOneAndUpdate(
           { $or: stuQuery },
           { placementStatus: newPlacementStatus },
