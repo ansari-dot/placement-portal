@@ -35,6 +35,7 @@ export default function UsersPage() {
       if (pendingList.success && pendingList.data) setPendingUsers(pendingList.data);
     } catch (err) {
       console.error('Failed to load User data:', err);
+      toast.error(err?.response?.data?.message || 'Unable to load users and registration requests.');
     }
   }, []);
 

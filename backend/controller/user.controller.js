@@ -293,6 +293,14 @@ export const updateUserController = async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
+    // Keep account fields within the values supported by the Users screen.
+    const editableFields = ['name', 'email', 'password', 'role', 'department', 'status', 'phone', 'avatar'];
+    Object.keys(updateData).forEach((field) => {
+      if (!editableFields.includes(field)) delete updateData[field];
+    });
+
+    if (updateData.email) updateData.email = updateData.email.toLowerCase().trim();
+
     // Don't overwrite password with empty string if not provided
     if (!updateData.password) {
       delete updateData.password;
@@ -306,6 +314,23 @@ export const updateUserController = async (req, res) => {
       });
       if (existing) {
         return res.status(400).json({ success: false, message: 'Another user with this email already exists' });
+      }
+    }
+
+    const currentUser = await UserModel.findById(id);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const isRemovingAdminAccess = currentUser.role === 'Administrator' &&
+      (updateData.role && updateData.role !== 'Administrator' || updateData.status && updateData.status !== 'Active');
+    if (isRemovingAdminAccess) {
+      const activeAdminCount = await UserModel.countDocuments({ role: 'Administrator', status: 'Active' });
+      if (activeAdminCount <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'The last active Administrator cannot be deactivated or changed to another role.',
+        });
       }
     }
 

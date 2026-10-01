@@ -30,6 +30,14 @@ export const protectRoute = async (req, res, next) => {
   }
 };
 
+// Admin-only guard for user management endpoints.
+export const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== 'Administrator') {
+    return res.status(403).json({ success: false, message: 'Administrator access is required.' });
+  }
+  next();
+};
+
 // Soft auth — attaches req.user if a valid token is present, but NEVER blocks.
 // Lets endpoints work anonymously while still being able to filter by coordinator
 // when a logged-in user is making the request.

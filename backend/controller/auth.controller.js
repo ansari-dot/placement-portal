@@ -22,8 +22,20 @@ export const loginController = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials. User not found.' });
     }
 
+    if (user.status === 'Pending') {
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_PENDING_APPROVAL',
+        message: 'Your registration is waiting for Administrator approval.',
+      });
+    }
+
     if (user.status !== 'Active') {
-      return res.status(403).json({ success: false, message: 'Your account is inactive. Please contact administration.' });
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_INACTIVE',
+        message: 'Your account is inactive. Please contact administration.',
+      });
     }
 
     // Verify password with bcryptjs
