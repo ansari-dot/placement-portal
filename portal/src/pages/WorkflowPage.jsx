@@ -632,9 +632,13 @@ export default function WorkflowPage() {
       .map((appt) => {
         const stuDbId = norm(appt.studentId);
         const stuName = norm(appt.student);
+        const apptEmail = norm(appt.email);
 
         // Find matching student
-        const matchedStudent = workflowStudents.find((stu) => {
+        const matchedStudentByEmail = apptEmail && workflowStudents.find((stu) =>
+          norm(stu.email || stu.emailAddress) === apptEmail
+        );
+        const matchedStudent = matchedStudentByEmail || workflowStudents.find((stu) => {
           const identifiers = [
             stu.id,
             stu._id,
@@ -642,7 +646,8 @@ export default function WorkflowPage() {
             stu.name,
             `${stu.firstName || ''} ${stu.lastName || ''}`
           ].map(norm);
-          return identifiers.includes(stuDbId) || identifiers.includes(stuName);
+          return (stuDbId && identifiers.includes(stuDbId)) ||
+            (stuName && identifiers.includes(stuName));
         });
 
         // Find matching request
@@ -672,6 +677,15 @@ export default function WorkflowPage() {
 
         const contactPerson = appt.contactPerson || matchedIndustry?.contactPerson || appt.interviewer || '—';
         const industryType = appt.industryType || matchedIndustry?.industryType || '—';
+        const availabilityDays = [
+          matchedStudent?.availabilityDays,
+          matchedReq?.availabilityDays,
+          appt.availabilityDays,
+        ].find((days) => days && (
+          days instanceof Map ? days.size > 0 :
+          Array.isArray(days) || typeof days === 'string' ? days.length > 0 :
+          typeof days === 'object' && Object.keys(days).length > 0
+        ));
 
         return {
           id: appt.id || appt._id || '',
@@ -693,7 +707,7 @@ export default function WorkflowPage() {
             ? `${matchedStudent.availabilityFrom} - ${matchedStudent.availabilityTo}`
             : '09:00 AM - 05:00 PM',
           placementHours: matchedStudent?.placementHours ?? null,
-          availabilityDays: matchedStudent?.availabilityDays || {},
+          availabilityDays: availabilityDays || {},
           location: appt.location || '',
           meetingType: appt.meetingType || 'In-Person',
           position: appt.position || '',
@@ -778,7 +792,9 @@ export default function WorkflowPage() {
         }
         if (a.status === 'Declined') return { status: 'Industry Rejected', cancellationReason: a.cancellationReason || 'Industry rejected the student', cancellationType: a.cancellationType || 'industry' };
         if (a.status === 'Industry Rejected') return { status: 'Industry Rejected', cancellationReason: a.cancellationReason || 'Industry rejected the student', cancellationType: a.cancellationType || 'industry' };
-        if (a.status === 'Withdrawn') return { status: 'Withdrawn', cancellationReason: a.cancellationReason || 'Student withdrew from placement', cancellationType: a.cancellationType || 'withdrawn' };
+        if (a.status === 'Withdrawn' || a.status === 'Student Withdraw' || a.appointmentOutcome === 'student_withdrawal') {
+          return { status: 'Student Withdraw', cancellationReason: a.cancellationReason || 'Student withdrew from placement', cancellationType: a.cancellationType || 'withdrawn' };
+        }
         if (a.status === 'Cancelled') return { status: 'Cancelled', cancellationReason: a.cancellationReason || 'Appointment was cancelled', cancellationType: '' };
         if (a.status === 'No Show') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
         if (a.status === 'Student Missed Appointment') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
@@ -796,8 +812,8 @@ export default function WorkflowPage() {
       const duration = '12 weeks';
 
       const newItem = {
-        id: appt.id || appt._id || `INT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        intId: appt.apptId ? `INT-${appt.apptId.substring(4)}` : `INT-${String(result.length + 1).padStart(6, '0')}`,
+        id: appt.id || appt._id || `PL-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        intId: appt.apptId ? `PL-${appt.apptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`,
         student: studentName,
         studentId: studentId,
         company: appt.company || 'Unknown Company',

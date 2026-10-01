@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { calculatePlacementEndDate, getCalculationSummary } from '../../utils/dateCalculation';
+import { fetchStudentById } from '../../api/studentsApi';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
   FileText, CheckCircle2, UserX, Clock, Plus,
@@ -211,6 +212,59 @@ export default function WorkflowStep3Appointments({
   const [actionMenuApptId, setActionMenuApptId] = useState(null);
   const [deleteConfirmAppt, setDeleteConfirmAppt] = useState(null);
   const [isDeletingAppt, setIsDeletingAppt] = useState(false);
+  const [viewDetailsStudent, setViewDetailsStudent] = useState(null);
+  const [isLoadingViewDetailsStudent, setIsLoadingViewDetailsStudent] = useState(false);
+
+  useEffect(() => {
+    if (!showViewDetailsModal || !selectedAppointment) {
+      setViewDetailsStudent(null);
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setViewDetailsStudent(null);
+    setIsLoadingViewDetailsStudent(true);
+    const matchedStudent = resolveStudentForAppt(selectedAppointment);
+    const lookupIds = [...new Set([
+      matchedStudent?._id,
+      matchedStudent?.id,
+      selectedAppointment.studentId,
+      matchedStudent?.studentId,
+    ].filter(Boolean))];
+
+    (async () => {
+      try {
+        let studentRecord = null;
+        for (const lookupId of lookupIds) {
+          try {
+            const response = await fetchStudentById(lookupId);
+            const fetched = response?.data || response;
+            if (fetched && (fetched._id || fetched.id || fetched.studentId)) {
+              studentRecord = fetched;
+              const availabilityDays = fetched.availabilityDays;
+              const hasDays = availabilityDays instanceof Map
+                ? availabilityDays.size > 0
+                : Array.isArray(availabilityDays)
+                  ? availabilityDays.length > 0
+                  : availabilityDays && typeof availabilityDays === 'object'
+                    ? Object.keys(availabilityDays).length > 0
+                    : Boolean(availabilityDays);
+              if (hasDays) break;
+            }
+          } catch {
+            // Try the next known student identifier.
+          }
+        }
+        if (isCurrent) setViewDetailsStudent(studentRecord || matchedStudent || null);
+      } finally {
+        if (isCurrent) setIsLoadingViewDetailsStudent(false);
+      }
+    })();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [showViewDetailsModal, selectedAppointment?.studentId, selectedAppointment?.id]);
 
   // Outcome / Change Status Modal State
   const [showOutcomeModal, setShowOutcomeModal] = useState(false);
@@ -415,11 +469,17 @@ export default function WorkflowStep3Appointments({
   // Helper to resolve student object for an appointment
   const resolveStudentForAppt = (appt) => {
     if (!appt) return null;
-    if (appt.studentDetails) return appt.studentDetails;
     const norm = (v) => String(v || '').trim().toLowerCase();
     const apptStuId = norm(appt.studentId);
     const apptStuName = norm(appt.student);
-    return (students || []).find((s) => {
+    const apptEmail = norm(appt.email);
+    const matchedByEmail = apptEmail && (students || []).find((s) => {
+      const sEmail = norm(s.email || s.emailAddress);
+      return sEmail === apptEmail;
+    });
+    if (matchedByEmail) return matchedByEmail;
+
+    const matched = (students || []).find((s) => {
       const sDbId = norm(s.id || s._id);
       const sBizId = norm(s.studentId);
       const sName = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`);
@@ -427,7 +487,10 @@ export default function WorkflowStep3Appointments({
         (apptStuId && (sDbId === apptStuId || sBizId === apptStuId)) ||
         (apptStuName && sName === apptStuName)
       );
-    }) || null;
+    });
+    if (matched) return matched;
+    if (appt.studentDetails) return appt.studentDetails;
+    return null;
   };
 
   // Helper to resolve industry contact for an appointment
@@ -507,53 +570,95 @@ export default function WorkflowStep3Appointments({
     sunday: ['sunday', 'sun', 'su'],
   };
 
-  const isDayAvailable = (studentOrAppt, dayKey) => {
-    if (!studentOrAppt) return false;
-    const days =
-      studentOrAppt.availabilityDays ||
-      studentOrAppt.studentDetails?.availabilityDays ||
-      studentOrAppt.days ||
-      (studentOrAppt.student && resolveStudentForAppt(studentOrAppt)?.availabilityDays);
+  const isDayAvailable = (studentOrAppt, dayKey, fallbackAppt = null) => {
+    if (!studentOrAppt && !fallbackAppt) return false;
 
-    if (!days) return false;
-
+    const norm = (v) => String(v || '').trim().toLowerCase();
     const targetKey = String(dayKey || '').trim().toLowerCase();
     const aliases = DAY_ALIASES[targetKey] || [targetKey];
 
-    // If Map
-    if (days instanceof Map) {
-      for (const [k, v] of days.entries()) {
-        const normK = String(k).trim().toLowerCase();
-        if ((aliases.includes(normK) || aliases.some((a) => normK.startsWith(a))) && Boolean(v)) {
-          return true;
-        }
-      }
-      return false;
-    }
+    // Collect all candidate sources for days from both arguments
+    const candidates = [];
+    const checkObj = (obj) => {
+      if (!obj) return;
+      if (obj.availabilityDays) candidates.push(obj.availabilityDays);
+      if (obj.studentDetails?.availabilityDays) candidates.push(obj.studentDetails.availabilityDays);
+      if (obj.matchedStudent?.availabilityDays) candidates.push(obj.matchedStudent.availabilityDays);
+      if (obj.days) candidates.push(obj.days);
+      if (obj.availableDays) candidates.push(obj.availableDays);
+    };
 
-    // If Array: e.g. ['Mon', 'Tue', 'Wed'] or ['Monday', 'Tuesday']
-    if (Array.isArray(days)) {
-      return days.some((d) => {
-        const normD = String(d).trim().toLowerCase();
-        return aliases.includes(normD) || aliases.some((a) => normD.startsWith(a));
+    checkObj(studentOrAppt);
+    checkObj(fallbackAppt);
+
+    // Also look up matched student from students array
+    const targetStuId = norm(
+      studentOrAppt?.studentId || studentOrAppt?.id || studentOrAppt?._id ||
+      fallbackAppt?.studentId || fallbackAppt?.id || fallbackAppt?._id
+    );
+    const targetStuName = norm(
+      studentOrAppt?.name || studentOrAppt?.student || `${studentOrAppt?.firstName || ''} ${studentOrAppt?.lastName || ''}` ||
+      fallbackAppt?.student || fallbackAppt?.name
+    );
+
+    if (students && students.length > 0) {
+      const foundStu = students.find(s => {
+        const sId = norm(s.id || s._id);
+        const sBizId = norm(s.studentId);
+        const sName = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`);
+        return (targetStuId && (sId === targetStuId || sBizId === targetStuId)) ||
+               (targetStuName && sName === targetStuName);
       });
+      if (foundStu?.availabilityDays) candidates.push(foundStu.availabilityDays);
     }
 
-    // If plain Object: e.g. { Mon: true, Tue: true } or { Monday: true }
-    if (typeof days === 'object') {
-      for (const [k, v] of Object.entries(days)) {
-        const normK = String(k).trim().toLowerCase();
-        if ((aliases.includes(normK) || aliases.some((a) => normK.startsWith(a))) && Boolean(v)) {
-          return true;
+    // Also look up matched request
+    if (requests && requests.length > 0) {
+      const foundReq = requests.find(r => {
+        const rStuId = norm(r.studentId);
+        const rStuName = norm(r.student);
+        return (targetStuId && rStuId === targetStuId) || (targetStuName && rStuName === targetStuName);
+      });
+      if (foundReq?.availabilityDays) candidates.push(foundReq.availabilityDays);
+    }
+
+    for (const days of candidates) {
+      if (!days) continue;
+
+      // If Map
+      if (days instanceof Map) {
+        for (const [k, v] of days.entries()) {
+          const normK = String(k).trim().toLowerCase();
+          if ((aliases.includes(normK) || aliases.some((a) => normK.startsWith(a))) && (v === true || v === 'true' || Boolean(v))) {
+            return true;
+          }
         }
       }
-      return false;
-    }
 
-    // If string: e.g. "Mon, Tue, Wed"
-    if (typeof days === 'string') {
-      const lower = days.toLowerCase();
-      return aliases.some((a) => lower.includes(a));
+      // If Array: e.g. ['Mon', 'Tue', 'Wed'] or ['Monday', 'Tuesday']
+      if (Array.isArray(days)) {
+        const found = days.some((d) => {
+          const normD = String(d).trim().toLowerCase();
+          return aliases.includes(normD) || aliases.some((a) => normD.startsWith(a));
+        });
+        if (found) return true;
+      }
+
+      // If plain Object: e.g. { Mon: true, Tue: true } or { Monday: true }
+      if (typeof days === 'object') {
+        for (const [k, v] of Object.entries(days)) {
+          const normK = String(k).trim().toLowerCase();
+          if ((aliases.includes(normK) || aliases.some((a) => normK.startsWith(a))) && (v === true || v === 'true' || Boolean(v))) {
+            return true;
+          }
+        }
+      }
+
+      // If string: e.g. "Mon, Tue, Wed"
+      if (typeof days === 'string') {
+        const lower = days.toLowerCase();
+        if (aliases.some((a) => lower.includes(a))) return true;
+      }
     }
 
     return false;
@@ -1954,16 +2059,6 @@ export default function WorkflowStep3Appointments({
                     <span>Change Appointment Status</span>
                   </button>
 
-                  {/* Delete Appointment Button */}
-                  <button
-                    type="button"
-                    onClick={() => setDeleteConfirmAppt(selectedAppointment)}
-                    className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                    <span>Delete Appointment</span>
-                  </button>
-
                   {/* Reschedule Button */}
                   <button
                     onClick={() => {
@@ -2229,9 +2324,12 @@ export default function WorkflowStep3Appointments({
       {/* ─── VIEW DETAILS MODAL ──────────────────────────────────────────── */}
       {showViewDetailsModal && selectedAppointment && (() => {
         const ind = resolveIndustryForAppt(selectedAppointment);
-        const stu = resolveStudentForAppt(selectedAppointment);
+        const stu = viewDetailsStudent || resolveStudentForAppt(selectedAppointment);
         const contactPerson = getContactPersonForAppointment(selectedAppointment);
         const industryType = getIndustryTypeForAppointment(selectedAppointment);
+        const availableDays = DAYS_OF_WEEK.filter(({ key }) =>
+          isDayAvailable(stu, key, selectedAppointment)
+        );
 
         const addressParts = [
           ind?.address,
@@ -2338,6 +2436,15 @@ export default function WorkflowStep3Appointments({
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Student Availability</span>
                   </div>
                   <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase w-20 shrink-0">Days</span>
+                      <span className="text-xs font-semibold text-slate-800">
+                        {availableDays.length
+                          ? availableDays.map(({ short }) => short).join(', ')
+                          : isLoadingViewDetailsStudent ? 'Loading availability...'
+                          : 'No availability days recorded'}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] font-semibold text-slate-400 uppercase w-20 shrink-0">Hours</span>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -2355,7 +2462,7 @@ export default function WorkflowStep3Appointments({
                       <span className="text-[10px] font-semibold text-slate-400 uppercase w-20 shrink-0">Days</span>
                       <div className="flex gap-1.5 flex-wrap">
                         {DAYS_OF_WEEK.map(({ key, short, label }) => {
-                          const available = isDayAvailable(stu || selectedAppointment, key);
+                          const available = isDayAvailable(stu, key, selectedAppointment);
                           return (
                             <span
                               key={key}
@@ -2454,15 +2561,6 @@ export default function WorkflowStep3Appointments({
                       active: 'border-orange-500 bg-orange-50 text-orange-800',
                       icon_c: 'text-orange-600',
                       idle: 'border-slate-200 hover:border-orange-300 hover:bg-orange-50/50'
-                    },
-                    {
-                      value: 'not_suitable_site',
-                      label: 'Site Not Suitable',
-                      sub: 'Placement site is not suitable',
-                      icon: <MapPin className="w-4 h-4" />,
-                      active: 'border-purple-500 bg-purple-50 text-purple-800',
-                      icon_c: 'text-purple-600',
-                      idle: 'border-slate-200 hover:border-purple-300 hover:bg-purple-50/50'
                     },
                     {
                       value: 'student_missed',
@@ -2639,31 +2737,27 @@ export default function WorkflowStep3Appointments({
         </div>
       )}
 
-      {/* ─── DELETE APPOINTMENT CONFIRMATION MODAL ───────────────────────── */}
       {deleteConfirmAppt && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start space-x-3">
+        <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4">
+            <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                 <Trash2 className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Delete Appointment</h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Are you sure you want to delete the appointment for{' '}
-                  <span className="font-semibold text-slate-800">{deleteConfirmAppt.student}</span>
-                  {deleteConfirmAppt.company ? (
-                    <> at <span className="font-semibold text-slate-800">{deleteConfirmAppt.company}</span></>
-                  ) : ''}? This action cannot be undone.
+                  Delete the appointment for <span className="font-semibold text-slate-800">{deleteConfirmAppt.student}</span>
+                  {deleteConfirmAppt.company ? <> at <span className="font-semibold text-slate-800">{deleteConfirmAppt.company}</span></> : ''}?
                 </p>
               </div>
             </div>
-            <div className="flex space-x-2 pt-2">
+            <div className="flex gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmAppt(null)}
                 disabled={isDeletingAppt}
-                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50 cursor-pointer"
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200 transition disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -2672,42 +2766,34 @@ export default function WorkflowStep3Appointments({
                 disabled={isDeletingAppt}
                 onClick={async () => {
                   const targetId = deleteConfirmAppt.id || deleteConfirmAppt._id || deleteConfirmAppt.apptId;
-                  if (!targetId || !onDeleteAppointment) return;
+                  if (!targetId || !onDeleteAppointment) {
+                    showToast('Could not delete appointment: missing appointment ID');
+                    return;
+                  }
                   setIsDeletingAppt(true);
                   try {
                     await onDeleteAppointment(targetId);
-                    if (selectedAppointment && (selectedAppointment.id === targetId || selectedAppointment._id === targetId || selectedAppointment.apptId === targetId)) {
+                    if (selectedAppointment && [selectedAppointment.id, selectedAppointment._id, selectedAppointment.apptId].some((id) => String(id) === String(targetId))) {
                       setSelectedAppointment(null);
                       setShowDrawer(false);
                     }
-                    showToast('Appointment deleted successfully');
                     setDeleteConfirmAppt(null);
-                  } catch (err) {
-                    console.error('Failed to delete appointment:', err);
+                    showToast('Appointment deleted successfully');
+                  } catch (error) {
+                    console.error('Failed to delete appointment:', error);
                     showToast('Failed to delete appointment');
                   } finally {
                     setIsDeletingAppt(false);
                   }
                 }}
-                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50 flex items-center justify-center space-x-2 cursor-pointer"
+                className="flex-[2] py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isDeletingAppt ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete</span>
-                  </>
-                )}
+                {isDeletingAppt ? 'Deleting...' : 'Delete Appointment'}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -695,6 +695,7 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
 
         if (isStudentMatch) {
           req.status = outcomeStatusLabel;
+          req.returnedToStep1 = true;
           if (Array.isArray(req.contactedIndustries)) {
             req.contactedIndustries.forEach((ci) => {
               const orgName = (ci.organizationName || '').trim().toLowerCase();
@@ -1009,6 +1010,12 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
     if (internshipData.company) appt.company = internshipData.company;
     if (internshipData.title)   appt.position = internshipData.title;
     if (internshipData.notes !== undefined) appt.notes = internshipData.notes;
+    if (internshipData.commencementDate || internshipData.start) {
+      appt.commencementDate = internshipData.commencementDate || internshipData.start;
+    }
+    if (internshipData.expectedCompletionDate || internshipData.end) {
+      appt.expectedCompletionDate = internshipData.expectedCompletionDate || internshipData.end;
+    }
 
     // Sync the AppointmentModel standalone record
     try {
@@ -1018,6 +1025,8 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
           company:  appt.company,
           position: appt.position,
           notes:    appt.notes,
+          commencementDate: appt.commencementDate,
+          expectedCompletionDate: appt.expectedCompletionDate,
         }, { runValidators: false });
       }
     } catch (e) {}
@@ -1025,7 +1034,7 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
     // Upsert into workflow.internships — update existing record if one already exists
     // for this appointment, otherwise create it once. This prevents duplicates on
     // repeated saves.
-    const derivedIntId = appt.apptId ? `INT-${appt.apptId.substring(4)}` : null;
+    const derivedIntId = appt.apptId ? `PL-${appt.apptId.substring(4)}` : null;
     const existingIntIndex = workflow.internships.findIndex(
       (i) =>
         (derivedIntId && i.intId === derivedIntId) ||
@@ -1042,8 +1051,8 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
       // Preserve the display status from the form — this is what the coordinator set
       status: internshipData.status || 'Waiting to Join',
       // Use placement start/end dates — not the appointment interview date
-      start: appt.commencementDate || appt.date || new Date().toISOString().split('T')[0],
-      end: appt.expectedCompletionDate || '',
+      start: internshipData.start || internshipData.commencementDate || appt.commencementDate || appt.date || new Date().toISOString().split('T')[0],
+      end: internshipData.end || internshipData.expectedCompletionDate || appt.expectedCompletionDate || '',
       duration: '12 weeks',
       notes: internshipData.notes !== undefined ? internshipData.notes : (appt.notes || ''),
     };
