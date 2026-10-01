@@ -73,6 +73,10 @@ userSchema.pre('save', async function () {
 
 // Compare password method
 userSchema.methods.comparePassword = async function (candidatePassword) {
+  // Support one-time migration of passwords previously written without running the bcrypt hook.
+  if (!/^\$2[aby]\$\d{2}\$/.test(this.password || '')) {
+    return this.password === candidatePassword;
+  }
   return await bcrypt.compare(candidatePassword, this.password);
 };
 

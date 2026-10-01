@@ -44,6 +44,11 @@ export const loginController = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    // Upgrade any legacy plaintext password after a valid login; the save hook hashes it.
+    if (!/^\$2[aby]\$\d{2}\$/.test(user.password || '')) {
+      user.password = password;
+    }
+
     // Update last login & set online
     user.lastLogin = new Date();
     user.isOnline = true;

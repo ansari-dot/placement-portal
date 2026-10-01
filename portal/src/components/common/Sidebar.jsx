@@ -13,6 +13,7 @@ import {
   Briefcase,
   Building2,
   Settings,
+  ClipboardList,
   LogOut,
   ChevronRight,
 } from 'lucide-react';
@@ -539,6 +540,16 @@ export default function Sidebar() {
             />
 
           </Link>
+
+          {isAdmin && (
+            <Link to="/user-log" className={`${navLinkClass('/user-log')} justify-between`}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <ClipboardList className={iconClass('/user-log')} />
+                <span className="truncate">User Log</span>
+              </div>
+              <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+            </Link>
+          )}
 
         </div>
 

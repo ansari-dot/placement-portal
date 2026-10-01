@@ -334,16 +334,16 @@ export const updateUserController = async (req, res) => {
       }
     }
 
-    const updated = await UserModel.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
-
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+    // Use document.save() so changing a password runs the model's bcrypt hook.
+    Object.assign(currentUser, updateData);
+    const updated = await currentUser.save();
+    const userResponse = updated.toObject();
+    delete userResponse.password;
 
     res.status(200).json({
       success: true,
       message: 'User updated successfully',
-      data: updated,
+      data: userResponse,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

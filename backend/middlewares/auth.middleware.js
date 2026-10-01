@@ -43,6 +43,7 @@ export const requireAdmin = (req, res, next) => {
 // when a logged-in user is making the request.
 export const softAuth = async (req, res, next) => {
   try {
+    if (req.user) return next();
     let token = req.cookies?.portal_token;
 
     if (!token && req.headers.authorization?.startsWith('Bearer')) {

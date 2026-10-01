@@ -12,6 +12,9 @@ import jobRoutes from './routes/job.route.js';
 import notificationRoutes from './routes/notification.route.js';
 import userRoutes from './routes/user.route.js';
 import authRoutes from './routes/auth.route.js';
+import userLogRoutes from './routes/userLog.route.js';
+import { softAuth } from './middlewares/auth.middleware.js';
+import { auditMutations } from './middlewares/audit.middleware.js';
 import { checkAndSendPlacementAlerts } from './service/email.service.js';
 
 dotenv.config();
@@ -57,6 +60,10 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 
+// Resolve the acting user once and audit successful write requests across portal APIs.
+app.use(softAuth);
+app.use(auditMutations);
+
 // Routes
 app.use('/auth', authRoutes);
 app.use('/students', studentRoutes);
@@ -66,6 +73,7 @@ app.use('/industries', industryRoutes);
 app.use('/jobs', jobRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/users', userRoutes);
+app.use('/user-logs', userLogRoutes);
 
 app.get('/', (req, res) => {
     return res.status(200).json({ message: 'Server is running' });
