@@ -121,7 +121,7 @@ export default function MyProgressScoreTab() {
           {[
             { pts: '10 pts', desc: 'per Placed Student',     color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
             { pts: '50 pts', desc: 'per Onboarded RTO',      color: 'bg-sky-50     text-sky-700     border-sky-200'     },
-            { pts: '30 pts', desc: 'per Onboarded Industry', color: 'bg-indigo-50  text-indigo-700  border-indigo-200'  },
+            { pts: '30 pts', desc: 'per Partner Industry onboarded', color: 'bg-indigo-50  text-indigo-700  border-indigo-200'  },
           ].map(({ pts, desc, color }) => (
             <span key={pts} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border ${color}`}>
               <Star className="w-2.5 h-2.5" /> {pts} <span className="font-normal opacity-80">{desc}</span>

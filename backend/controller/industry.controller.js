@@ -45,6 +45,7 @@ const syncIndustriesFromWorkflows = async () => {
               students: 1,
               jobs: 0,
               createdBy: coordinatorId,
+              industryCategory: 'Random',
             });
           }
         }
@@ -69,6 +70,7 @@ const syncIndustriesFromWorkflows = async () => {
             students: 1,
             jobs: 0,
             createdBy: null,
+            industryCategory: 'Random',
           });
         }
       }
@@ -80,7 +82,7 @@ const syncIndustriesFromWorkflows = async () => {
 
 export const getAllIndustriesController = async (req, res) => {
   try {
-    const { search, status, sector } = req.query;
+    const { search, status, sector, industryCategory, postcode, city, state } = req.query;
 
     // ── 1. Auto-sync industries from workflows
     await syncIndustriesFromWorkflows();
@@ -91,9 +93,17 @@ export const getAllIndustriesController = async (req, res) => {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
         { code: { $regex: search, $options: 'i' } },
-        { contactPersonName: { $regex: search, $options: 'i' } }
+        { contactPersonName: { $regex: search, $options: 'i' } },
+        { suburb: { $regex: search, $options: 'i' } },
+        { state: { $regex: search, $options: 'i' } },
+        { postCode: { $regex: search, $options: 'i' } },
       ];
     }
+
+    if (industryCategory && industryCategory !== 'All') query.industryCategory = industryCategory;
+    if (postcode) query.postCode = { $regex: postcode, $options: 'i' };
+    if (city) query.suburb = { $regex: city, $options: 'i' };
+    if (state) query.state = { $regex: state, $options: 'i' };
 
     if (status && status !== 'All') {
       query.status = status;
@@ -257,6 +267,11 @@ export const createIndustryController = async (req, res) => {
       abn,
       website,
       shortDescription,
+      industryCategory = 'Random',
+      onboardedByName,
+      onboardedBy,
+      partnershipInfo,
+      documents,
     } = req.body;
 
     // Validate all required fields
@@ -267,6 +282,10 @@ export const createIndustryController = async (req, res) => {
     if (!contactEmail) missing.push('Email Address');
     if (!contactPhone) missing.push('Phone Number');
     if (!address) missing.push('Address');
+    if (industryCategory === 'Partner' && !onboardedByName?.trim()) missing.push('Onboarded By');
+    if (industryCategory === 'Partner' && !suburb) missing.push('City/Suburb');
+    if (industryCategory === 'Partner' && !state) missing.push('State');
+    if (industryCategory === 'Partner' && !postCode) missing.push('Postcode');
 
     if (missing.length > 0) {
       return res.status(400).json({
@@ -280,6 +299,12 @@ export const createIndustryController = async (req, res) => {
     const finalCode = industryCode || industryName.replace(/\s+/g, '').substring(0, 6).toUpperCase() + Date.now().toString().slice(-4);
 
     const location = [suburb, state].filter(Boolean).join(', ') || 'Australia';
+
+    let linkedOnboarder = null;
+    if (industryCategory === 'Partner' && onboardedBy) {
+      linkedOnboarder = await UserModel.findById(onboardedBy).select('_id name');
+      if (!linkedOnboarder) return res.status(400).json({ success: false, message: 'Selected Portal User was not found' });
+    }
 
     const industry = new IndustryModel({
       name: industryName,
@@ -297,11 +322,16 @@ export const createIndustryController = async (req, res) => {
       abn,
       website,
       shortDescription,
+      industryCategory: industryCategory === 'Partner' ? 'Partner' : 'Random',
+      onboardedByName: industryCategory === 'Partner' ? String(onboardedByName).trim() : '',
+      onboardedBy: linkedOnboarder?._id || null,
+      partnershipInfo: industryCategory === 'Partner' ? (partnershipInfo || '') : '',
+      documents: industryCategory === 'Partner' && Array.isArray(documents) ? documents : [],
       location,
       status: 'Active',
       students: 0,
       jobs: 0,
-      createdBy: req.user?._id || null,
+      createdBy: industryCategory === 'Partner' ? (linkedOnboarder?._id || req.user?._id || null) : (req.user?._id || null),
     });
 
     await industry.save();
@@ -479,7 +509,7 @@ export const getMyIndustriesController = async (req, res) => {
     const createdByIds = isAdmin
       ? new Set()
       : new Set(
-          (await IndustryModel.find({ createdBy: userId }, { _id: 1 }).lean())
+          (await IndustryModel.find({ $or: [{ createdBy: userId }, { onboardedBy: userId }] }, { _id: 1 }).lean())
             .map(i => i._id.toString())
         );
 

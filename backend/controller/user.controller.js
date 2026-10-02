@@ -391,7 +391,7 @@ export const deleteUserController = async (req, res) => {
 // Score formula (defined by product owner):
 //   10 pts × placedStudents  (students with an Active internship)
 //   50 pts × rtos            (distinct assignedRto values that match a real RTO in the DB)
-//   30 pts × industries      (proper Industry records linked to coordinator, not random strings)
+//   30 pts × Partner Industries onboarded by this coordinator
 //
 // All coordinator identification is ObjectId-based. Names are never used for filtering.
 import StudentModel from '../model/student.model.js';
@@ -426,7 +426,7 @@ export const getScoreStatsController = async (req, res) => {
         'appointments.studentId': 1, 'appointments.company': 1,
         'requests.studentId': 1, 'requests.priority': 1, 'requests.status': 1, 'requests.contactedIndustries': 1,
       }).lean(),
-      IndustryModel.find({}, { _id: 1, name: 1, createdBy: 1 }).lean(),
+      IndustryModel.find({}, { _id: 1, name: 1, createdBy: 1, industryCategory: 1, onboardedBy: 1 }).lean(),
       RTOModel.find({}, { _id: 1, name: 1, createdBy: 1, onboardedBy: 1 }).lean(),
     ]);
 
@@ -567,50 +567,16 @@ export const getScoreStatsController = async (req, res) => {
       const realRtosCount = createdRtos.length + studentOnlyRtoNames.length;
 
       // ── Industries: created by user OR linked to coordinator's students ──
-      const createdByIndustryIds = new Set(
-        allIndustries
-          .filter(ind => ind.createdBy && ind.createdBy.toString() === uid)
-          .map(ind => ind._id.toString())
-      );
-
-      const studentLinkedIndustryNames = new Set();
-      if (myStudentIdStrings.size > 0 || myStudentDbIds.size > 0) {
-        for (const wf of allWorkflows) {
-          for (const intern of (wf.internships || [])) {
-            const sid = (intern.studentId || '').trim().toLowerCase();
-            if (!myStudentIdStrings.has(sid) && !myStudentDbIds.has(sid)) continue;
-            const nm = (intern.company || '').trim().toLowerCase();
-            if (nm) studentLinkedIndustryNames.add(nm);
-          }
-          for (const appt of (wf.appointments || [])) {
-            const sid = (appt.studentId || '').trim().toLowerCase();
-            if (!myStudentIdStrings.has(sid) && !myStudentDbIds.has(sid)) continue;
-            const nm = (appt.company || '').trim().toLowerCase();
-            if (nm && nm !== 'unknown company' && nm !== 'pending assignment') {
-              studentLinkedIndustryNames.add(nm);
-            }
-          }
-          for (const req of (wf.requests || [])) {
-            const sid = (req.studentId || '').trim().toLowerCase();
-            if (!myStudentIdStrings.has(sid) && !myStudentDbIds.has(sid)) continue;
-            for (const c of (req.contactedIndustries || [])) {
-              const nm = (c.organizationName || '').trim().toLowerCase();
-              if (nm) studentLinkedIndustryNames.add(nm);
-            }
-          }
-        }
-      }
-
-      const industries = allIndustries.filter(ind => {
-        if (createdByIndustryIds.has(ind._id.toString())) return true;
-        if (studentLinkedIndustryNames.has((ind.name || '').trim().toLowerCase())) return true;
-        return false;
-      }).length;
+      // Only formal partner onboarding earns industry points; student-linked Random
+      // records remain visible in the directory but never create onboarding credit.
+      const industries = allIndustries.filter(ind =>
+        ind.industryCategory === 'Partner' && ind.onboardedBy && ind.onboardedBy.toString() === uid
+      ).length;
 
       // ── Score formula ──
       // 10 pts × placed students
       // 50 pts × real (non-random) RTOs onboarded
-      // 30 pts × industries linked to this coordinator
+      // 30 pts × Partner Industries onboarded by this coordinator
       const score = (placedStudents * 10) + (realRtosCount * 50) + (industries * 30);
 
       return {
