@@ -23,7 +23,9 @@ const industrySchema = new mongoose.Schema({
   website: { type: String },
   shortDescription: { type: String },
   // Placement contacts are random by default; formal partnerships are onboarded separately.
-  industryCategory: { type: String, enum: ['Random', 'Partner'], default: 'Random', index: true },
+  // New records are classified explicitly by their creation flow. Leave legacy
+  // records unclassified until their existing data provides a reliable type.
+  industryCategory: { type: String, enum: ['Random', 'Partner'], index: true },
   onboardedByName: { type: String, trim: true, default: '' },
   onboardedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   partnershipInfo: { type: String, trim: true, default: '' },

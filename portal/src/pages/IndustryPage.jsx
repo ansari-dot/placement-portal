@@ -13,7 +13,7 @@ export default function IndustryPage() {
   // View: dashboard, random-industry form, or partner onboarding form.
   const [currentView, setCurrentView] = useState('dashboard');
   // Industries directory category tabs.
-  const [activeTab, setActiveTab] = useState('random');
+  const [activeTab, setActiveTab] = useState('all');
   const [users, setUsers] = useState([]);
   const [partnerForm, setPartnerForm] = useState({ industryName: '', industryType: '', address: '', suburb: '', state: '', postCode: '', country: 'Australia', contactPersonName: '', contactPhone: '', contactEmail: '', onboardedByName: '', onboardedBy: '', partnershipInfo: '', documents: [] });
 
@@ -41,7 +41,7 @@ export default function IndustryPage() {
 
   useEffect(() => {
     loadData();
-    fetchUsers({ status: 'Active' }).then(r => setUsers(r.data || [])).catch(() => {});
+    fetchUsers({ status: 'Active' }).then(r => setUsers((r.data || []).filter(user => ['Administrator', 'Coordinator', 'Staff', 'RTO Manager'].includes(user.role)))).catch(() => {});
   }, [loadData]);
 
   const handleCreatePartner = async (event) => {
@@ -150,27 +150,30 @@ export default function IndustryPage() {
           {/* ── Tab bar: All Industries | My Industries ── */}
           <div className="px-6 pt-1 bg-white border-b border-slate-200">
             <div className="flex items-center gap-1 max-w-[1600px] mx-auto">
-              <button onClick={() => setActiveTab('random')} className={tabClass('random')}>
-                <Building2 className="w-4 h-4" />
-                Random Industries
+              <button onClick={() => setActiveTab('all')} className={tabClass('all')}>
+                <Building2 className="w-4 h-4" /> All Industries
               </button>
               <button onClick={() => setActiveTab('partner')} className={tabClass('partner')}>
                 <Building2 className="w-4 h-4" /> Partner Industries
+              </button>
+              <button onClick={() => setActiveTab('random')} className={tabClass('random')}>
+                <Building2 className="w-4 h-4" />
+                Random Industries
               </button>
             </div>
           </div>
 
           {/* ── Tab content ── */}
-          {(activeTab === 'random' || activeTab === 'partner') && (
+          {(activeTab === 'all' || activeTab === 'random' || activeTab === 'partner') && (
             <IndustriesDashboard
               onAddNewIndustry={() => activeTab === 'partner' ? setCurrentView('add-partner') : handleAddNewIndustry()}
-              industries={industries.filter(i => (i.industryCategory || 'Random') === (activeTab === 'partner' ? 'Partner' : 'Random'))}
+              industries={activeTab === 'all' ? industries : industries.filter(i => i.industryCategory === (activeTab === 'partner' ? 'Partner' : 'Random'))}
               stats={stats}
               onFilterChange={loadData}
               onDeleteIndustry={handleDeleteIndustry}
               onUpdateIndustry={handleUpdateIndustry}
               onNavigateToPartners={() => setActiveTab('partner')}
-              category={activeTab === 'partner' ? 'Partner' : 'Random'}
+              category={activeTab === 'partner' ? 'Partner' : activeTab === 'random' ? 'Random' : 'All'}
               users={users}
             />
           )}

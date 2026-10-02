@@ -63,6 +63,8 @@ export default function IndustriesDashboard({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sectorFilter, setSectorFilter] = useState('All');
+  const [sectorOptions, setSectorOptions] = useState([]);
+  const [locationFilters, setLocationFilters] = useState({ postcode: '', city: '', state: '' });
   const [viewingIndustry, setViewingIndustry] = useState(null);
 
   // Edit Industry state
@@ -147,12 +149,17 @@ export default function IndustriesDashboard({
         onFilterChange({
           search: searchQuery,
           status: statusFilter,
-          sector: sectorFilter
+          sector: sectorFilter,
+          ...locationFilters,
         });
       }
     }, 300);
     return () => clearTimeout(delayDebounce);
-  }, [searchQuery, statusFilter, sectorFilter, onFilterChange]);
+  }, [searchQuery, statusFilter, sectorFilter, locationFilters, onFilterChange]);
+
+  useEffect(() => {
+    setSectorOptions((current) => [...new Set([...current, ...industries.map(ind => ind.sector).filter(Boolean)])].sort());
+  }, [industries]);
 
   // Dynamically calculate Top Sectors by Students
   const topSectors = useMemo(() => {
@@ -261,8 +268,8 @@ export default function IndustriesDashboard({
           <div className="w-full space-y-4">
             
             {/* Filters Bar */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 flex-1">
                 
                 <div className="relative flex-1 max-w-xs">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
@@ -275,6 +282,21 @@ export default function IndustriesDashboard({
                   />
                 </div>
 
+                {[
+                  ['postcode', 'Postcode / Zip'],
+                  ['city', 'City'],
+                  ['state', 'State'],
+                ].map(([key, placeholder]) => (
+                  <input
+                    key={key}
+                    aria-label={`Filter by ${placeholder}`}
+                    placeholder={placeholder}
+                    value={locationFilters[key]}
+                    onChange={(e) => setLocationFilters(old => ({ ...old, [key]: e.target.value }))}
+                    className="w-28 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 text-slate-700 placeholder-slate-400 shadow-sm"
+                  />
+                ))}
+
                 <div className="relative">
                   <select 
                     value={sectorFilter}
@@ -282,9 +304,7 @@ export default function IndustriesDashboard({
                     className="appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500 shadow-sm cursor-pointer"
                   >
                     <option value="All">All Sectors</option>
-                    <option value="Information Technology">Information Technology</option>
-                    <option value="Healthcare">Healthcare</option>
-                    <option value="Construction">Construction</option>
+                    {sectorOptions.map(type => <option key={type} value={type}>{type}</option>)}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>

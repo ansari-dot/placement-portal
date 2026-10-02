@@ -219,9 +219,7 @@ export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, u
               <input type="text" list="rto-onboarding-staff" required placeholder="Enter or select staff member name"
                 value={formData.onboardedByName || ''}
                 onChange={(e) => {
-                  const name = e.target.value;
-                  const match = staffUsers.find((user) => user.name.trim().toLowerCase() === name.trim().toLowerCase());
-                  updateFormData({ onboardedByName: name, onboardedBy: match?._id || '' });
+                  updateFormData({ onboardedByName: e.target.value });
                 }}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
               <datalist id="rto-onboarding-staff">
