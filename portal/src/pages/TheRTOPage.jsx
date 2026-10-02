@@ -3,7 +3,8 @@ import { useSelector } from 'react-redux';
 import RTOLayout from '../components/layout/RTOLayout';
 import RtoDashboard from '../components/RTO/RtoDashboard';
 import AddRtoWizard from '../components/RTO/AddRtoWizard';
-import { fetchRtos, createRto, fetchRtoStats, deleteRto, fetchMyRtos } from '../api/rtoApi';
+import { fetchRtos, createRto, fetchRtoStats, deleteRto, fetchMyRtos, updateRto } from '../api/rtoApi';
+import { fetchUsers } from '../api/userApi';
 import { Building2, User, MapPin, Calendar, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 // ── My RTOs tab — shows only RTOs onboarded by the logged-in user ──────────
@@ -11,6 +12,28 @@ function MyRTOsTab() {
   const [rtos, setRtos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [staffUsers, setStaffUsers] = useState([]);
+  const [linkError, setLinkError] = useState(null);
+
+  useEffect(() => {
+    fetchUsers({ status: 'Active' })
+      .then((res) => setStaffUsers((res?.data || []).filter((user) => ['Coordinator', 'Staff', 'RTO Manager'].includes(user.role))))
+      .catch(() => setStaffUsers([]));
+  }, []);
+
+  const linkPortalUser = async (rto, userId) => {
+    const user = staffUsers.find((item) => item._id === userId);
+    setLinkError(null);
+    try {
+      await updateRto(rto._id, { onboardedBy: user?._id || null, onboardedByName: user?.name || rto.onboardedByName });
+      setRtos((current) => current.map((item) => item._id === rto._id
+        ? { ...item, onboardedBy: user?._id || null, onboardedByName: user?.name || item.onboardedByName }
+        : item));
+    } catch (err) {
+      console.error('Failed to link RTO to portal user:', err);
+      setLinkError('Could not update the RTO portal user. Please try again.');
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,11 +80,13 @@ function MyRTOsTab() {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {linkError && <p role="alert" className="px-4 py-3 bg-rose-50 text-sm text-rose-700">{linkError}</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50/60 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
               <th className="py-3 px-4">RTO Name</th>
+              <th className="py-3 px-4">Onboarded By / Portal User ID</th>
               <th className="py-3 px-4">
                 <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> Location</span>
               </th>
@@ -83,6 +108,15 @@ function MyRTOsTab() {
                       <div className="text-[10px] text-slate-400">{rto.code || ''}</div>
                     </div>
                   </div>
+                </td>
+                <td className="py-3 px-4">
+                  <div className="text-slate-700 font-medium">{rto.onboardedByName || '—'}</div>
+                  <select aria-label={`Link ${rto.name} to a Portal User ID`} value={rto.onboardedBy || ''}
+                    onChange={(e) => linkPortalUser(rto, e.target.value)}
+                    className="mt-1 max-w-[260px] px-2 py-1 bg-white border border-slate-200 rounded-lg text-[10px] text-slate-600">
+                    <option value="">No portal account / link later</option>
+                    {staffUsers.map((user) => <option key={user._id} value={user._id}>{user.name} — {user._id}</option>)}
+                  </select>
                 </td>
                 <td className="py-3 px-4 text-slate-600">
                   {rto.loc || [rto.suburb, rto.state].filter(Boolean).join(', ') || '—'}
@@ -108,9 +142,11 @@ export default function TheRTOPage() {
 
   // View states: 'dashboard' | 'add-wizard'
   const [currentView, setCurrentView] = useState('dashboard');
+  const [editingRto, setEditingRto] = useState(null);
   // Tab: 'all' | 'my'
   const [activeTab, setActiveTab] = useState('all');
   const [rtos, setRtos] = useState([]);
+  const [rtoLoadError, setRtoLoadError] = useState(null);
   const [stats, setStats] = useState({
     totalRtos: 0,
     activeRtos: 0,
@@ -120,15 +156,23 @@ export default function TheRTOPage() {
   });
 
   const loadData = useCallback(async (filters = {}) => {
-    try {
-      const [rtoList, rtoStats] = await Promise.all([
+    const [rtoListResult, rtoStatsResult] = await Promise.allSettled([
         fetchRtos(filters),
         fetchRtoStats()
-      ]);
-      if (rtoList.success && rtoList.data) setRtos(rtoList.data);
-      if (rtoStats.success && rtoStats.data) setStats(rtoStats.data);
-    } catch (err) {
-      console.error('Failed to load RTO data:', err);
+    ]);
+
+    if (rtoListResult.status === 'fulfilled' && rtoListResult.value?.success && Array.isArray(rtoListResult.value.data)) {
+      setRtos(rtoListResult.value.data);
+      setRtoLoadError(null);
+    } else {
+      console.error('Failed to load RTO list:', rtoListResult.status === 'rejected' ? rtoListResult.reason : rtoListResult.value);
+      setRtoLoadError('Could not load RTOs. Check your connection and try again.');
+    }
+
+    if (rtoStatsResult.status === 'fulfilled' && rtoStatsResult.value?.success && rtoStatsResult.value.data) {
+      setStats(rtoStatsResult.value.data);
+    } else if (rtoStatsResult.status === 'rejected') {
+      console.error('Failed to load RTO stats:', rtoStatsResult.reason);
     }
   }, []);
 
@@ -150,6 +194,18 @@ export default function TheRTOPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to delete RTO:', err);
+      window.alert(err?.response?.data?.message || 'Failed to delete RTO. Please try again.');
+    }
+  }, [loadData]);
+
+  const handleUpdateRto = useCallback(async (id, formData) => {
+    try {
+      await updateRto(id, formData);
+      await loadData();
+      setEditingRto(null);
+    } catch (err) {
+      console.error('Failed to update RTO:', err);
+      throw err;
     }
   }, [loadData]);
 
@@ -162,11 +218,11 @@ export default function TheRTOPage() {
 
   return (
     <RTOLayout
-      title={currentView === 'dashboard' ? 'RTOs' : 'Add New RTO'}
+      title={currentView === 'dashboard' ? 'RTOs' : editingRto ? 'Edit RTO' : 'Add New RTO'}
       breadcrumbs={
         currentView === 'dashboard'
           ? ['Dashboard', 'Partners', 'RTOs']
-          : ['Dashboard', 'Partners', 'RTOs', 'Add New RTO']
+          : ['Dashboard', 'Partners', 'RTOs', editingRto ? 'Edit RTO' : 'Add New RTO']
       }
     >
       {currentView === 'dashboard' ? (
@@ -186,13 +242,22 @@ export default function TheRTOPage() {
           </div>
 
           {activeTab === 'all' && (
-            <RtoDashboard
-              onAddNewRto={() => setCurrentView('add-wizard')}
-              rtos={rtos}
-              stats={stats}
-              onFilterChange={loadData}
-              onDeleteRto={handleDeleteRto}
-            />
+            <>
+              {rtoLoadError && (
+                <div role="alert" className="mx-auto mt-4 max-w-[1600px] rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 flex items-center justify-between gap-4">
+                  <span>{rtoLoadError}</span>
+                  <button onClick={() => loadData()} className="font-semibold underline">Retry</button>
+                </div>
+              )}
+              <RtoDashboard
+                onAddNewRto={() => { setEditingRto(null); setCurrentView('add-wizard'); }}
+                onEditRto={(rto) => { setEditingRto(rto); setCurrentView('edit-wizard'); }}
+                rtos={rtos}
+                stats={stats}
+                onFilterChange={loadData}
+                onDeleteRto={handleDeleteRto}
+              />
+            </>
           )}
           {activeTab === 'my' && (
             <div className="p-6 max-w-[1600px] mx-auto w-full">
@@ -211,9 +276,11 @@ export default function TheRTOPage() {
             </button>
           </div>
           <AddRtoWizard
-            onCancel={() => setCurrentView('dashboard')}
+            initialRto={editingRto}
+            onCancel={() => { setEditingRto(null); setCurrentView('dashboard'); }}
             onComplete={() => setCurrentView('dashboard')}
             onCreateRto={handleCreateRto}
+            onUpdateRto={handleUpdateRto}
           />
         </div>
       )}

@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { fetchUsers } from '../../api/userApi';
 import { 
   Upload, FileText, ArrowRight, DollarSign, Calendar, Plus, Trash2, 
   CheckCircle2, X, Image as ImageIcon, ShieldCheck, HelpCircle, AlertCircle
@@ -32,9 +33,16 @@ const PAYMENT_CYCLES = [
   { id: '15 Days', title: '15 Days', desc: 'Invoiced fortnightly on a 15-day recurring cycle' },
 ];
 
-export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, updateFormData, showToast }) {
+export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, updateFormData, showToast, isEditing }) {
   const logoInputRef = useRef(null);
   const certInputRef = useRef(null);
+  const [staffUsers, setStaffUsers] = useState([]);
+
+  useEffect(() => {
+    fetchUsers({ status: 'Active' })
+      .then((res) => setStaffUsers((res?.data || []).filter((user) => ['Coordinator', 'Staff', 'RTO Manager'].includes(user.role))))
+      .catch(() => setStaffUsers([]));
+  }, []);
 
   const handleChange = (field, value) => {
     updateFormData({ [field]: value });
@@ -168,6 +176,10 @@ export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, u
       if (showToast) showToast('RTO Name is required');
       return;
     }
+    if (!isEditing && (!formData.onboardedByName || !formData.onboardedByName.trim())) {
+      if (showToast) showToast('Onboarded By is required');
+      return;
+    }
     onNext();
   };
 
@@ -199,6 +211,37 @@ export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, u
           <div>
             <h3 className="text-base font-bold text-slate-800">Basic Information & Media</h3>
             <p className="text-xs text-slate-500 mt-0.5">Enter the basic details, invoice period / payment cycle, and compliance documents for the RTO.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Onboarded By <span className="text-rose-500">*</span></label>
+              <input type="text" list="rto-onboarding-staff" required placeholder="Enter or select staff member name"
+                value={formData.onboardedByName || ''}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const match = staffUsers.find((user) => user.name.trim().toLowerCase() === name.trim().toLowerCase());
+                  updateFormData({ onboardedByName: name, onboardedBy: match?._id || '' });
+                }}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              <datalist id="rto-onboarding-staff">
+                {staffUsers.map((user) => <option key={user._id} value={user.name}>{user.role}</option>)}
+              </datalist>
+              <p className="text-[10px] text-slate-500">Required. Enter a name even if their portal account is not ready yet.</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Portal User ID <span className="text-slate-400 font-normal">(Optional)</span></label>
+              <select value={formData.onboardedBy || ''}
+                onChange={(e) => {
+                  const user = staffUsers.find((item) => item._id === e.target.value);
+                  updateFormData({ onboardedBy: user?._id || '', ...(user ? { onboardedByName: user.name } : {}) });
+                }}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                <option value="">No portal account / link later</option>
+                {staffUsers.map((user) => <option key={user._id} value={user._id}>{user.name} — {user._id}</option>)}
+              </select>
+              <p className="text-[10px] text-slate-500">Link their account to show this RTO in My Progress and award 50 points.</p>
+            </div>
           </div>
 
           {/* Section 1: Basic Identifiers */}
@@ -598,4 +641,4 @@ export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, u
       </div>
     </div>
   );
-}
+}

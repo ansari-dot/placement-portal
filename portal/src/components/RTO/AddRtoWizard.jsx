@@ -7,13 +7,15 @@ import AddRtoStep3 from './AddRtoStep3';
 import AddRtoStep4 from './AddRtoStep4';
 import AddRtoStep5 from './AddRtoStep5';
 
-export default function AddRtoWizard({ onCancel, onComplete, onCreateRto }) {
+export default function AddRtoWizard({ onCancel, onComplete, onCreateRto, onUpdateRto, initialRto }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [toast, setToast] = useState(null);
   const [formData, setFormData] = useState({
     // Step 1: Basic Information & Media
     rtoName: '',
     rtoCode: '',
+    onboardedByName: '',
+    onboardedBy: '',
     paymentCycle: 'Placement',
     payoutRate: '',
     coursePricing: [
@@ -54,6 +56,21 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto }) {
     registrationNumber: '',
     issuingAuthority: 'Australian Skills Quality Authority (ASQA)'
   });
+  const [initializedRtoId] = useState(initialRto?._id || initialRto?.id || null);
+  React.useEffect(() => {
+    if (!initialRto) return;
+    setFormData((current) => ({
+      ...current,
+      ...initialRto,
+      rtoName: initialRto.name || initialRto.rtoName || '',
+      rtoCode: initialRto.code || initialRto.rtoCode || '',
+      addressLine1: initialRto.address || initialRto.addressLine1 || '',
+      partnershipSince: initialRto.partnershipSince || initialRto.date || current.partnershipSince,
+      country: initialRto.country || 'Australia',
+      coursePricing: initialRto.coursePricing?.length ? initialRto.coursePricing : current.coursePricing,
+      documents: initialRto.documents || [],
+    }));
+  }, [initialRto]);
   const totalSteps = 6;
 
   const showToast = (message) => {
@@ -85,13 +102,14 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto }) {
   const submit = async () => {
     if (onCreateRto) {
       try {
-        await onCreateRto(formData);
+        if (initializedRtoId && onUpdateRto) await onUpdateRto(initializedRtoId, formData);
+        else await onCreateRto(formData);
       } catch (err) {
-        showToast('Failed to create RTO');
+        showToast(initializedRtoId ? 'Failed to update RTO' : 'Failed to create RTO');
         return;
       }
     }
-    showToast('RTO created successfully!');
+    showToast(initializedRtoId ? 'RTO updated successfully!' : 'RTO created successfully!');
     setTimeout(() => {
       if (onComplete) {
         onComplete();
@@ -109,7 +127,8 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto }) {
     showToast,
     toast,
     step: currentStep,
-    totalSteps
+    totalSteps,
+    isEditing: Boolean(initializedRtoId)
   };
 
   return (

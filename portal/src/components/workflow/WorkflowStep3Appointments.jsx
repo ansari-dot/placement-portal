@@ -815,7 +815,8 @@ export default function WorkflowStep3Appointments({
   const handleOpenOutcomeModal = () => {
     if (!selectedAppointment) return;
     setAppointmentOutcome('successful');
-    const defaultStart = selectedAppointment.commencementDate || selectedAppointment.date || new Date().toISOString().split('T')[0];
+    // Appointment/orientation date is separate from placement commencement.
+    const defaultStart = selectedAppointment.commencementDate || '';
     setCommencementDate(defaultStart);
 
     // Find matching student for hours & availability
@@ -827,14 +828,14 @@ export default function WorkflowStep3Appointments({
       return (sId && aId && sId === aId) || (sName && aName && sName === aName);
     });
 
-    const calcEnd = calculatePlacementEndDate(
+    const calcEnd = defaultStart ? calculatePlacementEndDate(
       defaultStart,
       stuMatch?.placementHours,
       stuMatch?.availabilityDays,
       stuMatch?.availabilityFrom,
       stuMatch?.availabilityTo
-    );
-    setExpectedCompletionDate(calcEnd || selectedAppointment.expectedCompletionDate || '');
+    ) : '';
+    setExpectedCompletionDate(calcEnd || (defaultStart ? selectedAppointment.expectedCompletionDate || '' : ''));
     setOutcomeNotes(selectedAppointment.notes || '');
     setShowOutcomeModal(true);
   };
@@ -2588,6 +2589,20 @@ export default function WorkflowStep3Appointments({
                   ))}
                 </div>
               </div>
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-blue-700">
+                  <CalendarIcon className="w-4 h-4 shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Orientation / Appointment Date</span>
+                </div>
+                <span className="text-xs font-semibold text-slate-800 text-right">
+                  {selectedAppointment?.date
+                    ? new Date(`${selectedAppointment.date}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+                    : 'Not scheduled'}
+                  {selectedAppointment?.time ? ` at ${selectedAppointment.time}` : ''}
+                </span>
+              </div>
+
 
               {/* Commencement / Completion dates — only for successful */}
               {appointmentOutcome === 'successful' && (

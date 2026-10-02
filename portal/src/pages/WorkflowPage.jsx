@@ -557,6 +557,17 @@ export default function WorkflowPage() {
     return workflow.requests
       .filter((req) => {
         if (excludeReturnedToStep1 && req.returnedToStep1 === true) return false;
+        if (excludeReturnedToStep1) {
+          const requestIds = new Set([req.id, req._id, req.reqId]
+            .filter(Boolean)
+            .map(value => String(value).trim().toLowerCase()));
+          const hasAppointmentForRequest = (workflow?.appointments || []).some((appointment) => {
+            if (!['Scheduled', 'Confirmed'].includes(appointment.status)) return false;
+            const linkedRequest = String(appointment.linkedReq || appointment.linkedRequestId || '').trim().toLowerCase();
+            return linkedRequest && requestIds.has(linkedRequest);
+          });
+          if (hasAppointmentForRequest) return false;
+        }
         // Coordinators always see only their students; admins filter only when a coordinator is selected
         const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
         if (!shouldFilter) return true;

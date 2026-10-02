@@ -475,7 +475,8 @@ export default function WorkflowStep1Students({
     if (activeMainTab === 'inactive') {
       return studentList.filter((s) => getStudentPriority(s) === 'Inactive');
     }
-    return studentList.filter((s) => !snoozedStudentIds[s.id] && getStudentPriority(s) !== 'Inactive');
+    // All is the complete Step 1 population, including snoozed and inactive students.
+    return studentList;
   }, [studentList, activeMainTab, snoozedStudentIds, localRequestMap, internshipRequestMap]);
 
   const uniqueRtos = React.useMemo(() => (
@@ -795,7 +796,7 @@ export default function WorkflowStep1Students({
         {/* ─── Student Tabs: All / Inactive / Snooze ───────────────────────── */}
         <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
           {[
-            { key: 'all',      label: 'All',               count: studentList.filter(s => !snoozedStudentIds[s.id] && getStudentPriority(s) !== 'Inactive').length },
+            { key: 'all',      label: 'All',               count: studentList.length },
             { key: 'inactive', label: 'Inactive Students',  count: inactiveStudentsCount },
             { key: 'snooze',   label: 'Snooze',             count: snoozedCount },
           ].map((tab) => (
