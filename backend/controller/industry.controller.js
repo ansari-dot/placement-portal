@@ -7,25 +7,13 @@ import UserModel from '../model/user.model.js';
 const safeRegex = (str) => new RegExp(`^${str.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
 // Helper to auto-sync any industries created in Workflow Step 2 or Step 3 into Industry collection.
-// When syncing from workflow requests, the request carries a coordinator name string — we look up
-// the matching User document so we can stamp createdBy on new industry records.
+// Use the User ObjectId already stored on each placement contact when available.
 const syncIndustriesFromWorkflows = async () => {
   try {
-    // Pre-load all users once so we can resolve coordinator name → ObjectId
-    const allUsers = await UserModel.find({}, { _id: 1, name: 1 }).lean();
-    const resolveCoordinatorId = (coordinatorName) => {
-      if (!coordinatorName) return null;
-      const norm = coordinatorName.trim().toLowerCase();
-      const match = allUsers.find(u => (u.name || '').trim().toLowerCase() === norm);
-      return match ? match._id : null;
-    };
-
     const workflows = await WorkflowModel.find();
     for (const wf of workflows) {
       // From requests -> contactedIndustries
       for (const r of (wf.requests || [])) {
-        // Resolve the coordinator who owns this request
-        const coordinatorId = resolveCoordinatorId(r.coordinator);
         for (const c of (r.contactedIndustries || [])) {
           const orgName = (c.organizationName || '').trim();
           if (!orgName) continue;
@@ -44,7 +32,7 @@ const syncIndustriesFromWorkflows = async () => {
               status: c.response === 'Rejected' ? 'Inactive' : 'Active',
               students: 1,
               jobs: 0,
-              createdBy: coordinatorId,
+              createdBy: c.addedByUserId || null,
               industryCategory: 'Random',
             });
           }
@@ -101,9 +89,10 @@ export const getAllIndustriesController = async (req, res) => {
     }
 
     if (industryCategory && industryCategory !== 'All') query.industryCategory = industryCategory;
-    if (postcode) query.postCode = { $regex: postcode, $options: 'i' };
-    if (city) query.suburb = { $regex: city, $options: 'i' };
-    if (state) query.state = { $regex: state, $options: 'i' };
+    const partialMatch = (value) => ({ $regex: String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' });
+    if (postcode) query.postCode = partialMatch(postcode);
+    if (city) query.suburb = partialMatch(city);
+    if (state) query.state = partialMatch(state);
 
     if (status && status !== 'All') {
       query.status = status;
@@ -357,6 +346,19 @@ export const updateIndustryController = async (req, res) => {
     }
     const oldName = (oldIndustry.name || '').trim();
 
+    if (Object.prototype.hasOwnProperty.call(updateData, 'onboardedBy')) {
+      if (updateData.onboardedBy) {
+        const linkedUser = await UserModel.findById(updateData.onboardedBy).select('_id');
+        if (!linkedUser) return res.status(400).json({ success: false, message: 'Selected Portal User was not found' });
+        updateData.onboardedBy = linkedUser._id;
+      } else {
+        updateData.onboardedBy = null;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'onboardedByName')) {
+      updateData.onboardedByName = String(updateData.onboardedByName || '').trim();
+    }
+
     // Remap frontend field names to model field names if needed
     if (updateData.industryName) { updateData.name = updateData.industryName; delete updateData.industryName; }
     if (updateData.industryType) { updateData.sector = updateData.industryType; delete updateData.industryType; }
@@ -489,6 +491,10 @@ export const getMyIndustriesController = async (req, res) => {
       return res.status(200).json({ success: true, data: [] });
     }
 
+    // Random industries are shared placement options, so make sure workflow
+    // contacts have been synchronized before building any user's list.
+    await syncIndustriesFromWorkflows();
+
     const userId = req.user._id;
     const isAdmin = req.user.role === 'Administrator';
 
@@ -559,6 +565,9 @@ export const getMyIndustriesController = async (req, res) => {
     const allIndustries = await IndustryModel.find().lean();
     const myIndustries = allIndustries.filter(ind => {
       if (isAdmin) return true;
+      // Random Industries are reusable across students and coordinators; they
+      // must be visible to every staff member regardless of who added them.
+      if (ind.industryCategory === 'Random') return true;
       // Condition A: ObjectId match on createdBy (created by / credited to this coordinator)
       if (createdByIds.has(ind._id.toString())) return true;
       // Condition B: one of this coordinator's specifically assigned students is linked

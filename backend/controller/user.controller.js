@@ -430,11 +430,6 @@ export const getScoreStatsController = async (req, res) => {
       RTOModel.find({}, { _id: 1, name: 1, createdBy: 1, onboardedBy: 1 }).lean(),
     ]);
 
-    // Normalised set of real RTO names from the database (for "non-random" RTO scoring)
-    const realRtoNames = new Set(
-      allRtos.map(r => (r.name || '').trim().toLowerCase()).filter(Boolean)
-    );
-
     // Build sets from workflows for Placed, Inactive requests, and Snoozed requests
     const activelyPlacedStudentIds = new Set();
     const workflowInactiveStudentIds = new Set();
@@ -548,23 +543,11 @@ export const getScoreStatsController = async (req, res) => {
       // Only verified (real) RTOs are counted — this is the same value used in the
       // score formula, so the column and the score are always in sync.
       const createdRtos = allRtos.filter(r =>
-        (r.onboardedBy && r.onboardedBy.toString() === uid) ||
-        (!r.onboardedBy && r.createdBy && r.createdBy.toString() === uid)
+        r.onboardedBy && r.onboardedBy.toString() === uid
       );
-      const createdRtoNames = new Set(
-        createdRtos.map(r => (r.name || '').trim().toLowerCase()).filter(Boolean)
-      );
-      // Names of RTOs assigned to this coordinator's students
-      const rtoNamesOnStudents = new Set(
-        myStudents.map(s => (s.assignedRto || '').trim().toLowerCase()).filter(Boolean)
-      );
-      // Union: RTOs created by user + RTOs on their students
-      // Count each onboarded record once, then add verified student-linked RTOs
-      // that were not already credited as an onboarded record.
-      const studentOnlyRtoNames = [...rtoNamesOnStudents].filter(
-        name => realRtoNames.has(name) && !createdRtoNames.has(name)
-      );
-      const realRtosCount = createdRtos.length + studentOnlyRtoNames.length;
+      // Only an explicit Portal User relationship receives onboarding points.
+      // Merely being assigned an RTO on a student does not represent onboarding.
+      const realRtosCount = createdRtos.length;
 
       // ── Industries: created by user OR linked to coordinator's students ──
       // Only formal partner onboarding earns industry points; student-linked Random
