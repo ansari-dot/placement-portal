@@ -13,6 +13,7 @@ import notificationRoutes from './routes/notification.route.js';
 import userRoutes from './routes/user.route.js';
 import authRoutes from './routes/auth.route.js';
 import userLogRoutes from './routes/userLog.route.js';
+import paymentRoutes from './routes/payment.route.js';
 import { softAuth } from './middlewares/auth.middleware.js';
 import { auditMutations } from './middlewares/audit.middleware.js';
 import { checkAndSendPlacementAlerts } from './service/email.service.js';
@@ -74,6 +75,7 @@ app.use('/jobs', jobRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/users', userRoutes);
 app.use('/user-logs', userLogRoutes);
+app.use('/payments', paymentRoutes);
 
 app.get('/', (req, res) => {
     return res.status(200).json({ message: 'Server is running' });

@@ -83,6 +83,14 @@ const AppRoutes = () => {
         }
       />
       <Route
+        path="/payments"
+        element={
+          <ProtectedRoute>
+            <WorkflowPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/rto"
         element={
           <ProtectedRoute>

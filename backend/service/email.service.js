@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Email Service - Placement Portal
  * Sends email alerts using nodemailer (SMTP).
  * Falls back to console log + in-app Notification if SMTP not configured.
@@ -9,6 +9,7 @@ import mongoose from 'mongoose';
 import NotificationModel from '../model/notification.model.js';
 import WorkflowModel, { AppointmentModel } from '../model/workflow.model.js';
 import StudentModel from '../model/student.model.js';
+import RtoModel from '../model/rto.model.js';
 import { calculatePlacementEndDate } from '../utils/dateCalculation.js';
 
 // ─── SMTP Config ─────────────────────────────────────────────────────────────
@@ -560,6 +561,177 @@ export const sendPlacementEndingSoonEmail = async (options) => {
   } catch (err) {
     console.error('[EmailService] Send failed:', err.message);
     return { sent: false, method: 'in-app', message: `Email failed: ${err.message}. In-app notification saved.` };
+  }
+};
+
+// ─── Send Payment Tax Invoice Email ──────────────────────────────────────────
+
+/**
+ * sendPaymentInvoiceEmail
+ * Called when payment status is updated to 'Invoice Sent'
+ * Sends formatted Tax Invoice HTML email to RTO contact email & student email.
+ * Also creates an In-App Notification.
+ *
+ * @param {Object} payment - Payment model object
+ */
+export const sendPaymentInvoiceEmail = async (payment) => {
+  try {
+    let recipientEmails = [];
+
+    // 1. Resolve student email
+    if (payment.student) {
+      const studentDoc = await StudentModel.findById(payment.student).lean();
+      if (studentDoc && studentDoc.emailAddress) {
+        recipientEmails.push(studentDoc.emailAddress);
+      }
+    }
+
+    // 2. Resolve RTO contact email
+    if (payment.rto) {
+      const rtoDoc = await RtoModel.findOne({
+        name: new RegExp('^' + payment.rto.trim() + '$', 'i'),
+      }).lean();
+      if (rtoDoc && rtoDoc.contactEmail) {
+        recipientEmails.push(rtoDoc.contactEmail);
+      }
+    }
+
+    // Clean & deduplicate recipient emails
+    recipientEmails = [...new Set(recipientEmails.filter(Boolean))];
+
+    // Build Invoice Details
+    const cleanId = String(payment.studentId || payment._id)
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(-5)
+      .toUpperCase();
+    const invNum = `INV-${new Date().getFullYear()}-${cleanId}`;
+    const subtotal = payment.paymentAmount || 0;
+    const gst = Number((subtotal * 0.10).toFixed(2));
+    const totalDue = Number((subtotal + gst).toFixed(2));
+
+    // Create In-App Notification
+    await NotificationModel.create({
+      title: `Tax Invoice Sent — ${invNum}`,
+      desc: `Tax invoice ${invNum} of AUD $${totalDue.toFixed(
+        2
+      )} sent for ${payment.studentName} (${payment.rto || 'RTO'}).`,
+      type: 'system',
+      isRead: false,
+      link: '/workflow?step=5',
+    });
+
+    if (recipientEmails.length === 0) {
+      console.log(
+        `[EmailService] Tax Invoice ${invNum} created for ${payment.studentName}. In-app notification created.`
+      );
+      return {
+        sent: false,
+        method: 'in-app',
+        message: 'Invoice created. In-app notification saved.',
+      };
+    }
+
+    const htmlBody = `
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+body{font-family:"Segoe UI",Arial,sans-serif;background:#f8fafc;margin:0;padding:20px;color:#1e293b}
+.wrap{max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.05)}
+.hdr{background:#0f172a;padding:24px 32px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+.body{padding:32px}
+.inv-badge{display:inline-block;padding:4px 12px;background:#dbeafe;color:#1e40af;font-weight:700;border-radius:20px;font-size:11px;text-transform:uppercase}
+.tbl{width:100%;border-collapse:collapse;margin:20px 0}
+.tbl th{background:#f1f5f9;padding:10px;text-align:left;font-size:11px;color:#475569;text-transform:uppercase}
+.tbl td{padding:12px 10px;border-bottom:1px solid #f1f5f9;font-size:13px}
+.total-box{background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;margin-top:20px}
+.ftr{background:#f1f5f9;padding:16px 32px;text-align:center;font-size:11px;color:#64748b}
+</style></head><body>
+<div class="wrap">
+  <div class="hdr">
+    <div>
+      <h2 style="margin:0;font-size:18px">Placement Portal Services</h2>
+      <p style="margin:4px 0 0;font-size:12px;color:#94a3b8">ABN: 48 123 456 789</p>
+    </div>
+    <div style="text-align:right">
+      <h3 style="margin:0;font-size:16px;color:#38bdf8">TAX INVOICE</h3>
+      <p style="margin:4px 0 0;font-size:13px;font-family:monospace">${invNum}</p>
+    </div>
+  </div>
+  <div class="body">
+    <div style="margin-bottom:20px">
+      <span class="inv-badge">Status: Invoice Sent</span>
+      <p style="margin:12px 0 0;font-size:14px"><strong>Billed To:</strong> ${payment.rto || 'Registered Training Organisation'}</p>
+      <p style="margin:4px 0 0;font-size:13px;color:#64748b">Student: <strong>${payment.studentName}</strong> (ID: ${payment.studentId || 'N/A'})</p>
+      <p style="margin:4px 0 0;font-size:13px;color:#64748b">Course: ${payment.course || 'Vocational Placement'}</p>
+    </div>
+    <table class="tbl">
+      <thead>
+        <tr><th>Description</th><th style="text-align:center">Tier</th><th style="text-align:right">Amount (AUD)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Vocational Student Placement Fee — ${payment.studentName}<br><small style="color:#64748b">${payment.placementStatus}</small></td>
+          <td style="text-align:center"><strong>${payment.chargePercentage}%</strong></td>
+          <td style="text-align:right;font-weight:700">$${subtotal.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="total-box">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px">
+        <span>Subtotal (Excl. GST):</span><strong>AUD $${subtotal.toFixed(2)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px">
+        <span>GST (10%):</span><strong>AUD $${gst.toFixed(2)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid #cbd5e1;padding-top:8px;font-size:15px;color:#0f172a">
+        <span><strong>Total Amount Due:</strong></span><strong style="color:#2563eb">AUD $${totalDue.toFixed(2)}</strong>
+      </div>
+    </div>
+    <div style="margin-top:24px;padding:12px;background:#eff6ff;border-radius:8px;font-size:12px;color:#1e40af">
+      <strong>EFT Remittance Details:</strong><br>
+      Bank: Commonwealth Bank of Australia | BSB: 062-000 | Acc: 1234 5678 | Ref: ${invNum}
+    </div>
+  </div>
+  <div class="ftr">
+    <p>Terms: Net 14 Days. Thank you for partnering with Placement Portal.</p>
+  </div>
+</div></body></html>`;
+
+    if (!isSmtpConfigured()) {
+      console.log(
+        `\n[EmailService] SMTP not configured. Would send Tax Invoice email (${invNum}) to: ${recipientEmails.join(
+          ', '
+        )}`
+      );
+      return {
+        sent: false,
+        method: 'console',
+        message: `Tax Invoice ${invNum} generated & logged. In-app notification created.`,
+      };
+    }
+
+    const transporter = getTransporter();
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const info = await transporter.sendMail({
+      from: `"Placement Portal Billing" <${from}>`,
+      to: recipientEmails.join(','),
+      subject: `📄 Tax Invoice Generated: ${invNum} — ${payment.studentName}`,
+      html: htmlBody,
+    });
+
+    console.log(
+      `[EmailService] Tax Invoice ${invNum} sent to ${recipientEmails.join(
+        ', '
+      )} (${info.messageId})`
+    );
+    return {
+      sent: true,
+      method: 'smtp',
+      message: `Invoice sent to ${recipientEmails.join(', ')}`,
+      messageId: info.messageId,
+    };
+  } catch (err) {
+    console.error('[EmailService] sendPaymentInvoiceEmail error:', err.message);
+    return { sent: false, method: 'error', message: err.message };
   }
 };
 

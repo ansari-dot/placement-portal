@@ -8,6 +8,7 @@ import WorkflowStep1Students from '../components/workflow/WorkflowStep1Students'
 import WorkflowStep2Requests from '../components/workflow/WorkflowStep2Requests';
 import WorkflowStep3Appointments from '../components/workflow/WorkflowStep3Appointments';
 import WorkflowStep4Internships from '../components/workflow/WorkflowStep4Internships';
+import WorkflowStep5Payments from '../components/workflow/WorkflowStep5Payments';
 import { fetchUsers } from '../api/userApi';
 import {
   fetchWorkflows,
@@ -30,7 +31,7 @@ import {
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
 import { updateStudent } from '../api/studentsApi';
 
-const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements'];
+const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements', 'Payments'];
 
 const getResponseStyle = (response) => {
   if (!response) return 'text-slate-600 bg-slate-50';
@@ -50,7 +51,7 @@ export default function WorkflowPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const stepParam = parseInt(searchParams.get('step') || '1', 10);
   const [activeStep, setActiveStep] = useState(
-    stepParam >= 1 && stepParam <= 4 ? stepParam : 1
+    stepParam >= 1 && stepParam <= 5 ? stepParam : 1
   );
 
   const authUser = useSelector((state) => state.auth.user);
@@ -113,7 +114,7 @@ export default function WorkflowPage() {
           setWorkflowId(wfId);
           setWorkflow(existing);
           const stepFromUrl = parseInt(searchParams.get('step') || '', 10);
-          if (stepFromUrl >= 1 && stepFromUrl <= 4) {
+          if (stepFromUrl >= 1 && stepFromUrl <= 5) {
             setActiveStep(stepFromUrl);
           } else {
             setActiveStep(existing.currentStep || 1);
@@ -167,7 +168,7 @@ export default function WorkflowPage() {
   }, []);
 
   useEffect(() => {
-    if (stepParam >= 1 && stepParam <= 4) {
+    if (stepParam >= 1 && stepParam <= 5) {
       setActiveStep(stepParam);
     }
   }, [stepParam]);
@@ -1369,6 +1370,8 @@ export default function WorkflowPage() {
             students={mapStudentsForStep1()}
           />
         );
+      case 5:
+        return <WorkflowStep5Payments />;
       default:
         if (!isAdmin) {
           return (

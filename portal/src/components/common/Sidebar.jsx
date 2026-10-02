@@ -16,6 +16,7 @@ import {
   ClipboardList,
   LogOut,
   ChevronRight,
+  CreditCard,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -359,6 +360,24 @@ export default function Sidebar() {
 
               <span className="truncate">
                 Step 4: Placements
+              </span>
+
+            </Link>
+
+
+            {/* Step 5 */}
+
+            <Link
+              to="/workflow?step=5"
+              className={workflowLinkClass(5)}
+            >
+
+              <CreditCard
+                className={workflowIconClass(5)}
+              />
+
+              <span className="truncate">
+                Step 5: Payments
               </span>
 
             </Link>

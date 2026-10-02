@@ -249,7 +249,7 @@ const studentSchema = new mongoose.Schema(
     handHygieneDoc: { type: String, default: null },       // Hand Hygiene Certificate
     cprDoc: { type: String, default: null },               // CPR (Cardiopulmonary Resuscitation Certificate)
     cbrDoc: { type: String, default: null },               // CBR / CPR backward compatibility
-    
+
     // Live Presence & Activity Status
     isOnline: { type: Boolean, default: false },
     lastActive: { type: Date, default: Date.now },
@@ -315,7 +315,7 @@ const studentSchema = new mongoose.Schema(
         contactedDate: { type: Date, default: Date.now },
         // Who added this contact — powers "Industries contacted, along with
         // the coordinator's name who contacted that specific industry"
-        addedByName:   { type: String, trim: true, default: "" },
+        addedByName: { type: String, trim: true, default: "" },
         addedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       }
     ],
@@ -400,7 +400,7 @@ const studentSchema = new mongoose.Schema(
     // required on the Student Profile page.
     coordinatorHistory: [
       {
-        coordinatorId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        coordinatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
         coordinatorName: { type: String, trim: true, default: '' },
         action: {
           type: String,
@@ -408,7 +408,7 @@ const studentSchema = new mongoose.Schema(
           default: 'Assigned',
         },
         previousCoordinatorName: { type: String, trim: true, default: '' },
-        assignedBy:       { type: String, trim: true, default: '' }, // name of admin who made the change
+        assignedBy: { type: String, trim: true, default: '' }, // name of admin who made the change
         assignedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
         date: { type: Date, default: Date.now },
       }
