@@ -76,6 +76,8 @@ const rtoSchema = new mongoose.Schema({
 
   // Ownership — which user onboarded/created this RTO
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  onboardedByName: { type: String, required: true, trim: true },
+  onboardedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
 
 const RtoModel = mongoose.model('Rto', rtoSchema);

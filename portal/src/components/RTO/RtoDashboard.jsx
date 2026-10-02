@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Building2, CheckCircle2, Clock, Users, UserPlus, Search, Filter, 
   Download, Plus, Columns, MoreVertical, ArrowLeft, ArrowRight, 
-  MapPin, Phone, Mail, Globe, CalendarDays, Lock, ExternalLink, X,
+  MapPin, Phone, Mail, Globe, CalendarDays, Lock, ExternalLink, X, FileText,
   Eye, Edit, Trash2
 } from 'lucide-react';
-import { LivePresenceBadge, formatLastSeen } from '../../utils/presenceUtils';
 
-export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFilterChange, onDeleteRto }) {
+export default function RtoDashboard({ onAddNewRto, onEditRto, rtos = [], stats = {}, onFilterChange, onDeleteRto }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [locationFilter, setLocationFilter] = useState('All');
@@ -236,9 +236,6 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                 <th className="p-4">RTO Name</th>
                 <th className="p-4">RTO Code</th>
                 <th className="p-4">Location</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Live Status</th>
-                <th className="p-4">Last Seen</th>
                 <th className="p-4">Students</th>
                 <th className="p-4">Partnership Since</th>
                 <th className="p-4 text-right">Actions</th>
@@ -246,8 +243,8 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredRtos.map((rto, idx) => (
-                <tr 
-                  key={idx} 
+                <tr
+                  key={rto._id || rto.id || idx}
                   className="hover:bg-slate-50/80 transition"
                 >
                   <td className="p-4"><input type="checkbox" className="rounded border-slate-300" /></td>
@@ -264,7 +261,6 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                           {(rto.name || 'RTO').substring(0, 2).toUpperCase()}
                         </div>
                       )}
-                      <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${rto.isOnline ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                     </div>
                     <div className="min-w-0">
                       <span className="block truncate">{rto.name}</span>
@@ -277,21 +273,6 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                   </td>
                   <td className="p-4 text-slate-600 font-medium">{rto.code || '-'}</td>
                   <td className="p-4 text-slate-600">{rto.loc || '-'}</td>
-                  <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${rto.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                      {rto.status}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <LivePresenceBadge
-                      isOnline={!!rto.isOnline}
-                      lastSeen={rto.lastSeen || rto.lastActive}
-                      size="xs"
-                    />
-                  </td>
-                  <td className="p-4 text-slate-500 text-[11px]">
-                    {formatLastSeen(rto.lastSeen || rto.lastActive, !!rto.isOnline)}
-                  </td>
                   <td className="p-4 font-semibold text-slate-700">{rto.students || 0}</td>
                   <td className="p-4 text-slate-600">{rto.date}</td>
                   <td className="p-4 text-right">
@@ -309,7 +290,7 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          alert('Edit RTO Wizard is coming soon!');
+                          onEditRto?.(rto);
                         }}
                         title="Edit RTO"
                         className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition cursor-pointer"
@@ -334,7 +315,7 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
               ))}
               {filteredRtos.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-400 text-sm font-medium">
+                  <td colSpan={7} className="p-8 text-center text-slate-400 text-sm font-medium">
                     No RTOs found.
                   </td>
                 </tr>
@@ -361,7 +342,7 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
       </div>
 
       {/* View Details Popup Modal */}
-      {viewingRto && (
+      {viewingRto && createPortal((
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
@@ -607,8 +588,9 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
               </button>
               <button 
                 onClick={() => {
-                  alert('Edit RTO Wizard is coming soon!');
+                  const rto = viewingRto;
                   setViewingRto(null);
+                  onEditRto?.(rto);
                 }} 
                 className="px-5 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] text-white rounded-xl font-semibold shadow-md transition-all duration-500 cursor-pointer"
               >
@@ -617,7 +599,7 @@ export default function RtoDashboard({ onAddNewRto, rtos = [], stats = {}, onFil
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
     </div>
   );
 }

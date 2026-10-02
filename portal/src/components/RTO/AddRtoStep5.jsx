@@ -12,6 +12,7 @@ export default function AddRtoStep5({
   formData,
   updateFormData,
   showToast,
+  isEditing,
   toast,
   step,
   totalSteps,
@@ -238,7 +239,7 @@ export default function AddRtoStep5({
                 onClick={onSubmit} 
                 className="px-6 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white rounded-xl text-xs font-semibold shadow-sm transition-all duration-500 cursor-pointer"
               >
-                Create RTO
+                {isEditing ? 'Save Changes' : 'Create RTO'}
               </button>
             </div>
           </div>
@@ -261,4 +262,4 @@ export default function AddRtoStep5({
       </div>
     </div>
   );
-}
+}

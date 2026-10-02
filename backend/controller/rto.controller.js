@@ -1,4 +1,5 @@
 import RtoModel from '../model/rto.model.js';
+import UserModel from '../model/user.model.js';
 
 export const getAllRTOsController = async (req, res) => {
   try {
@@ -80,6 +81,8 @@ export const createRTOController = async (req, res) => {
       partnershipSince,
       registrationNumber,
       issuingAuthority,
+      onboardedByName,
+      onboardedBy,
     } = req.body;
 
     if (!rtoName || !rtoName.trim()) {
@@ -87,6 +90,18 @@ export const createRTOController = async (req, res) => {
         success: false,
         message: 'RTO Name is required'
       });
+    }
+
+    if (!onboardedByName || !String(onboardedByName).trim()) {
+      return res.status(400).json({ success: false, message: 'Onboarded By is required' });
+    }
+
+    let linkedUser = null;
+    if (onboardedBy) {
+      linkedUser = await UserModel.findById(onboardedBy).select('_id name');
+      if (!linkedUser) {
+        return res.status(400).json({ success: false, message: 'Selected Portal User ID was not found' });
+      }
     }
 
     // Auto-generate a clean code if none is provided
@@ -131,6 +146,8 @@ export const createRTOController = async (req, res) => {
       status: 'Active',
       students: 0,
       createdBy: req.user?._id || null,
+      onboardedByName: String(onboardedByName).trim(),
+      onboardedBy: linkedUser?._id || null,
     });
 
     await rto.save();
@@ -148,12 +165,40 @@ export const createRTOController = async (req, res) => {
 export const updateRTOController = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
 
-    if (updates.rtoName) updates.name = updates.rtoName;
-    if (updates.rtoCode) updates.code = updates.rtoCode;
-    if (updates.addressLine1) updates.address = updates.addressLine1;
-    if (updates.suburb && updates.state) updates.loc = `${updates.suburb}, ${updates.state}`;
+    if (Object.prototype.hasOwnProperty.call(updates, 'onboardedByName')) {
+      if (!String(updates.onboardedByName || '').trim()) delete updates.onboardedByName;
+      else updates.onboardedByName = String(updates.onboardedByName).trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'onboardedBy') && updates.onboardedBy) {
+      const linkedUser = await UserModel.findById(updates.onboardedBy).select('_id name');
+      if (!linkedUser) return res.status(400).json({ success: false, message: 'Selected Portal User ID was not found' });
+      updates.onboardedBy = linkedUser._id;
+    } else if (Object.prototype.hasOwnProperty.call(updates, 'onboardedBy')) {
+      updates.onboardedBy = null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'rtoName')) {
+      if (!String(updates.rtoName || '').trim()) {
+        return res.status(400).json({ success: false, message: 'RTO Name is required' });
+      }
+      updates.name = String(updates.rtoName).trim();
+      delete updates.rtoName;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'rtoCode')) {
+      updates.code = String(updates.rtoCode || '').trim();
+      delete updates.rtoCode;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'addressLine1')) {
+      updates.address = updates.addressLine1 || '';
+      delete updates.addressLine1;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'suburb') || Object.prototype.hasOwnProperty.call(updates, 'state')) {
+      const suburb = updates.suburb ?? '';
+      const state = updates.state ?? '';
+      updates.loc = [suburb, state].filter(Boolean).join(', ');
+    }
 
     const rto = await RtoModel.findByIdAndUpdate(id, updates, { new: true });
     if (!rto) {
@@ -206,7 +251,10 @@ export const getRTOStatsController = async (req, res) => {
 export const deleteRTOController = async (req, res) => {
   try {
     const { id } = req.params;
-    await RtoModel.findByIdAndDelete(id);
+    const deletedRto = await RtoModel.findByIdAndDelete(id);
+    if (!deletedRto) {
+      return res.status(404).json({ success: false, message: 'RTO not found' });
+    }
     res.status(200).json({
       success: true,
       message: 'RTO deleted successfully'
@@ -228,7 +276,7 @@ export const getMyRTOsController = async (req, res) => {
     const isAdmin = req.user.role === 'Administrator';
     const rtos = isAdmin
       ? await RtoModel.find().sort({ createdAt: -1 }).lean()
-      : await RtoModel.find({ createdBy: req.user._id }).sort({ createdAt: -1 }).lean();
+      : await RtoModel.find({ $or: [{ onboardedBy: req.user._id }, { createdBy: req.user._id, onboardedBy: null }] }).sort({ createdAt: -1 }).lean();
 
     return res.status(200).json({ success: true, data: rtos });
   } catch (error) {

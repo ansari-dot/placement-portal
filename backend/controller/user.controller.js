@@ -427,7 +427,7 @@ export const getScoreStatsController = async (req, res) => {
         'requests.studentId': 1, 'requests.priority': 1, 'requests.status': 1, 'requests.contactedIndustries': 1,
       }).lean(),
       IndustryModel.find({}, { _id: 1, name: 1, createdBy: 1 }).lean(),
-      RTOModel.find({}, { _id: 1, name: 1, createdBy: 1 }).lean(),
+      RTOModel.find({}, { _id: 1, name: 1, createdBy: 1, onboardedBy: 1 }).lean(),
     ]);
 
     // Normalised set of real RTO names from the database (for "non-random" RTO scoring)
@@ -547,7 +547,10 @@ export const getScoreStatsController = async (req, res) => {
       // RTO in the database, PLUS RTOs the user created directly.
       // Only verified (real) RTOs are counted — this is the same value used in the
       // score formula, so the column and the score are always in sync.
-      const createdRtos = allRtos.filter(r => r.createdBy && r.createdBy.toString() === uid);
+      const createdRtos = allRtos.filter(r =>
+        (r.onboardedBy && r.onboardedBy.toString() === uid) ||
+        (!r.onboardedBy && r.createdBy && r.createdBy.toString() === uid)
+      );
       const createdRtoNames = new Set(
         createdRtos.map(r => (r.name || '').trim().toLowerCase()).filter(Boolean)
       );
@@ -556,9 +559,12 @@ export const getScoreStatsController = async (req, res) => {
         myStudents.map(s => (s.assignedRto || '').trim().toLowerCase()).filter(Boolean)
       );
       // Union: RTOs created by user + RTOs on their students
-      const allDistinctRtoNames = new Set([...createdRtoNames, ...rtoNamesOnStudents]);
-      // Only count names that exist as verified records in the RTO collection
-      const realRtosCount = [...allDistinctRtoNames].filter(n => realRtoNames.has(n)).length;
+      // Count each onboarded record once, then add verified student-linked RTOs
+      // that were not already credited as an onboarded record.
+      const studentOnlyRtoNames = [...rtoNamesOnStudents].filter(
+        name => realRtoNames.has(name) && !createdRtoNames.has(name)
+      );
+      const realRtosCount = createdRtos.length + studentOnlyRtoNames.length;
 
       // ── Industries: created by user OR linked to coordinator's students ──
       const createdByIndustryIds = new Set(
