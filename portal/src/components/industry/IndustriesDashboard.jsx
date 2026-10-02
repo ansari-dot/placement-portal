@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, CheckCircle2, PauseCircle, Briefcase, GraduationCap, 
   Search, SlidersHorizontal, Plus, ChevronDown, Download, 
-  MoreHorizontal, Eye, Edit2, ChevronLeft, ChevronRight, 
+  MoreHorizontal, Eye, Edit2, ChevronRight, 
   MapPin, ArrowUpRight, Trash2, X, Phone, Mail, User, Clock,
   ChevronUp
 } from 'lucide-react';
@@ -55,7 +55,10 @@ export default function IndustriesDashboard({
   stats = {}, 
   onFilterChange, 
   onDeleteIndustry,
-  onUpdateIndustry 
+  onUpdateIndustry,
+  onNavigateToPartners,
+  category = 'Random',
+  users = []
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -251,11 +254,11 @@ export default function IndustriesDashboard({
 
         </div>
 
-        {/* Layout Grid: Main Table Section (left) & Analytics/Widgets (right) */}
-        <div className="grid grid-cols-12 gap-6">
+        {/* Full-width industry table, with overview cards arranged below it. */}
+        <div className="space-y-6">
           
           {/* Left Column: Table & Filters */}
-          <div className="col-span-9 space-y-4">
+          <div className="w-full space-y-4">
             
             {/* Filters Bar */}
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between gap-4">
@@ -265,7 +268,7 @@ export default function IndustriesDashboard({
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                   <input 
                     type="text" 
-                    placeholder="Search industries by name, sector, or contact..." 
+                  placeholder="Search by name, postcode, city, state, sector, or contact..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-sm outline-none focus:border-indigo-500 text-slate-700 placeholder-slate-400 shadow-sm"
@@ -308,13 +311,15 @@ export default function IndustriesDashboard({
 
               </div>
 
-              <button
-                onClick={onAddNewIndustry}
-                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add New Industry</span>
-              </button>
+              {category === 'Partner' && (
+                <button
+                  onClick={onAddNewIndustry}
+                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Partner Industry</span>
+                </button>
+              )}
             </div>
 
             {/* Table Counter & Export Actions */}
@@ -358,14 +363,13 @@ export default function IndustriesDashboard({
                     <th className="py-3.5 px-4">
                       <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> Email</span>
                     </th>
-                    <th className="py-3.5 px-4">Status</th>
                     <th className="py-3.5 px-4">
                       <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Currently Placed</span>
                     </th>
                     <th className="py-3.5 px-4">
                       <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-sky-500" /> Previously Placed</span>
                     </th>
-                    <th className="py-3.5 px-4 text-right">Actions</th>
+                    <th className="sticky right-0 z-10 bg-slate-50 py-3.5 px-4 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
@@ -386,6 +390,21 @@ export default function IndustriesDashboard({
                             <div>
                               <div className="font-semibold text-slate-900">{item.name}</div>
                               <div className="text-xs text-slate-500">ABN: {item.abn || 'N/A'}</div>
+                              {category === 'Partner' && (
+                                <select
+                                  aria-label={`Link ${item.name} to a Portal User`}
+                                  value={item.onboardedBy || ''}
+                                  onChange={async e => {
+                                    const user = users.find(u => u._id === e.target.value);
+                                    try { await onUpdateIndustry?.(item._id, { onboardedBy: e.target.value || null, onboardedByName: user?.name || item.onboardedByName }); }
+                                    catch (err) { console.error('Failed to link partner onboarder:', err); }
+                                  }}
+                                  className="mt-1 max-w-48 text-[10px] border border-slate-200 rounded px-1.5 py-1 bg-white"
+                                >
+                                  <option value="">Portal user not linked</option>
+                                  {users.map(user => <option key={user._id} value={user._id}>{user.name} ({user.role})</option>)}
+                                </select>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -426,17 +445,6 @@ export default function IndustriesDashboard({
                           </span>
                         </td>
 
-                        {/* Status */}
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                            item.status === 'Active'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}>
-                            {item.status || 'Active'} {item.status === 'Active' ? <CheckCircle2 className="w-3 h-3" /> : <PauseCircle className="w-3 h-3" />}
-                          </span>
-                        </td>
-
                         {/* Currently Placed Students */}
                         <td className="py-3 px-4 max-w-[180px]">
                           <PlacedStudentsCell students={currentlyPlaced} variant="current" />
@@ -448,7 +456,7 @@ export default function IndustriesDashboard({
                         </td>
 
                         {/* Actions */}
-                        <td className="py-3 px-4 text-right">
+                        <td className="sticky right-0 z-[1] bg-white py-3 px-4 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)] hover:bg-slate-50">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => setViewingIndustry(item)}
@@ -487,32 +495,12 @@ export default function IndustriesDashboard({
               </table>
               </div>
 
-              {/* Table Footer Pagination */}
-              <div className="px-4 py-3 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-                <div>
-                  {industries.length === 0
-                    ? "Showing 0 to 0 of 0 results"
-                    : `Showing 1 to ${industries.length} of ${industries.length} results`}
-                </div>
-                {industries.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 transition-colors">
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <button className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-semibold text-xs flex items-center justify-center shadow-sm">1</button>
-                    <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
             </div>
 
           </div>
 
           {/* Right Column: Widgets / Analytics Cards */}
-          <div className="col-span-3 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
             {/* Industry Overview Chart/Stats Card */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
@@ -628,7 +616,11 @@ export default function IndustriesDashboard({
             </div>
 
             {/* Bottom Promotional/Partner Banner */}
-            <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 rounded-xl p-4 text-white shadow-sm flex items-center justify-between cursor-pointer hover:opacity-95 transition-opacity">
+            <button
+              type="button"
+              onClick={onNavigateToPartners}
+              className="w-full text-left bg-gradient-to-r from-indigo-900 to-indigo-800 rounded-xl p-4 text-white shadow-sm flex items-center justify-between cursor-pointer hover:opacity-95 transition-opacity"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
                   <Building2 className="w-5 h-5 text-indigo-200" />
@@ -639,7 +631,7 @@ export default function IndustriesDashboard({
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-indigo-200 flex-shrink-0" />
-            </div>
+            </button>
 
           </div>
 

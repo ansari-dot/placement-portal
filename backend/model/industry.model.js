@@ -22,6 +22,12 @@ const industrySchema = new mongoose.Schema({
   abn: { type: String },
   website: { type: String },
   shortDescription: { type: String },
+  // Placement contacts are random by default; formal partnerships are onboarded separately.
+  industryCategory: { type: String, enum: ['Random', 'Partner'], default: 'Random', index: true },
+  onboardedByName: { type: String, trim: true, default: '' },
+  onboardedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  partnershipInfo: { type: String, trim: true, default: '' },
+  documents: [{ name: { type: String, trim: true }, url: { type: String, trim: true }, file: { type: String }, fileName: { type: String, trim: true }, size: { type: String, trim: true }, uploadDate: { type: String, trim: true } }],
   // Ownership — which user created / is credited with this industry.
   // Optional so all pre-existing documents remain valid with no migration needed.
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
