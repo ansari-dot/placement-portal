@@ -172,53 +172,84 @@ export default function LoginPage() {
         <div className="lg:col-span-6 flex flex-col items-center lg:items-end justify-center">
           
           {/* Floating White Card Matching Mockup */}
-          <div className="w-full max-w-[460px] bg-white rounded-[32px] border border-slate-100 shadow-2xl shadow-blue-900/10 p-8 lg:p-10 space-y-5 relative z-10">
+          <div className="w-full max-w-[480px] bg-white rounded-[32px] border border-slate-100 shadow-2xl shadow-blue-900/10 p-8 lg:p-10 space-y-5 relative z-10">
             
-            {/* Top Shield Icon Circle */}
+            {/* Top Shield / User Icon Circle */}
             <div className="flex justify-center">
-              <div className="w-16 h-16 rounded-full bg-[#ebf5ff] text-[#0070f3] flex items-center justify-center shadow-xs">
-                <Lock className="w-7 h-7" />
+              <div className="w-16 h-16 rounded-full bg-blue-50 text-[#0147A6] flex items-center justify-center shadow-xs">
+                {isSignup ? <UserPlus className="w-8 h-8" /> : <Lock className="w-7 h-7" />}
               </div>
             </div>
 
+            {/* Top Tab Switcher */}
+            <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => { setIsSignup(false); setSignupSuccess(false); setSignupError(''); }}
+                className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer ${
+                  !isSignup
+                    ? 'bg-white text-[#0147A6] shadow-md shadow-slate-200'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => { setIsSignup(true); setSignupSuccess(false); setSignupError(''); }}
+                className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  isSignup
+                    ? 'bg-[#0147A6] text-white shadow-md shadow-blue-900/20'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>New User Signup</span>
+              </button>
+            </div>
+
             {/* Title & Subtitle */}
-            <div className="text-center space-y-1 pb-2">
+            <div className="text-center space-y-1 pb-1">
               <h2 className="text-2xl font-extrabold text-slate-900">
-                {isSignup ? 'Create Account' : 'Admin Portal Access'}
+                {isSignup ? 'Create Portal Account' : 'Sign In to Portal'}
               </h2>
-              <p className="text-xs text-slate-500 font-normal">
-                {isSignup ? 'Register for access to the placement portal' : 'Sign in with your administrator credentials'}
+              <p className="text-xs text-slate-500 font-medium">
+                {isSignup
+                  ? 'General registration for RTOs, Students, Coordinators & Industry Users'
+                  : 'Enter your account email and password to access the portal'}
               </p>
             </div>
 
             {/* Error Alert */}
             {error && !isSignup && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-rose-700">
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-start space-x-2.5 text-xs text-rose-700">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <span className="font-medium">{error}</span>
+                <span className="font-semibold leading-relaxed">{error}</span>
               </div>
             )}
 
             {/* Signup Error Alert */}
             {signupError && isSignup && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-rose-700">
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-start space-x-2.5 text-xs text-rose-700">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <span className="font-medium">{signupError}</span>
+                <span className="font-semibold leading-relaxed">{signupError}</span>
               </div>
             )}
 
             {/* Signup Success Message */}
             {signupSuccess && isSignup && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col items-center text-center space-y-2">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-                <p className="text-sm font-bold text-emerald-700">Registration Submitted!</p>
-                <p className="text-xs text-emerald-600">Your request has been sent for admin approval. You will be able to log in once approved.</p>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex flex-col items-center text-center space-y-3">
+                <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+                <h4 className="text-base font-extrabold text-emerald-800">Registration Submitted Successfully!</h4>
+                <p className="text-xs text-emerald-700 leading-relaxed font-medium">
+                  Your signup request has been sent to the Administrator. Account status is currently <span className="font-extrabold underline">Pending</span>. You will be able to log in once Admin approves your account.
+                </p>
                 <button
                   type="button"
                   onClick={toggleMode}
-                  className="text-xs font-semibold text-[#0070f3] hover:underline cursor-pointer mt-1"
+                  className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-xs rounded-xl shadow-xs transition-all duration-500 cursor-pointer mt-2"
                 >
-                  Back to Sign In
+                  Return to Sign In Screen
                 </button>
               </div>
             )}
@@ -226,8 +257,13 @@ export default function LoginPage() {
             {/* Signup Form */}
             {isSignup && !signupSuccess ? (
               <form onSubmit={handleSignupSubmit} className="space-y-3 text-xs">
+                <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-2.5 text-[11px] text-blue-900 font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>New registrations require Admin approval before log in.</span>
+                </div>
+
                 <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-700">Full Name</label>
+                  <label className="block text-xs font-bold text-slate-700">Full Name *</label>
                   <div className="relative">
                     <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                     <input
@@ -235,14 +271,14 @@ export default function LoginPage() {
                       required
                       value={signupName}
                       onChange={(e) => setSignupName(e.target.value)}
-                      placeholder="e.g. John Smith"
-                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      placeholder="e.g. Sarah Jenkins"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-700">Email Address</label>
+                  <label className="block text-xs font-bold text-slate-700">Email Address *</label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                     <input
@@ -250,14 +286,14 @@ export default function LoginPage() {
                       required
                       value={signupEmail}
                       onChange={(e) => setSignupEmail(e.target.value)}
-                      placeholder="e.g. john@company.com"
-                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      placeholder="e.g. sarah@organization.com"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-700">Password</label>
+                  <label className="block text-xs font-bold text-slate-700">Password *</label>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                     <input
@@ -265,23 +301,23 @@ export default function LoginPage() {
                       required
                       value={signupPassword}
                       onChange={(e) => setSignupPassword(e.target.value)}
-                      placeholder="Create a password"
-                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      placeholder="Create a strong password"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-700">Role</label>
+                  <label className="block text-xs font-bold text-slate-700">User Role / Account Type *</label>
                   <select
                     value={signupRole}
                     onChange={(e) => setSignupRole(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs cursor-pointer"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-bold text-xs shadow-xs cursor-pointer"
                   >
-                    <option value="Coordinator">Coordinator</option>
+                    <option value="Coordinator">Placement Coordinator</option>
+                    <option value="RTO Manager">RTO (Registered Training Organisation)</option>
                     <option value="Student">Student</option>
-                    <option value="RTO Manager">RTO Manager</option>
-                    <option value="Industry">Industry</option>
+                    <option value="Industry">Industry / Host Facility</option>
                   </select>
                 </div>
 
@@ -292,24 +328,24 @@ export default function LoginPage() {
                     value={signupPhone}
                     onChange={(e) => setSignupPhone(e.target.value)}
                     placeholder="e.g. +61 400 000 000"
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={signupLoading}
-                  className="w-full py-3 bg-[#0070f3] hover:bg-[#005ecb] text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                  className="w-full py-3 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-sm rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer mt-2"
                 >
                   {signupLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting...</span>
+                      <span>Submitting Request...</span>
                     </>
                   ) : (
                     <>
                       <UserPlus className="w-4 h-4" />
-                      <span>Submit Registration Request</span>
+                      <span>Submit Signup for Admin Approval</span>
                     </>
                   )}
                 </button>
@@ -331,8 +367,8 @@ export default function LoginPage() {
                       setEmail(e.target.value);
                       if (error) dispatch(clearError());
                     }}
-                    placeholder="admin@mantisplacements.com"
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                    placeholder="e.g. admin@mantisplacements.com"
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
                   />
                 </div>
               </div>
@@ -351,7 +387,7 @@ export default function LoginPage() {
                       if (error) dispatch(clearError());
                     }}
                     placeholder="••••••••••••"
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
                   />
                   <button
                     type="button"
@@ -363,23 +399,23 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Remember me & Forgot Password */}
+              {/* Remember me & Quick Admin Fill */}
               <div className="flex items-center justify-between pt-1">
                 <label className="flex items-center space-x-2 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 text-[#0070f3] border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                    className="w-4 h-4 text-[#0147A6] border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                   />
                   <span className="text-xs text-slate-600 font-medium">Remember me</span>
                 </label>
                 <button
                   type="button"
-                  onClick={() => alert("Password reset functionality: Please contact system administration.")}
-                  className="text-xs font-semibold text-[#0070f3] hover:underline cursor-pointer"
+                  onClick={handleQuickFill}
+                  className="text-xs font-semibold text-[#0147A6] hover:underline cursor-pointer"
                 >
-                  Forgot password?
+                  Auto-fill Admin Credentials
                 </button>
               </div>
 
@@ -387,7 +423,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 bg-[#0070f3] hover:bg-[#005ecb] text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center space-x-2 cursor-pointer mt-3"
+                className="w-full py-3.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-sm rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer mt-3"
               >
                 {loading ? (
                   <>
@@ -396,7 +432,7 @@ export default function LoginPage() {
                   </>
                 ) : (
                   <>
-                    <span>Sign In to Dashboard</span>
+                    <span>Sign In to Portal</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -410,20 +446,6 @@ export default function LoginPage() {
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
                 <span>Protected by Placements Security</span>
               </div>
-            </div>
-
-            {/* Toggle Sign In / Sign Up */}
-            <div className="pt-3 text-center">
-              <p className="text-xs text-slate-500">
-                {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button
-                  type="button"
-                  onClick={toggleMode}
-                  className="font-semibold text-[#0070f3] hover:underline cursor-pointer"
-                >
-                  {isSignup ? 'Sign In' : 'Request Access'}
-                </button>
-              </p>
             </div>
 
           </div>

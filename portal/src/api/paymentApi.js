@@ -28,3 +28,15 @@ export const bulkMarkPaymentReceived = async (paymentIds) => {
   const response = await api.post('/payments/bulk-payment-received', { paymentIds });
   return response.data;
 };
+
+export const downloadInvoicePDF = async (invoiceNumber) => {
+  const response = await api.get(`/payments/invoice/${invoiceNumber}/pdf`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const retrySendInvoiceEmail = async (invoiceNumber) => {
+  const response = await api.post(`/payments/invoice/${invoiceNumber}/send`);
+  return response.data;
+};

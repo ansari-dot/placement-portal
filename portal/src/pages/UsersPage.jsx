@@ -32,7 +32,10 @@ export default function UsersPage() {
       ]);
       if (userList.success && userList.data) setUsers(userList.data);
       if (userStats.success && userStats.data) setStats(userStats.data);
-      if (pendingList.success && pendingList.data) setPendingUsers(pendingList.data);
+      if (pendingList.success && pendingList.data) {
+        setPendingUsers(pendingList.data);
+        window.dispatchEvent(new Event('user-approval-changed'));
+      }
     } catch (err) {
       console.error('Failed to load User data:', err);
       toast.error(err?.response?.data?.message || 'Unable to load users and registration requests.');

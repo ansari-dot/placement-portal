@@ -3,8 +3,8 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Loader2 } from 'lucide-react';
 
-export default function ProtectedRoute({ children }) {
-  const { isAuthenticated, loading } = useSelector((state) => state.auth);
+export default function ProtectedRoute({ children, allowedRoles }) {
+  const { isAuthenticated, user, loading } = useSelector((state) => state.auth);
   const location = useLocation();
 
   if (loading) {
@@ -20,6 +20,10 @@ export default function ProtectedRoute({ children }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user?.role)) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

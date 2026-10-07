@@ -11,6 +11,7 @@ import WorkflowModel, { AppointmentModel } from '../model/workflow.model.js';
 import StudentModel from '../model/student.model.js';
 import RtoModel from '../model/rto.model.js';
 import { calculatePlacementEndDate } from '../utils/dateCalculation.js';
+import { generateInvoicePDFBuffer } from './pdf.service.js';
 
 // ─── SMTP & Auto-Email Config ──────────────────────────────────────────────────
 
@@ -767,14 +768,42 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:#f8fafc;margin:0;padding
       };
     }
 
+    let pdfAttachment = null;
+    try {
+      const pdfBuffer = await generateInvoicePDFBuffer({
+        invoiceNumber,
+        rtoName,
+        rtoSnapshot: { spokesperson },
+        items: studentItems,
+        subtotal,
+        gstEnabled,
+        gstAmount,
+        totalAmount,
+        invoiceDate: new Date(),
+      });
+      pdfAttachment = {
+        filename: `Invoice_${invoiceNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      };
+    } catch (pdfErr) {
+      console.warn('[EmailService] Could not generate invoice PDF attachment:', pdfErr.message);
+    }
+
     const transporter = getTransporter();
-    const info = await transporter.sendMail({
+    const mailOptions = {
       from: fromAddress,
       replyTo: replyToAddress,
       to: recipientEmails.join(','),
       subject: `Invoice ${invoiceNumber} — ${rtoName}`,
       html: htmlBody,
-    });
+    };
+
+    if (pdfAttachment) {
+      mailOptions.attachments = [pdfAttachment];
+    }
+
+    const info = await transporter.sendMail(mailOptions);
 
     console.log(`[EmailService] Invoice ${invoiceNumber} sent to ${recipientEmails.join(', ')} (${info.messageId})`);
     return {

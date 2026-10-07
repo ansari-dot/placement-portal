@@ -849,6 +849,11 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
     console.warn("AppointmentModel sync skipped:", dbErr.message);
   }
 
+  try {
+    const { syncChargeableStudents } = await import('../controller/payment.controller.js');
+    syncChargeableStudents().catch(e => console.warn('[Workflow] Payment sync error on updateAppointment:', e.message));
+  } catch (e) {}
+
   return workflow.appointments[appointmentIndex];
 };
 
@@ -942,6 +947,42 @@ export const createInternship = async (workflowId, internshipData) => {
   workflow.internships.push(internship);
   await workflow.save({ validateBeforeSave: false });
 
+  // ── Set student placementStatus from created internship ──────────────
+  try {
+    const studentId = internshipData.studentId;
+    const stuQuery = [];
+    if (studentId) {
+      stuQuery.push({ studentId });
+      if (mongoose.Types.ObjectId.isValid(studentId)) stuQuery.push({ _id: studentId });
+    }
+    if (internshipData.student && stuQuery.length === 0) {
+      const nameParts = internshipData.student.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        stuQuery.push({ firstName: nameParts[0], lastName: nameParts[nameParts.length - 1] });
+      }
+    }
+    if (stuQuery.length > 0) {
+      const status = internshipData.status || 'Placement Started';
+      const newPs = ['Completed', 'Placement Completed'].includes(status) ? 'Placement Completed'
+        : ['Withdrawn', 'Student Withdraw'].includes(status) ? 'Student Withdraw'
+        : status === 'Industry Rejected' ? 'Industry Rejected'
+        : status === 'Student Missed Appointment' ? 'Student Missed Appointment'
+        : 'Placement Started';
+      await StudentModel.findOneAndUpdate(
+        { $or: stuQuery },
+        { placementStatus: newPs },
+        { runValidators: false }
+      );
+    }
+  } catch (psErr) {
+    console.warn('[Workflow] placementStatus update in createInternship skipped:', psErr.message);
+  }
+
+  try {
+    const { syncChargeableStudents } = await import('../controller/payment.controller.js');
+    syncChargeableStudents().catch(e => console.warn('[Workflow] Payment sync error on createInternship:', e.message));
+  } catch (e) {}
+
   try {
     await NotificationModel.create({
       title: "Internship Placement Created",
@@ -1025,6 +1066,12 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
         await InternshipModel.findByIdAndUpdate(dbId, internshipData, { runValidators: false });
       }
     } catch (e) {}
+
+    try {
+      const { syncChargeableStudents } = await import('../controller/payment.controller.js');
+      syncChargeableStudents().catch(e => console.warn('[Workflow] Payment sync error on updateInternship:', e.message));
+    } catch (e) {}
+
     return workflow.internships[internshipIndex];
   }
 
@@ -1142,6 +1189,12 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
     // ─────────────────────────────────────────────────────────────────────
 
     await workflow.save({ validateBeforeSave: false });
+
+    try {
+      const { syncChargeableStudents } = await import('../controller/payment.controller.js');
+      syncChargeableStudents().catch(e => console.warn('[Workflow] Payment sync error on updateInternship:', e.message));
+    } catch (e) {}
+
     return existingIntIndex !== -1 ? workflow.internships[existingIntIndex] : workflow.internships[workflow.internships.length - 1];
   }
 

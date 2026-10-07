@@ -1,21 +1,34 @@
 import PaymentModel from '../model/payment.model.js';
 import StudentModel from '../model/student.model.js';
 import RtoModel from '../model/rto.model.js';
+import InvoiceModel from '../model/invoice.model.js';
 import { getNextSequence } from '../model/counter.model.js';
 import { sendPaymentInvoiceEmail } from '../service/email.service.js';
+import { generateInvoicePDFBuffer } from '../service/pdf.service.js';
 
 export const CHARGEABLE_PLACEMENT_STATUSES = [
   'Appointment Scheduled',
   'Appointment Successful',
   'Student Withdraw',
+  'Withdrawn',
   'Student Missed Appointment',
+  'No Show',
+  'Not Suitable Site',
   'Placement Started',
   'Placement Completed',
+  'Waiting to Join',
+  'Joined',
+  'Active',
+  'Completed',
+  'Confirmed',
 ];
 
 export const THIRTY_PERCENT_STATUSES = [
   'Student Withdraw',
+  'Withdrawn',
   'Student Missed Appointment',
+  'No Show',
+  'Not Suitable Site',
 ];
 
 /**
@@ -102,14 +115,105 @@ export const syncChargeableStudents = async () => {
       await PaymentModel.deleteMany({ _id: { $in: duplicateIds } });
     }
 
-    // 1. Fetch all eligible students
+    // 1. Auto-sync / derive student placementStatus from live Workflow & Appointment/Internship models
+    try {
+      const workflowModule = await import('../model/workflow.model.js');
+      const WorkflowModel = workflowModule.default;
+      const AppointmentModel = workflowModule.AppointmentModel;
+      const InternshipModel = workflowModule.InternshipModel;
+
+      const [workflows, standaloneAppts, standaloneInts, allStudents] = await Promise.all([
+        WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean(),
+        AppointmentModel.find().lean(),
+        InternshipModel.find().lean(),
+        StudentModel.find({}, { _id: 1, studentId: 1, firstName: 1, lastName: 1, assignedRto: 1, courseQualification: 1, courses: 1, placementStatus: 1 }).lean(),
+      ]);
+
+      const allWorkflowAppts = [
+        ...workflows.flatMap((wf) => wf.appointments || []),
+        ...standaloneAppts,
+      ];
+      const allWorkflowInts = [
+        ...workflows.flatMap((wf) => wf.internships || []),
+        ...standaloneInts,
+      ];
+
+      const apptsByStudent = new Map();
+      const intsByStudent = new Map();
+
+      for (const a of allWorkflowAppts) {
+        const keys = [a.studentId, String(a._id || ''), a.student?.trim().toLowerCase()].filter(Boolean);
+        for (const k of keys) {
+          if (!apptsByStudent.has(k)) apptsByStudent.set(k, []);
+          apptsByStudent.get(k).push(a);
+        }
+      }
+
+      for (const i of allWorkflowInts) {
+        const keys = [i.studentId, String(i._id || ''), i.student?.trim().toLowerCase()].filter(Boolean);
+        for (const k of keys) {
+          if (!intsByStudent.has(k)) intsByStudent.set(k, []);
+          intsByStudent.get(k).push(i);
+        }
+      }
+
+      const statusSyncOps = [];
+
+      for (const stu of allStudents) {
+        const stuDbId = String(stu._id);
+        const stuBizId = stu.studentId || '';
+        const stuFullName = [stu.firstName, stu.lastName].filter(Boolean).join(' ').trim().toLowerCase();
+
+        const keys = [stuDbId, stuBizId, stuFullName].filter(Boolean);
+        const studentAppts = keys.flatMap((k) => apptsByStudent.get(k) || []);
+        const studentInts = keys.flatMap((k) => intsByStudent.get(k) || []);
+
+        let derivedStatus = null;
+
+        if (studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status))) {
+          derivedStatus = 'Placement Completed';
+        } else if (
+          studentInts.some((i) => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
+          studentAppts.some((a) => (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') && a.commencementDate)
+        ) {
+          derivedStatus = 'Placement Started';
+        } else if (studentAppts.some((a) => a.appointmentOutcome === 'successful' || a.status === 'Confirmed')) {
+          derivedStatus = 'Appointment Successful';
+        } else if (studentAppts.some((a) => ['Scheduled', 'Rescheduled'].includes(a.status))) {
+          derivedStatus = 'Appointment Scheduled';
+        } else if (studentAppts.some((a) => ['Student Withdraw', 'Withdrawn'].includes(a.status) || a.appointmentOutcome === 'student_withdrawal')) {
+          derivedStatus = 'Student Withdraw';
+        } else if (studentAppts.some((a) => ['Student Missed Appointment', 'No Show'].includes(a.status) || a.appointmentOutcome === 'student_missed')) {
+          derivedStatus = 'Student Missed Appointment';
+        } else if (studentAppts.some((a) => a.status === 'Not Suitable Site' || a.appointmentOutcome === 'not_suitable_site')) {
+          derivedStatus = 'Not Suitable Site';
+        }
+
+        if (derivedStatus && stu.placementStatus !== derivedStatus) {
+          statusSyncOps.push({
+            updateOne: {
+              filter: { _id: stu._id },
+              update: { $set: { placementStatus: derivedStatus } },
+            },
+          });
+        }
+      }
+
+      if (statusSyncOps.length > 0) {
+        await StudentModel.bulkWrite(statusSyncOps);
+      }
+    } catch (syncErr) {
+      console.warn('[SyncPayments] Dynamic status sync skipped:', syncErr.message);
+    }
+
+    // 2. Fetch all eligible students
     const eligibleStudents = await StudentModel.find({
       placementStatus: { $in: CHARGEABLE_PLACEMENT_STATUSES },
     }).lean();
 
     if (!eligibleStudents || eligibleStudents.length === 0) return;
 
-    // 2. Fetch all RTOs to resolve pricing efficiently
+    // 3. Fetch all RTOs to resolve pricing efficiently
     const rtos = await RtoModel.find().lean();
     const rtoMapByName = new Map();
     const rtoMapByCode = new Map();
@@ -128,10 +232,22 @@ export const syncChargeableStudents = async () => {
     const bulkOps = [];
     const processedKeysInLoop = new Set();
 
+    const mapCanonicalStatus = (status) => {
+      if (!status) return 'Placement Started';
+      if (['Completed', 'Placement Completed'].includes(status)) return 'Placement Completed';
+      if (['Active', 'Joined', 'Waiting to Join', 'Placement Started', 'Confirmed'].includes(status)) return 'Placement Started';
+      if (['Appointment Successful'].includes(status)) return 'Appointment Successful';
+      if (['Appointment Scheduled', 'Scheduled'].includes(status)) return 'Appointment Scheduled';
+      if (['Student Withdraw', 'Withdrawn'].includes(status)) return 'Student Withdraw';
+      if (['Student Missed Appointment', 'No Show'].includes(status)) return 'Student Missed Appointment';
+      if (['Not Suitable Site'].includes(status)) return 'Not Suitable Site';
+      return status;
+    };
+
     for (const stu of eligibleStudents) {
       const stuDbId = String(stu._id || stu.id);
       const stuBizId = stu.studentId ? String(stu.studentId) : '';
-      const stuName = [stu.firstName, stu.middleName, stu.lastName].filter(Boolean).join(' ');
+      const stuName = [stu.firstName, stu.middleName, stu.lastName].filter(Boolean).join(' ') || stu.name || 'Student';
 
       if (processedKeysInLoop.has(stuDbId) || (stuBizId && processedKeysInLoop.has(stuBizId))) {
         continue;
@@ -147,7 +263,8 @@ export const syncChargeableStudents = async () => {
 
       const { priceConfigured, originalPrice, pricingError, spokesperson, withdrawalFeeRule, withdrawalFeePercentage } = resolveRtoCoursePrice(matchedRto, stu);
 
-      const isWithdrawal = THIRTY_PERCENT_STATUSES.includes(stu.placementStatus);
+      const canonicalStatus = mapCanonicalStatus(stu.placementStatus);
+      const isWithdrawal = THIRTY_PERCENT_STATUSES.includes(stu.placementStatus) || THIRTY_PERCENT_STATUSES.includes(canonicalStatus);
 
       let chargePercentage = 100;
       if (isWithdrawal) {
@@ -174,7 +291,7 @@ export const syncChargeableStudents = async () => {
                 rto: assignedRtoName || existingPayment.rto,
                 spokesperson: spokesperson || matchedRto?.contactName || existingPayment.spokesperson || '',
                 course: stu.courseQualification || stu.courses || existingPayment.course,
-                placementStatus: stu.placementStatus,
+                placementStatus: canonicalStatus,
                 chargePercentage: existingPayment.chargePercentage ?? chargePercentage,
                 originalPrice,
                 paymentAmount: existingPayment.chargePercentage !== undefined
@@ -196,7 +313,7 @@ export const syncChargeableStudents = async () => {
               rto: assignedRtoName,
               spokesperson: spokesperson || matchedRto?.contactName || '',
               course: stu.courseQualification || stu.courses || '',
-              placementStatus: stu.placementStatus,
+              placementStatus: canonicalStatus,
               service: 'Placement status',
               originalPrice,
               chargePercentage,
@@ -530,6 +647,7 @@ export const bulkGenerateInvoiceController = async (req, res) => {
       const rtoEmail = rtoDoc?.contactEmail || '';
 
       let rtoSubtotal = 0;
+      const invoiceItems = [];
 
       for (const p of rtoPayments) {
         const pIdStr = String(p._id);
@@ -537,7 +655,7 @@ export const bulkGenerateInvoiceController = async (req, res) => {
           p.chargePercentage = percentageMap.get(pIdStr);
         }
         const pct = p.chargePercentage ?? 100;
-        const orig = p.originalPrice || 500;
+        const orig = p.originalPrice || 150;
         p.paymentAmount = Number(((orig * pct) / 100).toFixed(2));
         p.gstEnabled = Boolean(gstEnabled);
         p.gstAmount = p.gstEnabled ? Number((p.paymentAmount * 0.10).toFixed(2)) : 0;
@@ -555,7 +673,20 @@ export const bulkGenerateInvoiceController = async (req, res) => {
 
         rtoSubtotal += p.paymentAmount;
         await p.save();
+
+        invoiceItems.push({
+          paymentId: p._id,
+          studentId: p.studentId || '',
+          studentName: p.studentName,
+          service: p.service || 'Placement status',
+          placementFee: orig,
+          chargePercentage: pct,
+          amount: p.paymentAmount,
+        });
       }
+
+      const gstAmt = gstEnabled ? Number((rtoSubtotal * 0.10).toFixed(2)) : 0;
+      const totalAmt = Number((rtoSubtotal + gstAmt).toFixed(2));
 
       // Trigger Email send for this RTO invoice
       const sendResult = await sendPaymentInvoiceEmail({
@@ -567,8 +698,41 @@ export const bulkGenerateInvoiceController = async (req, res) => {
         gstEnabled: Boolean(gstEnabled),
       });
 
+      // Persist immutable InvoiceModel document
+      try {
+        await InvoiceModel.create({
+          invoiceNumber: invoiceNum,
+          rtoName,
+          rtoSnapshot: {
+            spokesperson,
+            contactEmail: rtoEmail,
+            contactPhone: rtoDoc?.contactPhone || '',
+            address: rtoDoc?.address || '',
+          },
+          items: invoiceItems,
+          subtotal: rtoSubtotal,
+          gstEnabled: Boolean(gstEnabled),
+          gstRate: gstEnabled ? 10 : 0,
+          gstAmount: gstAmt,
+          totalAmount: totalAmt,
+          amountPaid: 0,
+          outstandingBalance: totalAmt,
+          invoiceDate: now,
+          status: sendResult.sent ? 'Sent' : 'Email Failed',
+          emailStatus: sendResult.sent ? 'Sent' : 'Failed',
+          emailSentAt: sendResult.sent ? now : null,
+          recipientEmail: rtoEmail || sendResult.recipientEmail || '',
+          createdBy: req.user?._id || null,
+          createdByName: req.user?.name || '',
+        });
+      } catch (invErr) {
+        console.warn('[InvoiceModel] Snapshot save error:', invErr.message);
+      }
+
       const targetEmail = rtoEmail || sendResult.recipientEmail || 'RTO inbox';
-      const msg = `Your invoice ${invoiceNum} for ${rtoName} (${rtoPayments.length} student${rtoPayments.length > 1 ? 's' : ''}) has been sent successfully to ${targetEmail}.`;
+      const msg = sendResult.sent
+        ? `Your invoice ${invoiceNum} for ${rtoName} (${rtoPayments.length} student${rtoPayments.length > 1 ? 's' : ''}) has been sent successfully to ${targetEmail}.`
+        : `Invoice ${invoiceNum} generated for ${rtoName}, but email could not be sent to ${targetEmail}. Retry available.`;
 
       confirmationMessages.push(msg);
 
@@ -577,6 +741,8 @@ export const bulkGenerateInvoiceController = async (req, res) => {
         invoiceNumber: invoiceNum,
         studentCount: rtoPayments.length,
         subtotal: rtoSubtotal,
+        gstAmount: gstAmt,
+        totalAmount: totalAmt,
         recipientEmail: targetEmail,
         sent: sendResult.sent,
         message: msg,
@@ -595,6 +761,121 @@ export const bulkGenerateInvoiceController = async (req, res) => {
     });
   } catch (error) {
     console.error('bulkGenerateInvoiceController error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * GET /payments/invoice/:invoiceNumber/pdf
+ * Downloads PDF generated server-side for invoice
+ */
+export const downloadInvoicePDFController = async (req, res) => {
+  try {
+    const { invoiceNumber } = req.params;
+
+    let invoice = await InvoiceModel.findOne({ invoiceNumber }).lean();
+
+    if (!invoice) {
+      const payments = await PaymentModel.find({ invoiceNumber }).lean();
+      if (!payments || payments.length === 0) {
+        return res.status(404).json({ success: false, message: 'Invoice record not found.' });
+      }
+
+      const first = payments[0];
+      const items = payments.map((p) => ({
+        studentName: p.studentName,
+        service: p.service || 'Placement status',
+        amount: p.paymentAmount || 0,
+        chargePercentage: p.chargePercentage ?? 100,
+      }));
+
+      const subtotal = items.reduce((s, i) => s + i.amount, 0);
+      const gstEnabled = Boolean(first.gstEnabled);
+      const gstAmount = gstEnabled ? Number((subtotal * 0.10).toFixed(2)) : 0;
+
+      invoice = {
+        invoiceNumber: first.invoiceNumber,
+        rtoName: first.rto,
+        rtoSnapshot: { spokesperson: first.spokesperson },
+        items,
+        subtotal,
+        gstEnabled,
+        gstAmount,
+        totalAmount: subtotal + gstAmount,
+        invoiceDate: first.invoiceGeneratedDate || new Date(),
+      };
+    }
+
+    const pdfBuffer = await generateInvoicePDFBuffer(invoice);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice_${invoiceNumber}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.end(pdfBuffer);
+  } catch (error) {
+    console.error('downloadInvoicePDFController error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /payments/invoice/:invoiceNumber/send
+ * Retry sending email for an existing generated invoice
+ */
+export const retrySendInvoiceEmailController = async (req, res) => {
+  try {
+    const { invoiceNumber } = req.params;
+    const payments = await PaymentModel.find({ invoiceNumber });
+
+    if (!payments || payments.length === 0) {
+      return res.status(404).json({ success: false, message: 'Invoice not found.' });
+    }
+
+    const first = payments[0];
+    const rtoName = first.rto || 'RTO';
+    const rtoDoc = await RtoModel.findOne({ name: new RegExp('^' + rtoName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }).lean();
+    const rtoEmail = rtoDoc?.contactEmail || '';
+    const spokesperson = first.spokesperson || rtoDoc?.contactName || 'RTO Manager';
+
+    const sendResult = await sendPaymentInvoiceEmail({
+      rtoName,
+      rtoPayments: payments,
+      invoiceNumber,
+      spokesperson,
+      rtoEmail,
+      gstEnabled: Boolean(first.gstEnabled),
+    });
+
+    const now = new Date();
+    await InvoiceModel.updateOne(
+      { invoiceNumber },
+      {
+        $set: {
+          status: sendResult.sent ? 'Sent' : 'Email Failed',
+          emailStatus: sendResult.sent ? 'Sent' : 'Failed',
+          emailSentAt: sendResult.sent ? now : null,
+          recipientEmail: rtoEmail || sendResult.recipientEmail || '',
+        },
+      }
+    );
+
+    const targetEmail = rtoEmail || sendResult.recipientEmail || 'RTO inbox';
+
+    if (sendResult.sent) {
+      return res.status(200).json({
+        success: true,
+        message: `Invoice ${invoiceNumber} re-sent successfully to ${targetEmail}.`,
+        data: sendResult,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: `Invoice email delivery failed: ${sendResult.message}`,
+        data: sendResult,
+      });
+    }
+  } catch (error) {
+    console.error('retrySendInvoiceEmailController error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

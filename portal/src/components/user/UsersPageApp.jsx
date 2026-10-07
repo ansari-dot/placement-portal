@@ -3,7 +3,7 @@ import {
   Users, Search, ChevronDown, Filter, Plus, Trash2, X,
   ShieldCheck, UserCheck, UserX, Building2, Mail, Phone,
   Calendar, CheckCircle2, Clock, MoreVertical, Edit2,
-  UserPlus, Check, XCircle, AlertCircle
+  UserPlus, Check, XCircle, AlertCircle, Eye
 } from 'lucide-react';
 import { LivePresenceBadge, formatLastSeen } from '../../utils/presenceUtils';
 
@@ -215,7 +215,7 @@ function FilterControls({ users = [], onApplyFilters }) {
 // ==========================================
 // 3. USERS TABLE COMPONENT
 // ==========================================
-function UsersTable({ users = [], onDeleteUser, onEditUser }) {
+function UsersTable({ users = [], onDeleteUser, onEditUser, onUpdateUser, onApproveUser, onViewUser }) {
   const getRoleBadge = (role) => {
     switch (role) {
       case 'Administrator':
@@ -262,9 +262,10 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
               <th className="py-4 px-4 font-bold text-slate-600">User Profile & Email</th>
               <th className="py-4 px-4 font-bold text-slate-600">Role</th>
               <th className="py-4 px-4 font-bold text-slate-600">Department</th>
+              <th className="py-4 px-4 font-bold text-slate-600">Signup Date</th>
               <th className="py-4 px-4 font-bold text-slate-600">Live Presence</th>
               <th className="py-4 px-4 font-bold text-slate-600">Status</th>
-              <th className="py-4 px-4 font-bold text-slate-600">Last Seen / Active</th>
+              <th className="py-4 px-4 font-bold text-slate-600">Last Active</th>
               <th className="py-4 px-4 text-right font-bold text-slate-600">Actions</th>
             </tr>
           </thead>
@@ -308,6 +309,9 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
                     </span>
                   </td>
                   <td className="py-4 px-4 text-slate-600">{user.department || 'Operations'}</td>
+                  <td className="py-4 px-4 text-slate-500 text-[11px]">
+                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                  </td>
                   <td className="py-4 px-4">
                     <LivePresenceBadge isOnline={user.isOnline} lastSeen={user.lastSeen || user.lastActive || user.lastLogin} size="xs" pulse={true} />
                   </td>
@@ -323,20 +327,53 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
                   </td>
                   <td className="py-4 px-4 text-right space-x-1">
                     <button
+                      onClick={() => onViewUser && onViewUser(user)}
+                      className="px-2 py-1 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer font-semibold text-[11px]"
+                      title="View full user details"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-slate-600" />
+                      <span>View</span>
+                    </button>
+                    {user.status === 'Active' ? (
+                      <button
+                        onClick={() => onUpdateUser && onUpdateUser(uId, { name: user.name, status: 'Inactive' })}
+                        className="px-2 py-1 text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer font-semibold text-[11px]"
+                        title="Deactivate / Disable User"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                        <span>Disable</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (user.status === 'Pending' && onApproveUser) {
+                            onApproveUser(uId, user.name);
+                          } else if (onUpdateUser) {
+                            onUpdateUser(uId, { name: user.name, status: 'Active' });
+                          }
+                        }}
+                        className="px-2 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer font-semibold text-[11px]"
+                        title="Reactivate / Enable User"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Reactivate</span>
+                      </button>
+                    )}
+                    <button
                       onClick={() => onEditUser && onEditUser(user)}
-                      className="px-2 py-1.5 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center gap-1.5 cursor-pointer font-semibold"
+                      className="px-2 py-1 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer font-semibold text-[11px]"
                       title="Change user role or account status"
                       aria-label={`Change role or status for ${user.name}`}
                     >
-                      <Edit2 className="w-4 h-4" />
-                      <span>Manage</span>
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Edit</span>
                     </button>
                     <button
                       onClick={() => onDeleteUser && onDeleteUser(uId, user.name)}
-                      className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex cursor-pointer"
+                      className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex cursor-pointer"
                       title="Delete User"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
@@ -344,7 +381,7 @@ function UsersTable({ users = [], onDeleteUser, onEditUser }) {
             })}
             {users.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-400 text-sm font-medium">
+                <td colSpan={8} className="p-8 text-center text-slate-400 text-sm font-medium">
                   No user accounts found matching selected filters.
                 </td>
               </tr>
@@ -446,7 +483,7 @@ function RightSidebar({ stats, onAddUser }) {
 // ==========================================
 // 5. PENDING REQUESTS COMPONENT
 // ==========================================
-function PendingRequests({ pendingUsers = [], onApproveUser, onRejectUser }) {
+function PendingRequests({ pendingUsers = [], onApproveUser, onRejectUser, onViewUser }) {
   if (pendingUsers.length === 0) return null;
 
   const getRoleBadge = (role) => {
@@ -466,57 +503,72 @@ function PendingRequests({ pendingUsers = [], onApproveUser, onRejectUser }) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-            <UserPlus className="w-4 h-4" />
+      <div className="px-6 py-4 bg-gradient-to-r from-blue-50/80 via-slate-50 to-blue-50/30 border-b border-slate-200 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#0147A6] text-white flex items-center justify-center shadow-xs">
+            <UserPlus className="w-5 h-5" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900">Pending Registration Requests</h3>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Pending Signup Approval Requests</h3>
+            <p className="text-xs text-slate-500 font-medium">
+              Review and approve or reject new user registrations. Users cannot log in until approved.
+            </p>
+          </div>
         </div>
-        <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-lg border border-amber-200">
-          {pendingUsers.length} Pending
+        <span className="px-3 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-lg border border-amber-200">
+          {pendingUsers.length} Action Required
         </span>
       </div>
 
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-100 bg-white">
         {pendingUsers.map((user) => {
           const uId = user.id || user._id;
           const initials = (user.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
           return (
             <div key={uId} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#0147A6] to-[#0B6DC8] text-white font-bold flex items-center justify-center text-xs shadow-xs">
                   {initials}
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-bold text-slate-900 text-sm">{user.name}</span>
-                  <span className="text-slate-500 text-xs">{user.email}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-sm">{user.name}</span>
+                    <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border ${getRoleBadge(user.role)}`}>
+                      {user.role}
+                    </span>
+                  </div>
+                  <span className="text-slate-500 text-xs font-medium">{user.email}</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border inline-block ${getRoleBadge(user.role)}`}>
-                  {user.role}
+              <div className="flex items-center gap-4">
+                <span className="text-slate-400 text-xs font-medium">
+                  Signed up: {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Recently'}
                 </span>
-                <span className="text-slate-400 text-xs">
-                  {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : ''}
-                </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onViewUser && onViewUser(user)}
+                    className="inline-flex items-center gap-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors shadow-xs cursor-pointer"
+                    title="View full user details"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-slate-600" />
+                    <span>View</span>
+                  </button>
                   <button
                     onClick={() => onApproveUser(uId, user.name)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                    title="Approve User"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-bold rounded-lg transition-all duration-500 shadow-xs cursor-pointer"
+                    title="Approve user registration"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    Approve
+                    <Check className="w-4 h-4" />
+                    Approve Access
                   </button>
                   <button
                     onClick={() => onRejectUser(uId, user.name)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                    title="Reject User"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold rounded-lg transition-colors shadow-xs cursor-pointer"
+                    title="Reject user registration"
                   >
-                    <XCircle className="w-3.5 h-3.5" />
+                    <XCircle className="w-4 h-4" />
                     Reject
                   </button>
                 </div>
@@ -530,7 +582,161 @@ function PendingRequests({ pendingUsers = [], onApproveUser, onRejectUser }) {
 }
 
 // ==========================================
-// 6. MAIN USERS PAGE CONTENT COMPONENT
+// 6. USER DETAIL VIEW MODAL COMPONENT
+// ==========================================
+function UserDetailModal({ user, onClose, onEdit }) {
+  if (!user) return null;
+  const initials = (user.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+  const getRoleBadge = (role) => {
+    switch (role) {
+      case 'Administrator':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'Coordinator':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'RTO Manager':
+        return 'bg-teal-50 text-teal-700 border-teal-200';
+      case 'Staff':
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'Industry':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
+  const getStatusBadge = (st) => {
+    switch (st) {
+      case 'Active':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'Inactive':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'Suspended':
+        return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'Pending':
+        return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-6 animate-in fade-in zoom-in duration-200">
+        {/* Modal Header */}
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+          <div className="flex items-center space-x-2">
+            <Eye className="w-5 h-5 text-[#0147A6]" />
+            <h3 className="font-bold text-slate-900 text-base">User Profile Details</h3>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-100">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Profile Identity Card */}
+        <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+          <div className="relative shrink-0">
+            {user.avatar ? (
+              <img src={user.avatar} alt={user.name} className="w-14 h-14 rounded-2xl object-cover ring-2 ring-white shadow-sm" />
+            ) : (
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#0147A6] to-[#0B6DC8] text-white font-extrabold flex items-center justify-center text-lg shadow-md">
+                {initials}
+              </div>
+            )}
+            <span
+              className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full ring-2 ring-white ${
+                user.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+              }`}
+              title={user.isOnline ? 'Online now' : 'Offline'}
+            />
+          </div>
+          <div className="space-y-1">
+            <h4 className="text-lg font-extrabold text-slate-900 leading-tight">{user.name}</h4>
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-0.5 rounded-md text-xs font-bold border ${getRoleBadge(user.role)}`}>
+                {user.role}
+              </span>
+              <span className={`px-2.5 py-0.5 rounded-md text-xs font-bold border ${getStatusBadge(user.status)}`}>
+                {user.status}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Information Grid */}
+        <div className="grid grid-cols-2 gap-4 text-xs">
+          <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email Address</span>
+            <div className="flex items-center gap-2 text-slate-800 font-semibold truncate">
+              <Mail className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="truncate">{user.email || 'N/A'}</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phone Number</span>
+            <div className="flex items-center gap-2 text-slate-800 font-semibold truncate">
+              <Phone className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span>{user.phone || 'Not provided'}</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Department</span>
+            <div className="flex items-center gap-2 text-slate-800 font-semibold truncate">
+              <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span>{user.department || 'Placement Operations'}</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Signup Date</span>
+            <div className="flex items-center gap-2 text-slate-800 font-semibold truncate">
+              <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Live Presence</span>
+            <div className="flex items-center gap-2 font-semibold">
+              <LivePresenceBadge isOnline={user.isOnline} lastSeen={user.lastSeen || user.lastActive || user.lastLogin} size="xs" pulse={true} />
+            </div>
+          </div>
+
+          <div className="p-3 bg-white rounded-xl border border-slate-200/70 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Last Active</span>
+            <div className="flex items-center gap-2 text-slate-800 font-semibold truncate">
+              <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span>{formatLastSeen(user.lastSeen || user.lastActive || user.lastLogin, user.isOnline)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Footer */}
+        <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+          <button
+            onClick={() => onEdit(user)}
+            className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-xs rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Edit2 className="w-4 h-4" />
+            <span>Edit Account Settings</span>
+          </button>
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 border border-slate-200 font-bold text-xs text-slate-600 rounded-xl hover:bg-slate-50 cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 7. MAIN USERS PAGE CONTENT COMPONENT
 // ==========================================
 export default function UsersPageApp({
   users = [],
@@ -547,6 +753,7 @@ export default function UsersPageApp({
   onApproveUser,
   onRejectUser
 }) {
+  const [viewingUser, setViewingUser] = useState(null);
   const [modalName, setModalName] = useState('');
   const [modalEmail, setModalEmail] = useState('');
   const [modalPassword, setModalPassword] = useState('');
@@ -626,6 +833,7 @@ export default function UsersPageApp({
           pendingUsers={pendingUsers}
           onApproveUser={onApproveUser}
           onRejectUser={onRejectUser}
+          onViewUser={(u) => setViewingUser(u)}
         />
 
         {/* Filters */}
@@ -634,13 +842,32 @@ export default function UsersPageApp({
         {/* Data Grid */}
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-9">
-            <UsersTable users={users} onDeleteUser={onDeleteUser} onEditUser={onAddUser} />
+            <UsersTable
+              users={users}
+              onDeleteUser={onDeleteUser}
+              onEditUser={onAddUser}
+              onUpdateUser={onUpdateUser}
+              onApproveUser={onApproveUser}
+              onViewUser={(u) => setViewingUser(u)}
+            />
           </div>
           <div className="col-span-3">
             <RightSidebar stats={stats} onAddUser={() => onAddUser(null)} />
           </div>
         </div>
       </div>
+
+      {/* USER DETAIL VIEW MODAL */}
+      {viewingUser && (
+        <UserDetailModal
+          user={viewingUser}
+          onClose={() => setViewingUser(null)}
+          onEdit={(u) => {
+            setViewingUser(null);
+            onAddUser(u);
+          }}
+        />
+      )}
 
       {/* CREATE / EDIT USER MODAL */}
       {showAddModal && (

@@ -16,6 +16,7 @@ import {
   Info,
   Printer,
   Eye,
+  Download,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
@@ -24,6 +25,7 @@ import {
   updatePaymentStatus,
   bulkGenerateInvoices,
   bulkMarkPaymentReceived,
+  downloadInvoicePDF,
 } from '../../api/paymentApi';
 import { fetchRtos } from '../../api/rtoApi';
 import PaymentInvoiceModal from './PaymentInvoiceModal';
@@ -176,6 +178,25 @@ export default function WorkflowStep5Payments() {
     } catch (err) {
       console.error('Failed to generate/send invoices:', err);
       toast.error(err?.response?.data?.message || 'Failed to generate/send invoices.');
+    }
+  };
+
+  const handleDownloadPDF = async (invoiceNumber) => {
+    if (!invoiceNumber) return;
+    try {
+      const blobData = await downloadInvoicePDF(invoiceNumber);
+      const url = window.URL.createObjectURL(new Blob([blobData], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Invoice_${invoiceNumber}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Invoice ${invoiceNumber} downloaded.`);
+    } catch (err) {
+      console.error('PDF download error:', err);
+      toast.error('Failed to download invoice PDF.');
     }
   };
 
@@ -718,16 +739,28 @@ export default function WorkflowStep5Payments() {
                         )}
                       </td>
 
-                      {/* Column 8 — Actions (Preview / Print Invoice) */}
+                      {/* Column 8 — Actions (Preview / Print Invoice / Download PDF) */}
                       <td className="py-2.5 px-3 whitespace-nowrap text-center">
-                        <button
-                          onClick={() => openSingleInvoiceModal(p)}
-                          title="Preview & Print Tax Invoice"
-                          className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-semibold transition border border-slate-200 shadow-2xs cursor-pointer"
-                        >
-                          <Printer className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Invoice</span>
-                        </button>
+                        <div className="flex items-center justify-center space-x-1.5">
+                          <button
+                            onClick={() => openSingleInvoiceModal(p)}
+                            title="Preview & Print Tax Invoice"
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-semibold transition border border-slate-200 shadow-2xs cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Invoice</span>
+                          </button>
+                          {p.invoiceNumber && (
+                            <button
+                              onClick={() => handleDownloadPDF(p.invoiceNumber)}
+                              title="Download Server PDF"
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-semibold transition border border-blue-200 shadow-2xs cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5 text-blue-600" />
+                              <span>PDF</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -61,7 +61,7 @@ const AppRoutes = () => {
       <Route
         path="/add-student"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
             <AddNewStudentPage />
           </ProtectedRoute>
         }
@@ -77,7 +77,7 @@ const AppRoutes = () => {
       <Route
         path="/workflow"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
             <WorkflowPage />
           </ProtectedRoute>
         }
@@ -85,7 +85,7 @@ const AppRoutes = () => {
       <Route
         path="/payments"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
             <WorkflowPage />
           </ProtectedRoute>
         }
@@ -93,7 +93,7 @@ const AppRoutes = () => {
       <Route
         path="/rto"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
             <TheRTOPage />
           </ProtectedRoute>
         }
@@ -101,7 +101,7 @@ const AppRoutes = () => {
       <Route
         path="/industry"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
             <IndustryPage />
           </ProtectedRoute>
         }
@@ -109,7 +109,7 @@ const AppRoutes = () => {
       <Route
         path="/jobs"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
             <JobPage />
           </ProtectedRoute>
         }
@@ -117,7 +117,7 @@ const AppRoutes = () => {
       <Route
         path="/users"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator']}>
             <UsersPage />
           </ProtectedRoute>
         }
@@ -125,7 +125,7 @@ const AppRoutes = () => {
       <Route
         path="/user-log"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Administrator']}>
             <UserLogPage />
           </ProtectedRoute>
         }

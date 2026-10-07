@@ -10,6 +10,7 @@ export default function IndustryPortalPage() {
   const [activeTab, setActiveTab] = useState('students'); // 'students' | 'attendance'
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [preselectedStudentId, setPreselectedStudentId] = useState('');
 
   // Modal edit state for updating placement dates/status
   const [editingStudent, setEditingStudent] = useState(null);
@@ -36,6 +37,12 @@ export default function IndustryPortalPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenAttendanceForStudent = (s) => {
+    const sId = s._id || s.id || s.studentId;
+    setPreselectedStudentId(sId);
+    setActiveTab('attendance');
   };
 
   const handleOpenEditModal = (student) => {
@@ -86,9 +93,9 @@ export default function IndustryPortalPage() {
 
         <main className="p-6 space-y-6 max-w-[1600px] w-full mx-auto">
           {/* Top Scope Banner */}
-          <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white rounded-2xl p-5 shadow-sm flex items-center justify-between">
+          <div className="bg-gradient-to-r from-[#0147A6] via-[#0B6DC8] to-[#02AFA9] text-white rounded-2xl p-5 shadow-sm flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-white">
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-white shadow-xs">
                 <Building2 className="w-6 h-6" />
               </div>
               <div>
@@ -139,7 +146,7 @@ export default function IndustryPortalPage() {
                         <th className="py-3.5 px-4 font-bold text-slate-600">Commencement Date</th>
                         <th className="py-3.5 px-4 font-bold text-slate-600">Placement Status</th>
                         <th className="py-3.5 px-4 font-bold text-slate-600">Completion Date</th>
-                        <th className="py-3.5 px-4 text-right font-bold text-slate-600">Action</th>
+                        <th className="py-3.5 px-4 text-right font-bold text-slate-600">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -167,20 +174,29 @@ export default function IndustryPortalPage() {
                               {s.commencementDate ? new Date(s.commencementDate).toLocaleDateString() : '—'}
                             </td>
                             <td className="py-4 px-4">
-                              <span className="px-2.5 py-1 rounded-md text-[11px] font-bold border inline-block bg-amber-50 text-amber-800 border-amber-200">
+                              <span className="px-2.5 py-1 rounded-md text-[11px] font-bold border inline-block bg-teal-50 text-teal-800 border-teal-200">
                                 {s.placementStatus || 'Orientation Scheduled'}
                               </span>
                             </td>
                             <td className="py-4 px-4 text-slate-600">
                               {s.completionDate ? new Date(s.completionDate).toLocaleDateString() : '—'}
                             </td>
-                            <td className="py-4 px-4 text-right">
+                            <td className="py-4 px-4 text-right space-x-1.5">
+                              <button
+                                onClick={() => handleOpenAttendanceForStudent(s)}
+                                className="px-3 py-1.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold rounded-lg transition-all duration-500 inline-flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                                title="Record attendance shift for this student"
+                              >
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>Record Attendance</span>
+                              </button>
                               <button
                                 onClick={() => handleOpenEditModal(s)}
-                                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg border border-amber-200 transition inline-flex items-center space-x-1.5 cursor-pointer"
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg border border-slate-200 transition inline-flex items-center space-x-1.5 cursor-pointer"
+                                title="Update orientation/commencement dates or status"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
-                                <span>Update Status / Dates</span>
+                                <span>Update Dates/Status</span>
                               </button>
                             </td>
                           </tr>
@@ -193,7 +209,10 @@ export default function IndustryPortalPage() {
             </div>
           ) : (
             /* Attendance Tab */
-            <IndustryAttendanceSection assignedStudents={students} />
+            <IndustryAttendanceSection
+              assignedStudents={students}
+              preselectedStudentId={preselectedStudentId}
+            />
           )}
         </main>
       </div>

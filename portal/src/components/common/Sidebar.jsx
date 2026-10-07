@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutThunk } from '../../redux/authSlice';
+import { fetchPendingUsers } from '../../api/userApi';
 import logo1 from '../../assets/logo1.png';
 import {
   LayoutDashboard,
@@ -29,6 +30,31 @@ export default function Sidebar() {
   const isRtoManager = userRole === 'RTO Manager';
   const isStudent = userRole === 'Student';
   const isIndustry = userRole === 'Industry';
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (isAdmin) {
+      const checkPending = async () => {
+        try {
+          const res = await fetchPendingUsers();
+          if (res.success && Array.isArray(res.data)) {
+            setPendingCount(res.data.length);
+          }
+        } catch (err) {
+          // ignore silently
+        }
+      };
+      checkPending();
+      const interval = setInterval(checkPending, 10000);
+      window.addEventListener('focus', checkPending);
+      window.addEventListener('user-approval-changed', checkPending);
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('focus', checkPending);
+        window.removeEventListener('user-approval-changed', checkPending);
+      };
+    }
+  }, [isAdmin]);
 
   const pathname = location.pathname;
 
@@ -256,7 +282,7 @@ export default function Sidebar() {
               />
 
               <span className="truncate">
-                My Progress
+                {isIndustry ? 'Students & Attendance' : 'My Progress'}
               </span>
 
             </Link>
@@ -359,7 +385,16 @@ export default function Sidebar() {
                   <Users className={iconClass('/users')} />
                   <span className="truncate">Users</span>
                 </div>
-                <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                {pendingCount > 0 ? (
+                  <span
+                    className="px-1.5 py-0.5 bg-[#f59e0b] text-slate-950 font-black text-[9px] rounded-full animate-pulse shadow-sm border border-amber-300 shrink-0"
+                    title={`${pendingCount} Pending registration approval request(s)`}
+                  >
+                    {pendingCount}
+                  </span>
+                ) : (
+                  <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                )}
               </Link>
               {isAdmin && (
                 <Link to="/user-log" className={`${navLinkClass('/user-log')} justify-between`}>

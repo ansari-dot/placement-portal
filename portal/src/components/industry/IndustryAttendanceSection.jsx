@@ -22,13 +22,13 @@ import {
 } from '../../api/attendanceApi';
 import { fetchStudents } from '../../api/studentsApi';
 
-export default function IndustryAttendanceSection({ assignedStudents = [] }) {
+export default function IndustryAttendanceSection({ assignedStudents = [], preselectedStudentId = '' }) {
   const [records, setRecords] = useState([]);
   const [studentsList, setStudentsList] = useState(assignedStudents);
   const [loading, setLoading] = useState(true);
 
   // Form State
-  const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [selectedStudentId, setSelectedStudentId] = useState(preselectedStudentId || '');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('09:00 AM');
   const [finishTime, setFinishTime] = useState('05:00 PM');
@@ -38,6 +38,20 @@ export default function IndustryAttendanceSection({ assignedStudents = [] }) {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Update selected student when preselectedStudentId changes
+  useEffect(() => {
+    if (preselectedStudentId) {
+      setSelectedStudentId(preselectedStudentId);
+    }
+  }, [preselectedStudentId]);
+
+  // Sync students list when prop updates
+  useEffect(() => {
+    if (assignedStudents && assignedStudents.length > 0) {
+      setStudentsList(assignedStudents);
+    }
+  }, [assignedStudents]);
 
   // Auto calculate total hours when startTime or finishTime changes
   useEffect(() => {
@@ -81,10 +95,15 @@ export default function IndustryAttendanceSection({ assignedStudents = [] }) {
     loadData();
   }, [loadData]);
 
+  // Calculate summary KPI stats
+  const totalHoursLogged = records.reduce((acc, r) => acc + (Number(r.totalHours) || 0), 0);
+  const totalShiftsCount = records.length;
+  const presentShiftsCount = records.filter(r => r.status === 'Present' || r.status === 'Completed').length;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedStudentId) {
-      toast.warn('Please select a student.');
+      toast.warn('Please select an assigned student.');
       return;
     }
     if (!date) {
@@ -176,6 +195,38 @@ export default function IndustryAttendanceSection({ assignedStudents = [] }) {
 
   return (
     <div className="space-y-6">
+      {/* KPI METRICS OVERVIEW */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center">
+          <div>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Logged Shift Entries</span>
+            <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{totalShiftsCount} Shifts</h3>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#0147A6] flex items-center justify-center font-bold">
+            <UserCheck className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center">
+          <div>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Total Placement Hours</span>
+            <h3 className="text-2xl font-extrabold text-[#0147A6] mt-1">{totalHoursLogged.toFixed(1)} Hours</h3>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold">
+            <Clock className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex justify-between items-center">
+          <div>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Assigned Facility Roster</span>
+            <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{studentsList.length} Students</h3>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+            <Calendar className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
       {/* RECORD ATTENDANCE CARD */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
         <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">

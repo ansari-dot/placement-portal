@@ -8,6 +8,8 @@ import MyProgressRtoTab from '../components/progress/MyProgressRtoTab';
 import MyProgressIndustryTab from '../components/progress/MyProgressIndustryTab';
 import MyProgressScoreTab from '../components/progress/MyProgressScoreTab';
 
+import IndustryPortalPage from './IndustryPortalPage';
+
 const TABS = [
   { key: 'students', label: 'Students',  icon: Users    },
   { key: 'rto',      label: 'RTO',       icon: Building2 },
@@ -19,6 +21,10 @@ export default function MyProgressPage() {
   const [activeTab, setActiveTab] = useState('students');
   const authUser = useSelector((s) => s.auth?.user);
   const isAdmin  = authUser?.role === 'Administrator';
+
+  if (authUser?.role === 'Industry') {
+    return <IndustryPortalPage />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-800">

@@ -5,24 +5,32 @@ import {
   updatePaymentStatusController,
   bulkGenerateInvoiceController,
   bulkPaymentReceivedController,
+  downloadInvoicePDFController,
+  retrySendInvoiceEmailController,
 } from '../controller/payment.controller.js';
-import { protectRoute } from '../middlewares/auth.middleware.js';
+import { protectRoute, requireAdmin } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
-// GET /payments — list with filters
-router.get('/', protectRoute, getPaymentsController);
+// GET /payments — list with filters (Admin required)
+router.get('/', protectRoute, requireAdmin, getPaymentsController);
 
-// GET /payments/totals — dynamic server-side summary totals
-router.get('/totals', protectRoute, getPaymentTotalsController);
+// GET /payments/totals — dynamic server-side summary totals (Admin required)
+router.get('/totals', protectRoute, requireAdmin, getPaymentTotalsController);
 
-// PATCH /payments/:id/status — update payment status
-router.patch('/:id/status', protectRoute, updatePaymentStatusController);
+// PATCH /payments/:id/status — update payment status (Admin required)
+router.patch('/:id/status', protectRoute, requireAdmin, updatePaymentStatusController);
 
-// POST /payments/bulk-invoice — bulk generate/send invoice
-router.post('/bulk-invoice', protectRoute, bulkGenerateInvoiceController);
+// POST /payments/bulk-invoice — bulk generate/send invoice (Admin required)
+router.post('/bulk-invoice', protectRoute, requireAdmin, bulkGenerateInvoiceController);
 
-// POST /payments/bulk-payment-received — bulk mark payment received
-router.post('/bulk-payment-received', protectRoute, bulkPaymentReceivedController);
+// POST /payments/bulk-payment-received — bulk mark payment received (Admin required)
+router.post('/bulk-payment-received', protectRoute, requireAdmin, bulkPaymentReceivedController);
+
+// GET /payments/invoice/:invoiceNumber/pdf — download PDF invoice (Admin required)
+router.get('/invoice/:invoiceNumber/pdf', protectRoute, requireAdmin, downloadInvoicePDFController);
+
+// POST /payments/invoice/:invoiceNumber/send — retry sending invoice email (Admin required)
+router.post('/invoice/:invoiceNumber/send', protectRoute, requireAdmin, retrySendInvoiceEmailController);
 
 export default router;
