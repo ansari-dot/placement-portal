@@ -32,6 +32,27 @@ const rtoSchema = new mongoose.Schema({
       notes: { type: String, default: '' },
     }
   ],
+
+  // RTO Spokesperson (for Invoice "Bill To: Spokesperson, RTO Name")
+  spokesperson: { type: String, default: '' },
+
+  // Flexible Charging Triggers per RTO (Appointment Scheduled, Appointment Successful, Placement Started)
+  chargingTrigger: {
+    type: String,
+    enum: ['Appointment Scheduled', 'Appointment Successful', 'Placement Started'],
+    default: 'Appointment Scheduled',
+  },
+
+  // Flexible Withdrawal Fee Rule per RTO (No Fee, 30%, or Custom Percentage)
+  withdrawalFeeRule: {
+    type: String,
+    enum: ['No Fee', '30%', 'Custom'],
+    default: '30%',
+  },
+  withdrawalFeePercentage: {
+    type: Number,
+    default: 30,
+  },
   
   // Dynamic Documents & Media
   logo: { type: String, default: '' },

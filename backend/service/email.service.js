@@ -12,7 +12,10 @@ import StudentModel from '../model/student.model.js';
 import RtoModel from '../model/rto.model.js';
 import { calculatePlacementEndDate } from '../utils/dateCalculation.js';
 
-// ─── SMTP Config ─────────────────────────────────────────────────────────────
+// ─── SMTP & Auto-Email Config ──────────────────────────────────────────────────
+
+const isAutoEmailEnabled = () => process.env.AUTO_EMAIL_ENABLED === 'true';
+
 
 const isSmtpConfigured = () => !!(
   process.env.SMTP_HOST &&
@@ -220,6 +223,11 @@ export const sendPlacementStartedEmail = async (options) => {
   if (!toEmail) {
     console.warn('[EmailService] sendPlacementStartedEmail called with NO toEmail — cannot send. Student:', studentName);
     return { sent: false, method: 'none', message: 'No recipient email address was provided.' };
+  }
+
+  if (!isAutoEmailEnabled()) {
+    console.log(`[EmailService] AUTO EMAILS DEACTIVATED. Suppressed placement started email to ${toEmail}.`);
+    return { sent: false, method: 'disabled', message: 'Automatic email sending is currently deactivated.' };
   }
 
   if (!isSmtpConfigured()) {
@@ -540,6 +548,11 @@ export const sendPlacementEndingSoonEmail = async (options) => {
   // Always save in-app notification
   await saveInAppNotification(payload);
 
+  if (!isAutoEmailEnabled()) {
+    console.log(`[EmailService] AUTO EMAILS DEACTIVATED. Suppressed placement ending soon email to ${toEmail}.`);
+    return { sent: false, method: 'disabled', message: 'Automatic email sending is currently deactivated.' };
+  }
+
   if (!isSmtpConfigured()) {
     console.log('\n[EmailService] SMTP not configured. Would send:');
     console.log(`  To: ${toEmail} | Subject: Placement ending soon (${daysLeft} days)`);
@@ -568,166 +581,208 @@ export const sendPlacementEndingSoonEmail = async (options) => {
 
 /**
  * sendPaymentInvoiceEmail
- * Called when payment status is updated to 'Invoice Sent'
- * Sends formatted Tax Invoice HTML email to RTO contact email & student email.
- * Also creates an In-App Notification.
+ * Called when payment status is updated to 'Invoice Sent' or bulk invoices generated
+ * Sends formatted Tax Invoice HTML email to RTO contact email.
  *
- * @param {Object} payment - Payment model object
+ * @param {Object|Array} invoicePayload - Single payment doc OR grouped invoice payload
  */
-export const sendPaymentInvoiceEmail = async (payment) => {
+export const sendPaymentInvoiceEmail = async (invoicePayload) => {
   try {
+    let rtoName = '';
+    let spokesperson = '';
+    let invoiceNumber = '';
+    let invoiceDateStr = '';
+    let studentItems = [];
     let recipientEmails = [];
+    let gstEnabled = false;
 
-    // 1. Resolve student email
-    if (payment.student) {
-      const studentDoc = await StudentModel.findById(payment.student).lean();
-      if (studentDoc && studentDoc.emailAddress) {
-        recipientEmails.push(studentDoc.emailAddress);
+    if (invoicePayload.rtoPayments && Array.isArray(invoicePayload.rtoPayments)) {
+      // Grouped RTO Invoice
+      rtoName = invoicePayload.rtoName || '';
+      spokesperson = invoicePayload.spokesperson || '';
+      invoiceNumber = invoicePayload.invoiceNumber || 'WM-51-26';
+      gstEnabled = Boolean(invoicePayload.gstEnabled);
+      if (invoicePayload.rtoEmail) recipientEmails.push(invoicePayload.rtoEmail);
+
+      studentItems = invoicePayload.rtoPayments.map((p) => ({
+        name: p.studentName,
+        service: p.service || 'placement status',
+        amount: p.paymentAmount || 0,
+      }));
+
+      const sampleDate = invoicePayload.rtoPayments[0]?.invoiceGeneratedDate || new Date();
+      const d = new Date(sampleDate);
+      invoiceDateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    } else {
+      // Single Payment Doc
+      const p = invoicePayload;
+      rtoName = p.rto || 'Registered Training Organisation';
+      spokesperson = p.spokesperson || '';
+      invoiceNumber = p.invoiceNumber || 'WM-51-26';
+      gstEnabled = Boolean(p.gstEnabled);
+
+      studentItems = [{
+        name: p.studentName,
+        service: p.service || 'placement status',
+        amount: p.paymentAmount || 0,
+      }];
+
+      const d = p.invoiceGeneratedDate ? new Date(p.invoiceGeneratedDate) : new Date();
+      invoiceDateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+      if (p.rto) {
+        const rtoDoc = await RtoModel.findOne({
+          name: new RegExp('^' + p.rto.trim() + '$', 'i'),
+        }).lean();
+        if (rtoDoc && rtoDoc.contactEmail) {
+          recipientEmails.push(rtoDoc.contactEmail);
+        }
+        if (!spokesperson && rtoDoc?.contactName) {
+          spokesperson = rtoDoc.contactName;
+        }
       }
     }
 
-    // 2. Resolve RTO contact email
-    if (payment.rto) {
-      const rtoDoc = await RtoModel.findOne({
-        name: new RegExp('^' + payment.rto.trim() + '$', 'i'),
-      }).lean();
-      if (rtoDoc && rtoDoc.contactEmail) {
-        recipientEmails.push(rtoDoc.contactEmail);
-      }
-    }
-
-    // Clean & deduplicate recipient emails
+    // STRICT SECURITY RULE: Invoices are sent ONLY to RTO buyer contact emails.
+    // Student email addresses are NEVER added as invoice recipients under any circumstance.
     recipientEmails = [...new Set(recipientEmails.filter(Boolean))];
 
-    // Build Invoice Details
-    const cleanId = String(payment.studentId || payment._id)
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .slice(-5)
-      .toUpperCase();
-    const invNum = `INV-${new Date().getFullYear()}-${cleanId}`;
-    const subtotal = payment.paymentAmount || 0;
-    const gst = Number((subtotal * 0.10).toFixed(2));
-    const totalDue = Number((subtotal + gst).toFixed(2));
+    const subtotal = studentItems.reduce((sum, item) => sum + item.amount, 0);
+    const gstAmount = gstEnabled ? Number((subtotal * 0.10).toFixed(2)) : 0;
+    const totalAmount = subtotal + gstAmount;
 
     // Create In-App Notification
     await NotificationModel.create({
-      title: `Tax Invoice Sent — ${invNum}`,
-      desc: `Tax invoice ${invNum} of AUD $${totalDue.toFixed(
-        2
-      )} sent for ${payment.studentName} (${payment.rto || 'RTO'}).`,
+      title: `Invoice Generated — ${invoiceNumber}`,
+      desc: `Invoice ${invoiceNumber} of $${totalAmount.toFixed(2)} AUD generated for ${rtoName}.`,
       type: 'system',
       isRead: false,
       link: '/workflow?step=5',
     });
 
-    if (recipientEmails.length === 0) {
-      console.log(
-        `[EmailService] Tax Invoice ${invNum} created for ${payment.studentName}. In-app notification created.`
-      );
-      return {
-        sent: false,
-        method: 'in-app',
-        message: 'Invoice created. In-app notification saved.',
-      };
-    }
+    const studentRowsHtml = studentItems.map((item) => `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-[#1e293b]">${item.name}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#64748b;text-align:center">${item.service}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:700;text-align:right">${item.amount.toFixed(2)}$</td>
+      </tr>
+    `).join('');
 
     const htmlBody = `
 <!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
 body{font-family:"Segoe UI",Arial,sans-serif;background:#f8fafc;margin:0;padding:20px;color:#1e293b}
-.wrap{max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.05)}
-.hdr{background:#0f172a;padding:24px 32px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+.wrap{max-width:620px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.06)}
+.hdr{background:linear-gradient(135deg,#0751a3,#0879a7);padding:24px 32px;color:#fff;display:flex;justify-content:space-between;align-items:center}
 .body{padding:32px}
-.inv-badge{display:inline-block;padding:4px 12px;background:#dbeafe;color:#1e40af;font-weight:700;border-radius:20px;font-size:11px;text-transform:uppercase}
-.tbl{width:100%;border-collapse:collapse;margin:20px 0}
-.tbl th{background:#f1f5f9;padding:10px;text-align:left;font-size:11px;color:#475569;text-transform:uppercase}
-.tbl td{padding:12px 10px;border-bottom:1px solid #f1f5f9;font-size:13px}
+.tbl{width:100%;border-collapse:collapse;margin:20px 0;font-size:13px}
+.tbl th{background:#f1f5f9;padding:10px 12px;text-align:left;font-size:11px;color:#475569;text-transform:uppercase}
 .total-box{background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;margin-top:20px}
+.bank-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;margin-top:24px;font-size:12px;color:#1e3a8a}
 .ftr{background:#f1f5f9;padding:16px 32px;text-align:center;font-size:11px;color:#64748b}
 </style></head><body>
 <div class="wrap">
   <div class="hdr">
     <div>
-      <h2 style="margin:0;font-size:18px">Placement Portal Services</h2>
-      <p style="margin:4px 0 0;font-size:12px;color:#94a3b8">ABN: 48 123 456 789</p>
+      <h2 style="margin:0;font-size:20px;font-weight:800">INVOICE</h2>
+      <p style="margin:4px 0 0;font-size:13px;color:#e2e8f0">Web Mantis PTY LTD</p>
+      <p style="margin:2px 0 0;font-size:11px;color:#cbd5e1">Email: wasiq@mantisplacements.com.au | Phone: +61 256019134</p>
+      <p style="margin:2px 0 0;font-size:11px;color:#cbd5e1">Address: 58 Norwest Boulevard Baulkham Hills 2153 NSW</p>
     </div>
     <div style="text-align:right">
-      <h3 style="margin:0;font-size:16px;color:#38bdf8">TAX INVOICE</h3>
-      <p style="margin:4px 0 0;font-size:13px;font-family:monospace">${invNum}</p>
+      <h3 style="margin:0;font-size:15px;color:#60a5fa">${invoiceNumber}</h3>
+      <p style="margin:4px 0 0;font-size:12px;color:#e2e8f0">Date: ${invoiceDateStr}</p>
     </div>
   </div>
   <div class="body">
-    <div style="margin-bottom:20px">
-      <span class="inv-badge">Status: Invoice Sent</span>
-      <p style="margin:12px 0 0;font-size:14px"><strong>Billed To:</strong> ${payment.rto || 'Registered Training Organisation'}</p>
-      <p style="margin:4px 0 0;font-size:13px;color:#64748b">Student: <strong>${payment.studentName}</strong> (ID: ${payment.studentId || 'N/A'})</p>
-      <p style="margin:4px 0 0;font-size:13px;color:#64748b">Course: ${payment.course || 'Vocational Placement'}</p>
+    <div style="margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #f1f5f9">
+      <p style="margin:0;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill To:</p>
+      ${spokesperson ? `<p style="margin:4px 0 0;font-size:14px;font-weight:700;color:#0f172a">${spokesperson}</p>` : ''}
+      <p style="margin:2px 0 0;font-size:14px;font-weight:600;color:#1e293b">${rtoName}</p>
     </div>
+
     <table class="tbl">
       <thead>
-        <tr><th>Description</th><th style="text-align:center">Tier</th><th style="text-align:right">Amount (AUD)</th></tr>
+        <tr>
+          <th style="text-align:left">Student Name</th>
+          <th style="text-align:center">Service</th>
+          <th style="text-align:right">Amount (AUD)</th>
+        </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Vocational Student Placement Fee — ${payment.studentName}<br><small style="color:#64748b">${payment.placementStatus}</small></td>
-          <td style="text-align:center"><strong>${payment.chargePercentage}%</strong></td>
-          <td style="text-align:right;font-weight:700">$${subtotal.toFixed(2)}</td>
-        </tr>
+        ${studentRowsHtml}
       </tbody>
     </table>
+
     <div class="total-box">
+      ${gstEnabled ? `
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px">
-        <span>Subtotal (Excl. GST):</span><strong>AUD $${subtotal.toFixed(2)}</strong>
+        <span>Subtotal (Excl. GST):</span><strong>${subtotal.toFixed(2)}$</strong>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px">
-        <span>GST (10%):</span><strong>AUD $${gst.toFixed(2)}</strong>
+        <span>GST (10%):</span><strong>${gstAmount.toFixed(2)}$</strong>
       </div>
-      <div style="display:flex;justify-content:space-between;border-top:1px solid #cbd5e1;padding-top:8px;font-size:15px;color:#0f172a">
-        <span><strong>Total Amount Due:</strong></span><strong style="color:#2563eb">AUD $${totalDue.toFixed(2)}</strong>
+      ` : ''}
+      <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;color:#0f172a">
+        <span>Total:</span><span style="color:#0284c7">${totalAmount.toFixed(2)}$</span>
       </div>
     </div>
-    <div style="margin-top:24px;padding:12px;background:#eff6ff;border-radius:8px;font-size:12px;color:#1e40af">
-      <strong>EFT Remittance Details:</strong><br>
-      Bank: Commonwealth Bank of Australia | BSB: 062-000 | Acc: 1234 5678 | Ref: ${invNum}
+
+    <div class="bank-box">
+      <p style="margin:0 0 6px;font-weight:700;font-size:13px;color:#1e40af">Bank Details:</p>
+      <p style="margin:2px 0;font-weight:600">NAB Business Everyday Account</p>
+      <p style="margin:2px 0">Title: Webmantis Pty Ltd</p>
+      <p style="margin:2px 0">BSB: 082-356</p>
+      <p style="margin:2px 0">Account Number: 227902359</p>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #dbeafe;font-size:11px;color:#3b82f6">
+        <span>ACN 691 274 923</span> &bull; <span>ABN 12 691 274 923</span>
+      </div>
     </div>
   </div>
   <div class="ftr">
-    <p>Terms: Net 14 Days. Thank you for partnering with Placement Portal.</p>
+    <p>Web Mantis PTY LTD &mdash; Thank you for your partnership.</p>
   </div>
 </div></body></html>`;
 
-    if (!isSmtpConfigured()) {
-      console.log(
-        `\n[EmailService] SMTP not configured. Would send Tax Invoice email (${invNum}) to: ${recipientEmails.join(
-          ', '
-        )}`
-      );
+    const fromAddress = `"Web Mantis PTY LTD" <wasiq@mantisplacements.com.au>`;
+    const replyToAddress = `wasiq@mantisplacements.com.au`;
+
+    if (!isAutoEmailEnabled()) {
+      console.log(`\n[EmailService] AUTO EMAILS DEACTIVATED. Suppressed sending invoice ${invoiceNumber} to ${recipientEmails.join(', ') || rtoName}. In-app record saved.`);
       return {
         sent: false,
-        method: 'console',
-        message: `Tax Invoice ${invNum} generated & logged. In-app notification created.`,
+        method: 'disabled',
+        message: `Automatic email sending is currently deactivated. Invoice ${invoiceNumber} generated for ${rtoName}.`,
+        recipientEmail: recipientEmails.join(', '),
+      };
+    }
+
+    if (!isSmtpConfigured() || recipientEmails.length === 0) {
+      console.log(`\n[EmailService] Invoice ${invoiceNumber} created for ${rtoName}. Recipients: ${recipientEmails.join(', ') || 'None (in-app notification saved)'}`);
+      return {
+        sent: false,
+        method: recipientEmails.length === 0 ? 'in-app' : 'console',
+        message: `Invoice ${invoiceNumber} generated for ${rtoName}.`,
+        recipientEmail: recipientEmails.join(', '),
       };
     }
 
     const transporter = getTransporter();
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
     const info = await transporter.sendMail({
-      from: `"Placement Portal Billing" <${from}>`,
+      from: fromAddress,
+      replyTo: replyToAddress,
       to: recipientEmails.join(','),
-      subject: `📄 Tax Invoice Generated: ${invNum} — ${payment.studentName}`,
+      subject: `Invoice ${invoiceNumber} — ${rtoName}`,
       html: htmlBody,
     });
 
-    console.log(
-      `[EmailService] Tax Invoice ${invNum} sent to ${recipientEmails.join(
-        ', '
-      )} (${info.messageId})`
-    );
+    console.log(`[EmailService] Invoice ${invoiceNumber} sent to ${recipientEmails.join(', ')} (${info.messageId})`);
     return {
       sent: true,
       method: 'smtp',
-      message: `Invoice sent to ${recipientEmails.join(', ')}`,
+      message: `Invoice ${invoiceNumber} sent to ${recipientEmails.join(', ')}`,
       messageId: info.messageId,
+      recipientEmail: recipientEmails.join(', '),
     };
   } catch (err) {
     console.error('[EmailService] sendPaymentInvoiceEmail error:', err.message);

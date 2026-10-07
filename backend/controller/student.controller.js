@@ -55,29 +55,98 @@ export const createStudentController = async (req, res) => {
     }
 };
 
+import RtoModel from "../model/rto.model.js";
+import IndustryModel from "../model/industry.model.js";
+import WorkflowModel from "../model/workflow.model.js";
+import { sanitizeStudentDataForRole } from "../utils/rbacSanitizer.js";
+
 export const getAllStudentsController = async (req, res) => {
     try {
         let filter = {};
+        const role = req.user?.role;
+        const userEmail = req.user?.email?.toLowerCase()?.trim();
 
-        if (req.user && req.user.role !== 'Administrator') {
-            // Coordinators and non-admin roles: only see their explicitly assigned students
-            filter = { assignedCoordinator: req.user._id };
-        } else if (req.user && req.user.role === 'Administrator') {
-            // Administrator sees ALL students
-            // Optional: filter by coordinatorId query param for the coordinator-switcher dropdown
+        if (req.user && role !== 'Administrator') {
+            if (role === 'Coordinator') {
+                filter = { assignedCoordinator: req.user._id };
+            } else if (role === 'RTO Manager') {
+                // RTO Manager: see ONLY students belonging to their own RTO
+                let userRtoName = req.user.rtoName;
+                if (!userRtoName && userEmail) {
+                    const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
+                    if (matchedRto) userRtoName = matchedRto.name;
+                }
+                if (userRtoName) {
+                    filter = { assignedRto: { $regex: `^${userRtoName.trim()}$`, $options: 'i' } };
+                } else {
+                    filter = { _id: null }; // No RTO bound -> return empty
+                }
+            } else if (role === 'Student') {
+                // Student: see ONLY their own student record
+                filter = {
+                    $or: [
+                        { emailAddress: userEmail },
+                        { _id: req.user.studentIdRef || req.user._id },
+                    ],
+                };
+            } else if (role === 'Industry') {
+                // Industry: see ONLY students assigned to their facility
+                let facilityName = req.user.facilityName;
+                if (!facilityName && userEmail) {
+                    const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
+                    if (matchedInd) facilityName = matchedInd.name;
+                }
+                if (facilityName) {
+                    // Find all workflow appointments/internships for this facility to collect student IDs
+                    const workflows = await WorkflowModel.find({
+                        $or: [
+                            { 'appointments.company': { $regex: facilityName.trim(), $options: 'i' } },
+                            { 'internships.company': { $regex: facilityName.trim(), $options: 'i' } },
+                            { 'requests.contactedIndustries.organizationName': { $regex: facilityName.trim(), $options: 'i' } },
+                        ]
+                    }).lean();
+
+                    const assignedStudentIds = new Set();
+                    for (const wf of workflows) {
+                        for (const appt of (wf.appointments || [])) {
+                            if (appt.company && new RegExp(facilityName.trim(), 'i').test(appt.company)) {
+                                if (appt.studentId) assignedStudentIds.add(appt.studentId);
+                            }
+                        }
+                        for (const intern of (wf.internships || [])) {
+                            if (intern.company && new RegExp(facilityName.trim(), 'i').test(intern.company)) {
+                                if (intern.studentId) assignedStudentIds.add(intern.studentId);
+                            }
+                        }
+                    }
+
+                    filter = {
+                        $or: [
+                            { studentId: { $in: Array.from(assignedStudentIds) } },
+                            { _id: { $in: Array.from(assignedStudentIds).filter(id => id.length === 24) } }
+                        ]
+                    };
+                } else {
+                    filter = { _id: null };
+                }
+            } else {
+                filter = { assignedCoordinator: req.user._id };
+            }
+        } else if (req.user && role === 'Administrator') {
             if (req.query.coordinatorId === 'unassigned') {
                 filter = { $or: [{ assignedCoordinator: null }, { assignedCoordinator: { $exists: false } }] };
             } else if (req.query.coordinatorId) {
                 filter = { assignedCoordinator: req.query.coordinatorId };
             }
-            // else filter stays {} — all students returned
         }
 
-        const students = await getAllStudents(filter);
+        const rawStudents = await getAllStudents(filter);
+        const sanitizedStudents = rawStudents.map((s) => sanitizeStudentDataForRole(s, role));
+
         res.status(200).json({
             message: "Students fetched successfully",
             success: true,
-            data: students,
+            data: sanitizedStudents,
         });
     } catch (error) {
         res.status(500).json({ message: error.message, success: false });
@@ -96,10 +165,37 @@ export const getStudentByIdController = async (req, res) => {
             });
         }
 
+        // Enforce RBAC access check
+        const role = req.user?.role;
+        const userEmail = req.user?.email?.toLowerCase()?.trim();
+
+        if (req.user && role !== 'Administrator') {
+            if (role === 'Student') {
+                const isOwnRecord = (student.emailAddress && student.emailAddress.toLowerCase() === userEmail) ||
+                  (req.user.studentIdRef && req.user.studentIdRef.toString() === student._id.toString());
+                if (!isOwnRecord) {
+                    return res.status(403).json({ success: false, message: "Access denied. You can only view your own student profile." });
+                }
+            } else if (role === 'RTO Manager') {
+                let userRtoName = req.user.rtoName;
+                if (!userRtoName && userEmail) {
+                    const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
+                    if (matchedRto) userRtoName = matchedRto.name;
+                }
+                const matchesRto = userRtoName && student.assignedRto &&
+                  student.assignedRto.trim().toLowerCase() === userRtoName.trim().toLowerCase();
+                if (!matchesRto) {
+                    return res.status(403).json({ success: false, message: "Access denied. You can only view students belonging to your RTO." });
+                }
+            }
+        }
+
+        const sanitized = sanitizeStudentDataForRole(student, role);
+
         res.status(200).json({
             message: "Student fetched successfully",
             success: true,
-            data: student,
+            data: sanitized,
         });
     } catch (error) {
         res.status(500).json({ message: error.message, success: false });

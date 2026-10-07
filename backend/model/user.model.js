@@ -60,6 +60,32 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  // Entity bindings for strict Role-Based Access Control (RBAC)
+  rtoId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Rto',
+    default: null,
+  },
+  rtoName: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  industryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Industry',
+    default: null,
+  },
+  facilityName: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  studentIdRef: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student',
+    default: null,
+  },
 }, {
   timestamps: true,
 });

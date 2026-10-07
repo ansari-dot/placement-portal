@@ -10,13 +10,17 @@ export const fetchPaymentTotals = async (params = {}) => {
   return response.data;
 };
 
-export const updatePaymentStatus = async (id, paymentStatus) => {
-  const response = await api.patch(`/payments/${id}/status`, { paymentStatus });
+export const updatePaymentStatus = async (id, data) => {
+  const payload = typeof data === 'object' ? data : { paymentStatus: data };
+  const response = await api.patch(`/payments/${id}/status`, payload);
   return response.data;
 };
 
-export const bulkGenerateInvoices = async (paymentIds) => {
-  const response = await api.post('/payments/bulk-invoice', { paymentIds });
+export const bulkGenerateInvoices = async (paymentSelections, gstEnabled = false) => {
+  const payload = Array.isArray(paymentSelections) && typeof paymentSelections[0] === 'object'
+    ? { paymentSelections, gstEnabled }
+    : { paymentIds: paymentSelections, gstEnabled };
+  const response = await api.post('/payments/bulk-invoice', payload);
   return response.data;
 };
 

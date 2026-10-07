@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import StatsOverview from '../components/dashboard/StatsOverview';
@@ -9,11 +10,28 @@ import RequestsChartCard from '../components/dashboard/RequestsChartCard';
 import RecentActivityCard from '../components/dashboard/RecentActivityCard';
 import QuickActions from '../components/dashboard/QuickActions';
 import LivePresenceHub from '../components/dashboard/LivePresenceHub';
+import RTOManagerPortalPage from './RTOManagerPortalPage';
+import StudentPortalPage from './StudentPortalPage';
+import IndustryPortalPage from './IndustryPortalPage';
 import { Calendar } from 'lucide-react';
 import { fetchWorkflowDashboardData } from '../api/workflowApi';
 import { PLACEMENT_DATA_CHANGED } from '../api/placementEvents';
 
 export default function DashboardPage() {
+  const authUser = useSelector((state) => state.auth?.user);
+
+  if (authUser?.role === 'RTO Manager') {
+    return <RTOManagerPortalPage />;
+  }
+
+  if (authUser?.role === 'Student') {
+    return <StudentPortalPage />;
+  }
+
+  if (authUser?.role === 'Industry') {
+    return <IndustryPortalPage />;
+  }
+
   const [dashboardData, setDashboardData] = useState({
     totalWorkflows: 0,
     activeWorkflows: 0,
@@ -125,4 +143,4 @@ export default function DashboardPage() {
       </div>
     </div>
   );
-}
+}

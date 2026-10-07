@@ -23,7 +23,12 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const authUser = useSelector((state) => state.auth?.user);
-  const isAdmin = authUser?.role === 'Administrator';
+  const userRole = authUser?.role || 'Administrator';
+  const isAdmin = userRole === 'Administrator';
+  const isCoordinator = userRole === 'Coordinator' || userRole === 'Staff';
+  const isRtoManager = userRole === 'RTO Manager';
+  const isStudent = userRole === 'Student';
+  const isIndustry = userRole === 'Industry';
 
   const pathname = location.pathname;
 
@@ -281,297 +286,93 @@ export default function Sidebar() {
 
 
         {/* ===================================================
-            WORKFLOW
+            WORKFLOW, PARTNERS, OPERATIONS & ADMINISTRATION
+            Only accessible to Administrators and Coordinators
         ==================================================== */}
-
-        <div className="mb-4">
-
-          <p className={sectionTitle}>
-            Workflow
-          </p>
-
-          <div className="space-y-0.5">
-
-
-            {/* Step 1 */}
-
-            <Link
-              to="/workflow?step=1"
-              className={workflowLinkClass(1)}
-            >
-
-              <Users
-                className={workflowIconClass(1)}
-              />
-
-              <span className="truncate">
-                Step 1: Students
-              </span>
-
-            </Link>
-
-
-            {/* Step 2 */}
-
-            <Link
-              to="/workflow?step=2"
-              className={workflowLinkClass(2)}
-            >
-
-              <Layers
-                className={workflowIconClass(2)}
-              />
-
-              <span className="truncate">
-                Step 2: Placement Requests
-              </span>
-
-            </Link>
-
-
-            {/* Step 3 */}
-
-            <Link
-              to="/workflow?step=3"
-              className={workflowLinkClass(3)}
-            >
-
-              <Calendar
-                className={workflowIconClass(3)}
-              />
-
-              <span className="truncate">
-                Step 3: Appointments
-              </span>
-
-            </Link>
-
-
-            {/* Step 4 */}
-
-            <Link
-              to="/workflow?step=4"
-              className={workflowLinkClass(4)}
-            >
-
-              <Briefcase
-                className={workflowIconClass(4)}
-              />
-
-              <span className="truncate">
-                Step 4: Placements
-              </span>
-
-            </Link>
-
-
-            {/* Step 5 */}
-
-            <Link
-              to="/workflow?step=5"
-              className={workflowLinkClass(5)}
-            >
-
-              <CreditCard
-                className={workflowIconClass(5)}
-              />
-
-              <span className="truncate">
-                Step 5: Payments
-              </span>
-
-            </Link>
-
-          </div>
-
-        </div>
-
-
-        {/* ===================================================
-            PARTNERS
-        ==================================================== */}
-
-        <div className="mb-4">
-
-          <p className={sectionTitle}>
-            Partners
-          </p>
-
-          <div className="space-y-0.5">
-
-
-            {/* RTOs */}
-
-            <Link
-              to="/rto"
-              className={`
-                ${navLinkClass('/rto')}
-                justify-between
-              `}
-            >
-
-              <div className="flex items-center gap-2.5 min-w-0">
-
-                <Building2
-                  className={iconClass('/rto')}
-                />
-
-                <span className="truncate">
-                  RTOs
-                </span>
-
+        {(isAdmin || isCoordinator) && (
+          <>
+            {/* WORKFLOW */}
+            <div className="mb-4">
+              <p className={sectionTitle}>Workflow</p>
+              <div className="space-y-0.5">
+                <Link to="/workflow?step=1" className={workflowLinkClass(1)}>
+                  <Users className={workflowIconClass(1)} />
+                  <span className="truncate">Step 1: Students</span>
+                </Link>
+                <Link to="/workflow?step=2" className={workflowLinkClass(2)}>
+                  <Layers className={workflowIconClass(2)} />
+                  <span className="truncate">Step 2: Placement Requests</span>
+                </Link>
+                <Link to="/workflow?step=3" className={workflowLinkClass(3)}>
+                  <Calendar className={workflowIconClass(3)} />
+                  <span className="truncate">Step 3: Appointments</span>
+                </Link>
+                <Link to="/workflow?step=4" className={workflowLinkClass(4)}>
+                  <Briefcase className={workflowIconClass(4)} />
+                  <span className="truncate">Step 4: Placements</span>
+                </Link>
+                <Link to="/workflow?step=5" className={workflowLinkClass(5)}>
+                  <CreditCard className={workflowIconClass(5)} />
+                  <span className="truncate">Step 5: Payments</span>
+                </Link>
               </div>
-
-              <ChevronRight
-                className="
-                  w-2.5
-                  h-2.5
-                  text-white/40
-                  shrink-0
-                "
-              />
-
-            </Link>
-
-
-            {/* Industries */}
-
-            <Link
-              to="/industry"
-              className={`
-                ${navLinkClass('/industry')}
-                justify-between
-              `}
-            >
-
-              <div className="flex items-center gap-2.5 min-w-0">
-
-                <Building2
-                  className={iconClass('/industry')}
-                />
-
-                <span className="truncate">
-                  Industries
-                </span>
-
-              </div>
-
-              <ChevronRight
-                className="
-                  w-2.5
-                  h-2.5
-                  text-white/40
-                  shrink-0
-                "
-              />
-
-            </Link>
-
-
-
-
-          </div>
-
-        </div>
-
-
-        {/* ===================================================
-            OPERATIONS
-        ==================================================== */}
-
-        <div className="mb-4">
-
-          <p className={sectionTitle}>
-            Operations
-          </p>
-
-          <Link
-            to="/jobs"
-            className={`
-              ${navLinkClass('/jobs')}
-              justify-between
-            `}
-          >
-
-            <div className="flex items-center gap-2.5 min-w-0">
-
-              <Briefcase
-                className={iconClass('/jobs')}
-              />
-
-              <span className="truncate">
-                Jobs
-              </span>
-
             </div>
 
-            <ChevronRight
-              className="
-                w-2.5
-                h-2.5
-                text-white/40
-                shrink-0
-              "
-            />
-
-          </Link>
-
-        </div>
-
-
-        {/* ===================================================
-            ADMINISTRATION
-        ==================================================== */}
-
-        <div>
-
-          <p className={sectionTitle}>
-            Administration
-          </p>
-
-          <Link
-            to="/users"
-            className={`
-              ${navLinkClass('/users')}
-              justify-between
-            `}
-          >
-
-            <div className="flex items-center gap-2.5 min-w-0">
-
-              <Users
-                className={iconClass('/users')}
-              />
-
-              <span className="truncate">
-                Users
-              </span>
-
+            {/* PARTNERS */}
+            <div className="mb-4">
+              <p className={sectionTitle}>Partners</p>
+              <div className="space-y-0.5">
+                <Link to="/rto" className={`${navLinkClass('/rto')} justify-between`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Building2 className={iconClass('/rto')} />
+                    <span className="truncate">RTOs</span>
+                  </div>
+                  <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                </Link>
+                <Link to="/industry" className={`${navLinkClass('/industry')} justify-between`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Building2 className={iconClass('/industry')} />
+                    <span className="truncate">Industries</span>
+                  </div>
+                  <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                </Link>
+              </div>
             </div>
 
-            <ChevronRight
-              className="
-                w-2.5
-                h-2.5
-                text-white/40
-                shrink-0
-              "
-            />
+            {/* OPERATIONS */}
+            <div className="mb-4">
+              <p className={sectionTitle}>Operations</p>
+              <Link to="/jobs" className={`${navLinkClass('/jobs')} justify-between`}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Briefcase className={iconClass('/jobs')} />
+                  <span className="truncate">Jobs</span>
+                </div>
+                <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+              </Link>
+            </div>
 
-          </Link>
-
-          {isAdmin && (
-            <Link to="/user-log" className={`${navLinkClass('/user-log')} justify-between`}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <ClipboardList className={iconClass('/user-log')} />
-                <span className="truncate">User Log</span>
-              </div>
-              <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
-            </Link>
-          )}
-
-        </div>
-
+            {/* ADMINISTRATION */}
+            <div>
+              <p className={sectionTitle}>Administration</p>
+              <Link to="/users" className={`${navLinkClass('/users')} justify-between`}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Users className={iconClass('/users')} />
+                  <span className="truncate">Users</span>
+                </div>
+                <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+              </Link>
+              {isAdmin && (
+                <Link to="/user-log" className={`${navLinkClass('/user-log')} justify-between`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ClipboardList className={iconClass('/user-log')} />
+                    <span className="truncate">User Log</span>
+                  </div>
+                  <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                </Link>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
 

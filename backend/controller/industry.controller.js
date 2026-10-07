@@ -70,6 +70,14 @@ const syncIndustriesFromWorkflows = async () => {
 
 export const getAllIndustriesController = async (req, res) => {
   try {
+    const role = req.user?.role;
+    if (req.user && (role === 'RTO Manager' || role === 'Student')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Users with RTO or Student role are not authorized to view Industry facility details.',
+      });
+    }
+
     const { search, status, sector, industryCategory, postcode, city, state } = req.query;
 
     // ── 1. Auto-sync industries from workflows

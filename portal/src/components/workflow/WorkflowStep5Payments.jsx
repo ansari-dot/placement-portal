@@ -162,19 +162,20 @@ export default function WorkflowStep5Payments() {
     });
   };
 
-  const handleInvoiceModalConfirm = async () => {
+  const handleInvoiceModalConfirm = async (selections, gstEnabled) => {
     try {
-      const idsToUpdate = invoiceModal.payments.map((p) => p._id || p.id);
-      if (idsToUpdate.length > 0) {
-        const res = await bulkGenerateInvoices(idsToUpdate);
-        toast.success(res.message || 'Invoices marked as sent successfully!');
-        setInvoiceModal({ isOpen: false, payments: [] });
-        setSelectedIds([]);
-        loadData();
+      const res = await bulkGenerateInvoices(selections, gstEnabled);
+      if (res?.confirmationMessages && res.confirmationMessages.length > 0) {
+        res.confirmationMessages.forEach((msg) => toast.success(msg));
+      } else {
+        toast.success(res?.message || 'Invoices generated & sent successfully!');
       }
+      setInvoiceModal({ isOpen: false, payments: [] });
+      setSelectedIds([]);
+      loadData();
     } catch (err) {
-      console.error('Failed to update invoice status:', err);
-      toast.error('Failed to update invoice status.');
+      console.error('Failed to generate/send invoices:', err);
+      toast.error(err?.response?.data?.message || 'Failed to generate/send invoices.');
     }
   };
 

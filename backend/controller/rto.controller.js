@@ -6,6 +6,28 @@ export const getAllRTOsController = async (req, res) => {
     const { search, status, loc } = req.query;
     const query = {};
 
+    const role = req.user?.role;
+    const userEmail = req.user?.email?.toLowerCase()?.trim();
+
+    if (req.user && role !== 'Administrator' && role !== 'Coordinator') {
+      if (role === 'RTO Manager') {
+        let userRtoName = req.user.rtoName;
+        if (!userRtoName && userEmail) {
+          const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
+          if (matchedRto) userRtoName = matchedRto.name;
+        }
+        if (userRtoName) {
+          query.name = { $regex: `^${userRtoName.trim()}$`, $options: 'i' };
+        } else if (userEmail) {
+          query.contactEmail = userEmail;
+        } else {
+          query._id = null;
+        }
+      } else {
+        query._id = null; // Students & Industry users cannot view RTO lists
+      }
+    }
+
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },

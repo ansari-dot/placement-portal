@@ -1,5 +1,6 @@
-import React from 'react';
-import { FileText, Printer, CheckCircle2, X, Download, Building2, Calendar, DollarSign, UserCheck, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { FileText, Printer, CheckCircle2, X, Building2, Send, DollarSign } from 'lucide-react';
+import logo1 from '../../assets/logo1.png';
 
 export default function PaymentInvoiceModal({
   isOpen,
@@ -7,6 +8,10 @@ export default function PaymentInvoiceModal({
   payments = [],
   onConfirmStatusUpdate,
 }) {
+  const [gstEnabled, setGstEnabled] = useState(false);
+  const [customPercentages, setCustomPercentages] = useState({});
+  const [isSending, setIsSending] = useState(false);
+
   if (!isOpen || !payments || payments.length === 0) return null;
 
   const handlePrint = () => {
@@ -14,60 +19,106 @@ export default function PaymentInvoiceModal({
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (!dateString) {
+      const d = new Date();
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    }
     try {
       const d = new Date(dateString);
       if (isNaN(d.getTime())) return dateString;
-      return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
     } catch {
       return dateString;
     }
   };
 
-  const getInvoiceNumber = (item, index) => {
-    const rawId = item.studentId || item._id || item.id || `00${index + 1}`;
-    const cleanId = String(rawId).replace(/[^a-zA-Z0-9]/g, '').slice(-5).toUpperCase();
-    const dateYear = new Date().getFullYear();
-    return `INV-${dateYear}-${cleanId}`;
+  // Group payments by RTO
+  const rtoGroups = payments.reduce((acc, p) => {
+    const rKey = (p.rto || 'Unassigned RTO').trim();
+    if (!acc[rKey]) acc[rKey] = [];
+    acc[rKey].push(p);
+    return acc;
+  }, {});
+
+  const handlePercentageChange = (paymentId, pct) => {
+    setCustomPercentages((prev) => ({
+      ...prev,
+      [paymentId]: Number(pct),
+    }));
   };
 
-  const totalInvoiceAmount = payments.reduce((sum, item) => sum + (item.paymentAmount || 0), 0);
+  const handleSendOrGenerate = async () => {
+    if (!onConfirmStatusUpdate) return;
+    try {
+      setIsSending(true);
+      const selections = payments.map((p) => {
+        const pId = p._id || p.id;
+        const chosenPct = customPercentages[pId] !== undefined ? customPercentages[pId] : (p.chargePercentage ?? 100);
+        return {
+          paymentId: pId,
+          chargePercentage: chosenPct,
+        };
+      });
+      await onConfirmStatusUpdate(selections, gstEnabled);
+    } catch (err) {
+      console.error('Invoice modal send error:', err);
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white print:static">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white print:static select-none">
       {/* Modal Container */}
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 print:shadow-none print:border-none print:w-full print:max-w-none print:my-0">
+      <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-6 print:shadow-none print:border-none print:w-full print:max-w-none print:my-0">
         
         {/* Modal Top Bar (Hidden on Print) */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between print:hidden">
+        <div className="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-blue-600/30 text-blue-300 rounded-lg border border-blue-500/30">
               <FileText className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-sm font-bold tracking-tight">
-                {payments.length === 1 ? 'Tax Invoice Preview' : `Bulk Tax Invoices (${payments.length} Students)`}
+                {Object.keys(rtoGroups).length > 1
+                  ? `Separate RTO Invoices (${Object.keys(rtoGroups).length} RTOs, ${payments.length} Students)`
+                  : `Tax Invoice Preview (${payments.length} Student${payments.length > 1 ? 's' : ''})`}
               </h2>
-              <p className="text-[11px] text-slate-400">Official Minimalist Remittance & Billing Statement</p>
+              <p className="text-[11px] text-slate-400">Web Mantis PTY LTD Billing Statement & Remittance</p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+
+          <div className="flex items-center space-x-3">
+            {/* GST Toggle Control */}
+            <label className="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer text-xs font-semibold">
+              <input
+                type="checkbox"
+                checked={gstEnabled}
+                onChange={(e) => setGstEnabled(e.target.checked)}
+                className="w-4 h-4 text-blue-500 rounded cursor-pointer"
+              />
+              <span className="text-slate-200">Include 10% GST</span>
+            </label>
+
             <button
               onClick={handlePrint}
-              className="flex items-center space-x-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition cursor-pointer"
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-slate-700 transition cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
-              <span>Print / Download PDF</span>
+              <Printer className="w-4 h-4 text-blue-400" />
+              <span>Download / Print PDF</span>
             </button>
+
             {onConfirmStatusUpdate && (
               <button
-                onClick={onConfirmStatusUpdate}
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition cursor-pointer"
+                onClick={handleSendOrGenerate}
+                disabled={isSending}
+                className="flex items-center space-x-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-md transition cursor-pointer disabled:opacity-50"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Mark Status "Invoice Sent"</span>
+                <Send className="w-4 h-4" />
+                <span>{isSending ? 'Sending Invoices...' : 'Send Invoice'}</span>
               </button>
             )}
+
             <button
               onClick={onClose}
               className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
@@ -77,164 +128,186 @@ export default function PaymentInvoiceModal({
           </div>
         </div>
 
-        {/* Printable Invoice Body */}
-        <div className="p-8 space-y-8 bg-white text-slate-800 text-xs print:p-6 print:space-y-6">
-          
-          {payments.map((p, idx) => {
-            const invNum = getInvoiceNumber(p, idx);
-            const is30Pct = p.chargePercentage === 30;
-            const subtotal = p.paymentAmount || 0;
-            const gst = Number((subtotal * 0.10).toFixed(2));
-            const totalDue = Number((subtotal + gst).toFixed(2));
+        {/* Individual Percentage Selection Bar (Hidden on Print) */}
+        {payments.length > 1 && (
+          <div className="bg-slate-50 border-b border-slate-200 p-4 print:hidden space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Bulk Invoice: Individual Student Payment Percentage Selection
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Adjust percentage individually per student before generating/sending invoice.
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-40 overflow-y-auto pr-1">
+              {payments.map((p, i) => {
+                const pId = p._id || p.id;
+                const currentPct = customPercentages[pId] !== undefined ? customPercentages[pId] : (p.chargePercentage ?? 100);
+                return (
+                  <div key={pId || i} className="bg-white p-2 px-3 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-800 truncate max-w-[130px]">{p.studentName}</span>
+                    <select
+                      value={currentPct}
+                      onChange={(e) => handlePercentageChange(pId, e.target.value)}
+                      className="px-2 py-1 bg-slate-50 border border-slate-300 rounded font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                    >
+                      <option value="100">100%</option>
+                      <option value="50">50%</option>
+                      <option value="30">30%</option>
+                      <option value="0">0%</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Printable Invoices (Grouped by RTO) */}
+        <div className="p-8 space-y-12 bg-white text-slate-800 text-xs print:p-6 print:space-y-8">
+          {Object.entries(rtoGroups).map(([rtoName, groupPayments], groupIdx) => {
+            const firstItem = groupPayments[0] || {};
+            const spokesperson = firstItem.spokesperson || firstItem.rtoSpokesperson || 'Sharon';
+            const cleanId = String(firstItem.studentId || firstItem._id || groupIdx + 1).replace(/[^a-zA-Z0-9]/g, '').slice(-2) || '51';
+            const yearSuffix = String(new Date().getFullYear()).slice(-2);
+            const invoiceNumber = firstItem.invoiceNumber || `WM-${51 + groupIdx}-${yearSuffix}`;
+            const invoiceDateStr = formatDate(firstItem.invoiceGeneratedDate || new Date());
+
+            let groupSubtotal = 0;
+            const itemCalculations = groupPayments.map((p) => {
+              const pId = p._id || p.id;
+              const chosenPct = customPercentages[pId] !== undefined ? customPercentages[pId] : (p.chargePercentage ?? 100);
+              const orig = p.originalPrice || 500;
+              const amt = Number(((orig * chosenPct) / 100).toFixed(2));
+              groupSubtotal += amt;
+              return {
+                studentName: p.studentName,
+                service: p.service || 'placement status',
+                amount: amt,
+                pct: chosenPct,
+              };
+            });
+
+            const gstAmount = gstEnabled ? Number((groupSubtotal * 0.10).toFixed(2)) : 0;
+            const totalAmount = groupSubtotal + gstAmount;
 
             return (
-              <div key={p._id || p.id || idx} className={`${idx > 0 ? 'pt-12 border-t-2 border-dashed border-slate-200 print:page-break-before-always' : ''}`}>
+              <div key={rtoName || groupIdx} className={`${groupIdx > 0 ? 'pt-10 border-t-2 border-dashed border-slate-300 print:page-break-before-always' : ''}`}>
                 
-                {/* Invoice Header */}
-                <div className="flex flex-col sm:flex-row justify-between items-start border-b border-slate-200 pb-6 gap-4">
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-sm">
-                        PP
-                      </div>
-                      <span className="text-base font-bold text-slate-900 tracking-tight">Placement Portal Services</span>
+                {/* Header & Logo */}
+                <div className="flex flex-col sm:flex-row justify-between items-start border-b-2 border-slate-800 pb-5 gap-4">
+                  <div className="flex items-start space-x-3">
+                    <img src={logo1} alt="Mantis placement logo" className="h-14 object-contain" />
+                    <div>
+                      <h1 className="text-xl font-black text-slate-900 tracking-tight">INVOICE</h1>
+                      <h2 className="text-sm font-bold text-slate-800 mt-0.5">Web Mantis PTY LTD</h2>
+                      <p className="text-[11px] text-slate-600">Email: wasiq@mantisplacements.com.au</p>
+                      <p className="text-[11px] text-slate-600">Phone: +61 256019134</p>
+                      <p className="text-[11px] text-slate-600">Address: 58 Norwest Boulevard Baulkham Hills 2153 NSW</p>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">Level 4, 100 Collins Street, Melbourne VIC 3000</p>
-                    <p className="text-[11px] text-slate-500">ABN: 48 123 456 789 | accounts@placementportal.au</p>
                   </div>
 
                   <div className="text-right sm:text-right">
-                    <h1 className="text-xl font-extrabold text-slate-900 tracking-wider uppercase">TAX INVOICE</h1>
-                    <p className="font-mono text-sm font-bold text-blue-600 mt-0.5">{invNum}</p>
-                    <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-300">
-                      Status: {p.paymentStatus || 'Pending'}
+                    <div className="bg-slate-900 text-white px-3 py-1 rounded-lg inline-block font-mono text-xs font-bold">
+                      Invoice Number: {invoiceNumber}
                     </div>
+                    <p className="text-xs font-semibold text-slate-700 mt-1.5">Invoice Date: {invoiceDateStr}</p>
                   </div>
                 </div>
 
-                {/* Metadata & Bill To Grid */}
-                <div className="grid grid-cols-2 gap-6 my-6 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">BILLED TO (RTO):</span>
-                    <h3 className="text-sm font-bold text-slate-900">{p.rto || 'Registered Training Organisation'}</h3>
-                    <p className="text-[11px] text-slate-600 mt-0.5">Course: <span className="font-semibold text-slate-800">{p.course || 'N/A'}</span></p>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">INVOICE DETAILS:</span>
-                    <p className="text-[11px] text-slate-600">Issue Date: <span className="font-medium text-slate-900">{formatDate(p.invoiceGeneratedDate)}</span></p>
-                    <p className="text-[11px] text-slate-600 mt-0.5">Due Date: <span className="font-medium text-slate-900">{formatDate(p.invoiceGeneratedDate ? new Date(new Date(p.invoiceGeneratedDate).setDate(new Date(p.invoiceGeneratedDate).getDate() + 14)) : new Date(Date.now() + 14*86400000))}</span></p>
-                    <p className="text-[11px] text-slate-600 mt-0.5">Placement Ref: <span className="font-mono text-slate-900 font-semibold">{p.placementStatus}</span></p>
-                  </div>
+                {/* Bill To */}
+                <div className="my-5 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Bill To:</span>
+                  <p className="text-sm font-bold text-slate-900">{spokesperson}</p>
+                  <p className="text-xs font-bold text-blue-900">{rtoName}</p>
                 </div>
 
-                {/* Student Details Card */}
-                <div className="mb-6 px-4 py-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center text-xs">
-                      {p.studentName ? p.studentName.charAt(0) : 'S'}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-900 text-xs">{p.studentName}</p>
-                      <p className="text-[10px] text-slate-500 font-mono">Student ID: {p.studentId || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-500 block">Charge Tier</span>
-                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${is30Pct ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                      {is30Pct ? '30% Charge Rate (Withdrawal / Missed)' : '100% Full Placement Fee'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Line Items Table */}
-                <table className="w-full text-left border-collapse border border-slate-200 rounded-xl overflow-hidden mb-6">
+                {/* Student Services Table */}
+                <table className="w-full text-left border-collapse border border-slate-200 rounded-xl overflow-hidden my-4">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
-                      <th className="py-2.5 px-4">Description</th>
-                      <th className="py-2.5 px-4 text-center">Status</th>
-                      <th className="py-2.5 px-4 text-center">Rate</th>
-                      <th className="py-2.5 px-4 text-right">Original Fee</th>
-                      <th className="py-2.5 px-4 text-right">Payable Amount</th>
+                    <tr className="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                      <th className="py-2.5 px-4">Student Name</th>
+                      <th className="py-2.5 px-4 text-center">Service</th>
+                      <th className="py-2.5 px-4 text-right">Amount (AUD)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
-                    <tr>
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">Vocational Student Placement Fee</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">Placement coordination, site verification, & compliance tracking for {p.studentName}.</div>
-                      </td>
-                      <td className="py-3 px-4 text-center text-slate-600 font-medium text-[11px]">
-                        {p.placementStatus}
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-slate-700">
-                        {p.chargePercentage}%
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-600">
-                        AUD ${p.originalPrice?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-slate-900 font-mono">
-                        AUD ${p.paymentAmount?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
+                  <tbody className="divide-y divide-slate-100 text-xs font-medium">
+                    {itemCalculations.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/60">
+                        <td className="py-3 px-4 font-bold text-slate-900">
+                          {item.studentName}
+                          {item.pct < 100 && (
+                            <span className="ml-2 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+                              ({item.pct}% charge)
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center text-slate-600">{item.service}</td>
+                        <td className="py-3 px-4 text-right font-bold text-slate-900 font-mono">{item.amount.toFixed(2)}$</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
 
-                {/* Subtotals & Total Summary */}
-                <div className="flex justify-between items-start border-t border-slate-200 pt-4">
-                  {/* Payment Remittance Details */}
-                  <div className="w-1/2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <h4 className="text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">EFT PAYMENT REMITTANCE:</h4>
-                    <p className="text-[11px] text-slate-600">Bank: <span className="font-semibold text-slate-800">Commonwealth Bank of Australia</span></p>
-                    <p className="text-[11px] text-slate-600">BSB: <span className="font-mono font-semibold text-slate-800">062-000</span></p>
-                    <p className="text-[11px] text-slate-600">Account No: <span className="font-mono font-semibold text-slate-800">1234 5678</span></p>
-                    <p className="text-[11px] text-slate-600">Payment Reference: <span className="font-mono font-bold text-blue-600">{invNum}</span></p>
-                  </div>
-
-                  {/* Calculations */}
-                  <div className="w-2/5 space-y-2 text-right">
-                    <div className="flex justify-between text-slate-600 text-xs">
-                      <span>Subtotal Excl. GST:</span>
-                      <span className="font-mono font-medium">AUD ${subtotal.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-600 text-xs">
-                      <span>GST (10%):</span>
-                      <span className="font-mono font-medium">AUD ${gst.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-900 font-extrabold text-sm border-t border-slate-300 pt-2">
-                      <span>Total Amount Due:</span>
-                      <span className="font-mono text-blue-600">AUD ${totalDue.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+                {/* Totals Box */}
+                <div className="flex justify-end my-4">
+                  <div className="w-full sm:w-1/2 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-right">
+                    {gstEnabled && (
+                      <>
+                        <div className="flex justify-between text-xs text-slate-600">
+                          <span>Subtotal (Excl. GST):</span>
+                          <span className="font-mono font-semibold">{groupSubtotal.toFixed(2)}$</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-slate-600">
+                          <span>GST (10%):</span>
+                          <span className="font-mono font-semibold">{gstAmount.toFixed(2)}$</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex justify-between text-base font-black text-slate-900 border-t border-slate-300 pt-2">
+                      <span>Total:</span>
+                      <span className="font-mono text-blue-700">{totalAmount.toFixed(2)}$</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Terms Footer */}
-                <div className="mt-6 pt-4 border-t border-slate-100 text-center text-[10px] text-slate-400">
-                  <p>Terms: Payment due within 14 days of invoice date. Thank you for partnering with Placement Portal.</p>
+                {/* Bank Details */}
+                <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-950 space-y-1.5">
+                  <h4 className="font-bold text-blue-900 text-xs">Bank Details:</h4>
+                  <p className="font-bold">NAB Business Everyday Account</p>
+                  <p>Title: Webmantis Pty Ltd</p>
+                  <p className="font-mono font-semibold">BSB: 082-356</p>
+                  <p className="font-mono font-semibold">Account Number: 227902359</p>
+                  <div className="pt-2 border-t border-blue-200/80 flex items-center space-x-4 text-[11px] font-semibold text-blue-800">
+                    <span>ACN 691 274 923</span>
+                    <span>ABN 12 691 274 923</span>
+                  </div>
                 </div>
+
               </div>
             );
           })}
         </div>
 
-        {/* Modal Footer Controls (Hidden on Print) */}
+        {/* Modal Bottom Action Bar (Hidden on Print) */}
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between print:hidden">
-          <div className="text-xs text-slate-500 font-medium">
-            Total Invoiced Amount: <span className="font-bold text-slate-900 font-mono">AUD ${totalInvoiceAmount.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+          <div className="text-xs text-slate-600 font-medium">
+            Total Charge Across All RTOs: <span className="font-bold text-slate-900 font-mono">${payments.reduce((s, p) => s + (p.paymentAmount || 0), 0).toFixed(2)} AUD</span>
           </div>
           <div className="flex items-center space-x-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
+              className="px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold transition cursor-pointer"
             >
-              Close Preview
+              Close
             </button>
             <button
-              onClick={handlePrint}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition flex items-center space-x-2 cursor-pointer"
+              onClick={handleSendOrGenerate}
+              disabled={isSending}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
             >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print Invoice</span>
+              <Send className="w-3.5 h-3.5" />
+              <span>{isSending ? 'Sending...' : 'Confirm & Send Invoices'}</span>
             </button>
           </div>
         </div>

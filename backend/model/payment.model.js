@@ -38,10 +38,36 @@ const paymentSchema = new mongoose.Schema(
     },
     chargePercentage: {
       type: Number,
-      enum: [100, 30],
       default: 100,
     },
     paymentAmount: {
+      type: Number,
+      default: 0,
+    },
+    service: {
+      type: String,
+      trim: true,
+      default: 'Placement status',
+    },
+    spokesperson: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    invoiceNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    gstEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    gstAmount: {
+      type: Number,
+      default: 0,
+    },
+    totalAmount: {
       type: Number,
       default: 0,
     },
@@ -54,9 +80,21 @@ const paymentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    invoiceSentDate: {
+      type: Date,
+      default: null,
+    },
+    paymentDueDate: {
+      type: Date,
+      default: null,
+    },
     paymentReceivedDate: {
       type: Date,
       default: null,
+    },
+    outstandingBalance: {
+      type: Number,
+      default: 0,
     },
     priceConfigured: {
       type: Boolean,

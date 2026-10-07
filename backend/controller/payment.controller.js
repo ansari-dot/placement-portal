@@ -1,6 +1,7 @@
 import PaymentModel from '../model/payment.model.js';
 import StudentModel from '../model/student.model.js';
 import RtoModel from '../model/rto.model.js';
+import { getNextSequence } from '../model/counter.model.js';
 import { sendPaymentInvoiceEmail } from '../service/email.service.js';
 
 export const CHARGEABLE_PLACEMENT_STATUSES = [
@@ -18,7 +19,7 @@ export const THIRTY_PERCENT_STATUSES = [
 ];
 
 /**
- * Helper: Resolve price for student based on assigned RTO and course
+ * Helper: Resolve price & charging triggers for student based on assigned RTO and course
  */
 const resolveRtoCoursePrice = (rtoDoc, student) => {
   if (!rtoDoc) {
@@ -26,11 +27,15 @@ const resolveRtoCoursePrice = (rtoDoc, student) => {
       priceConfigured: true,
       originalPrice: 500,
       pricingError: '',
+      withdrawalFeeRule: '30%',
+      withdrawalFeePercentage: 30,
     };
   }
 
   const studentCourse = (student.courseQualification || student.courses || '').trim().toLowerCase();
   const coursePricingList = rtoDoc.coursePricing || [];
+
+  let originalPrice = 0;
 
   if (studentCourse && coursePricingList.length > 0) {
     const matchedPricing = coursePricingList.find((cp) => {
@@ -45,28 +50,25 @@ const resolveRtoCoursePrice = (rtoDoc, student) => {
     });
 
     if (matchedPricing && Number(matchedPricing.pricing) > 0) {
-      return {
-        priceConfigured: true,
-        originalPrice: Number(matchedPricing.pricing),
-        pricingError: '',
-      };
+      originalPrice = Number(matchedPricing.pricing);
     }
   }
 
-  if (Number(rtoDoc.payoutRate) > 0) {
-    return {
-      priceConfigured: true,
-      originalPrice: Number(rtoDoc.payoutRate),
-      pricingError: '',
-    };
+  if (!originalPrice && Number(rtoDoc.payoutRate) > 0) {
+    originalPrice = Number(rtoDoc.payoutRate);
   }
 
-  // Fallback to standard base placement rate ($500 AUD) if custom RTO pricing has not been configured yet
-  const DEFAULT_FALLBACK_PRICE = 500;
+  if (!originalPrice) {
+    originalPrice = 500; // standard fallback
+  }
+
   return {
     priceConfigured: true,
-    originalPrice: DEFAULT_FALLBACK_PRICE,
+    originalPrice,
     pricingError: '',
+    spokesperson: rtoDoc.spokesperson || rtoDoc.contactName || '',
+    withdrawalFeeRule: rtoDoc.withdrawalFeeRule || '30%',
+    withdrawalFeePercentage: rtoDoc.withdrawalFeePercentage ?? 30,
   };
 };
 
@@ -75,7 +77,7 @@ let isSyncing = false;
 /**
  * Helper: Sync eligible students into Payment collection safely with lock and deduplication
  */
-const syncChargeableStudents = async () => {
+export const syncChargeableStudents = async () => {
   if (isSyncing) return;
   isSyncing = true;
 
@@ -131,7 +133,6 @@ const syncChargeableStudents = async () => {
       const stuBizId = stu.studentId ? String(stu.studentId) : '';
       const stuName = [stu.firstName, stu.middleName, stu.lastName].filter(Boolean).join(' ');
 
-      // Prevent duplicate processing in single loop
       if (processedKeysInLoop.has(stuDbId) || (stuBizId && processedKeysInLoop.has(stuBizId))) {
         continue;
       }
@@ -144,16 +145,26 @@ const syncChargeableStudents = async () => {
         rtoMapByCode.get(assignedRtoName.toLowerCase()) ||
         null;
 
-      const { priceConfigured, originalPrice, pricingError } = resolveRtoCoursePrice(matchedRto, stu);
+      const { priceConfigured, originalPrice, pricingError, spokesperson, withdrawalFeeRule, withdrawalFeePercentage } = resolveRtoCoursePrice(matchedRto, stu);
 
-      const is30Percent = THIRTY_PERCENT_STATUSES.includes(stu.placementStatus);
-      const chargePercentage = is30Percent ? 30 : 100;
-      const paymentAmount = is30Percent ? Number((originalPrice * 0.3).toFixed(2)) : originalPrice;
+      const isWithdrawal = THIRTY_PERCENT_STATUSES.includes(stu.placementStatus);
+
+      let chargePercentage = 100;
+      if (isWithdrawal) {
+        if (withdrawalFeeRule === 'No Fee') {
+          chargePercentage = 0;
+        } else if (withdrawalFeeRule === 'Custom') {
+          chargePercentage = withdrawalFeePercentage;
+        } else {
+          chargePercentage = 30;
+        }
+      }
+
+      const paymentAmount = Number(((originalPrice * chargePercentage) / 100).toFixed(2));
 
       const existingPayment = existingPaymentMap.get(stuDbId) || (stuBizId ? existingPaymentMap.get(stuBizId) : null);
 
       if (existingPayment) {
-        // Update fields if placementStatus or pricing changed
         bulkOps.push({
           updateOne: {
             filter: { _id: existingPayment._id },
@@ -161,11 +172,14 @@ const syncChargeableStudents = async () => {
               $set: {
                 studentName: stuName || existingPayment.studentName,
                 rto: assignedRtoName || existingPayment.rto,
+                spokesperson: spokesperson || matchedRto?.contactName || existingPayment.spokesperson || '',
                 course: stu.courseQualification || stu.courses || existingPayment.course,
                 placementStatus: stu.placementStatus,
-                chargePercentage,
+                chargePercentage: existingPayment.chargePercentage ?? chargePercentage,
                 originalPrice,
-                paymentAmount,
+                paymentAmount: existingPayment.chargePercentage !== undefined
+                  ? Number(((originalPrice * existingPayment.chargePercentage) / 100).toFixed(2))
+                  : paymentAmount,
                 priceConfigured,
                 pricingError,
               },
@@ -173,7 +187,6 @@ const syncChargeableStudents = async () => {
           },
         });
       } else {
-        // Insert new payment record with Pending status
         bulkOps.push({
           insertOne: {
             document: {
@@ -181,13 +194,16 @@ const syncChargeableStudents = async () => {
               student: stu._id,
               studentName: stuName,
               rto: assignedRtoName,
+              spokesperson: spokesperson || matchedRto?.contactName || '',
               course: stu.courseQualification || stu.courses || '',
               placementStatus: stu.placementStatus,
+              service: 'Placement status',
               originalPrice,
               chargePercentage,
               paymentAmount,
               paymentStatus: 'Pending',
               invoiceGeneratedDate: null,
+              invoiceSentDate: null,
               paymentReceivedDate: null,
               priceConfigured,
               pricingError,
@@ -211,7 +227,6 @@ const syncChargeableStudents = async () => {
  */
 export const getPaymentsController = async (req, res) => {
   try {
-    // Synchronize latest student placement status & prices into Payment collection
     await syncChargeableStudents();
 
     const { rto, placementStatus, paymentStatus, fromDate, toDate, search } = req.query;
@@ -239,6 +254,7 @@ export const getPaymentsController = async (req, res) => {
         { studentId: { $regex: q, $options: 'i' } },
         { rto: { $regex: q, $options: 'i' } },
         { course: { $regex: q, $options: 'i' } },
+        { invoiceNumber: { $regex: q, $options: 'i' } },
       ];
     }
 
@@ -250,7 +266,6 @@ export const getPaymentsController = async (req, res) => {
         endDate.setHours(23, 59, 59, 999);
         dateFilter.$lte = endDate;
       }
-      // Apply date filter against invoiceGeneratedDate, paymentReceivedDate, or createdAt
       filter.$or = [
         { invoiceGeneratedDate: dateFilter },
         { paymentReceivedDate: dateFilter },
@@ -274,7 +289,7 @@ export const getPaymentsController = async (req, res) => {
 
 /**
  * GET /payments/totals
- * Calculates Total 100% Price, Total 30% Price, and Total Revenue dynamically matching filters
+ * Calculates Total Revenue dynamically matching filters
  */
 export const getPaymentTotalsController = async (req, res) => {
   try {
@@ -335,7 +350,7 @@ export const getPaymentTotalsController = async (req, res) => {
       }
       if (p.chargePercentage === 100) {
         total100Price += p.paymentAmount || 0;
-      } else if (p.chargePercentage === 30) {
+      } else {
         total30Price += p.paymentAmount || 0;
       }
     });
@@ -362,35 +377,65 @@ export const getPaymentTotalsController = async (req, res) => {
 
 /**
  * PATCH /payments/:id/status
- * Update status of an individual payment record
+ * Update status & pricing details of an individual payment record
  */
 export const updatePaymentStatusController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { paymentStatus } = req.body;
-
-    const validStatuses = ['Pending', 'Invoice Sent', '30% Received', 'Full Payment Received'];
-    if (!validStatuses.includes(paymentStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid payment status. Must be one of: ${validStatuses.join(', ')}`,
-      });
-    }
+    const { paymentStatus, chargePercentage, originalPrice, gstEnabled } = req.body;
 
     const payment = await PaymentModel.findById(id);
     if (!payment) {
       return res.status(404).json({ success: false, message: 'Payment record not found.' });
     }
 
-    payment.paymentStatus = paymentStatus;
-
-    if (paymentStatus === 'Invoice Sent') {
-      payment.invoiceGeneratedDate = new Date();
-    } else if (paymentStatus === '30% Received' || paymentStatus === 'Full Payment Received') {
-      payment.paymentReceivedDate = new Date();
-      if (!payment.invoiceGeneratedDate) {
-        payment.invoiceGeneratedDate = new Date();
+    if (paymentStatus) {
+      const validStatuses = ['Pending', 'Invoice Sent', '30% Received', 'Full Payment Received'];
+      if (!validStatuses.includes(paymentStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid payment status. Must be one of: ${validStatuses.join(', ')}`,
+        });
       }
+      payment.paymentStatus = paymentStatus;
+    }
+
+    if (chargePercentage !== undefined) {
+      payment.chargePercentage = Number(chargePercentage);
+    }
+
+    if (originalPrice !== undefined) {
+      payment.originalPrice = Number(originalPrice);
+    }
+
+    if (gstEnabled !== undefined) {
+      payment.gstEnabled = Boolean(gstEnabled);
+    }
+
+    // Recalculate amounts
+    const pct = payment.chargePercentage ?? 100;
+    const orig = payment.originalPrice ?? 500;
+    payment.paymentAmount = Number(((orig * pct) / 100).toFixed(2));
+
+    if (payment.gstEnabled) {
+      payment.gstAmount = Number((payment.paymentAmount * 0.10).toFixed(2));
+    } else {
+      payment.gstAmount = 0;
+    }
+    payment.totalAmount = Number((payment.paymentAmount + payment.gstAmount).toFixed(2));
+
+    const now = new Date();
+    if (paymentStatus === 'Invoice Sent') {
+      if (!payment.invoiceGeneratedDate) payment.invoiceGeneratedDate = now;
+      payment.invoiceSentDate = now;
+      if (!payment.invoiceNumber) {
+        const seq = await getNextSequence('invoiceNumber', 51);
+        const yearSuffix = String(now.getFullYear()).slice(-2);
+        payment.invoiceNumber = `WM-${seq}-${yearSuffix}`;
+      }
+    } else if (paymentStatus === '30% Received' || paymentStatus === 'Full Payment Received') {
+      payment.paymentReceivedDate = now;
+      if (!payment.invoiceGeneratedDate) payment.invoiceGeneratedDate = now;
     }
 
     if (req.user) {
@@ -400,7 +445,6 @@ export const updatePaymentStatusController = async (req, res) => {
 
     await payment.save();
 
-    // Trigger Tax Invoice email & in-app notification if status is Invoice Sent
     if (paymentStatus === 'Invoice Sent') {
       sendPaymentInvoiceEmail(payment).catch((err) =>
         console.error('Single invoice email trigger error:', err)
@@ -409,7 +453,7 @@ export const updatePaymentStatusController = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Payment status updated to ${paymentStatus}`,
+      message: `Payment status updated to ${payment.paymentStatus}`,
       data: payment,
     });
   } catch (error) {
@@ -419,45 +463,138 @@ export const updatePaymentStatusController = async (req, res) => {
 
 /**
  * POST /payments/bulk-invoice
- * Bulk action: Generate Invoice for selected/matching records
+ * Bulk action: Group selected students by RTO, assign sequential invoice numbers (WM-XX-YY),
+ * set individual payment percentages, calculate amounts, generate separate invoices per RTO,
+ * and email each to the corresponding RTO from wasiq@mantisplacements.com.au
  */
 export const bulkGenerateInvoiceController = async (req, res) => {
   try {
-    const { paymentIds } = req.body;
+    const { paymentSelections, paymentIds, gstEnabled = false } = req.body;
 
-    if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
+    // Build map of paymentId -> custom chargePercentage if supplied
+    const percentageMap = new Map();
+    let targetIds = [];
+
+    if (Array.isArray(paymentSelections) && paymentSelections.length > 0) {
+      paymentSelections.forEach((item) => {
+        const id = item.paymentId || item.id || item._id;
+        if (id) {
+          targetIds.push(String(id));
+          if (item.chargePercentage !== undefined) {
+            percentageMap.set(String(id), Number(item.chargePercentage));
+          }
+        }
+      });
+    } else if (Array.isArray(paymentIds) && paymentIds.length > 0) {
+      targetIds = paymentIds.map(String);
+    }
+
+    if (targetIds.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Please select at least one student to generate invoices.',
       });
     }
 
-    const now = new Date();
-    const result = await PaymentModel.updateMany(
-      { _id: { $in: paymentIds } },
-      {
-        $set: {
-          paymentStatus: 'Invoice Sent',
-          invoiceGeneratedDate: now,
-          ...(req.user ? { updatedBy: req.user._id, updatedByName: req.user.name || '' } : {}),
-        },
-      }
-    );
+    const payments = await PaymentModel.find({ _id: { $in: targetIds } });
+    if (!payments || payments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No matching payment records found.',
+      });
+    }
 
-    // Trigger Tax Invoice email & in-app notifications for all updated records
-    const updatedPayments = await PaymentModel.find({ _id: { $in: paymentIds } });
-    updatedPayments.forEach((p) => {
-      sendPaymentInvoiceEmail(p).catch((err) =>
-        console.error('Bulk invoice email trigger error:', err)
-      );
-    });
+    // Group selected payments by RTO
+    const rtoGroups = new Map(); // rtoName -> Array<Payment>
+    for (const p of payments) {
+      const rtoKey = (p.rto || 'Unassigned RTO').trim();
+      if (!rtoGroups.has(rtoKey)) {
+        rtoGroups.set(rtoKey, []);
+      }
+      rtoGroups.get(rtoKey).push(p);
+    }
+
+    const now = new Date();
+    const yearSuffix = String(now.getFullYear()).slice(-2);
+    const generatedInvoices = [];
+    const confirmationMessages = [];
+
+    for (const [rtoName, rtoPayments] of rtoGroups.entries()) {
+      // Get unique auto-incrementing invoice number sequence for this RTO invoice
+      const seq = await getNextSequence('invoiceNumber', 51);
+      const invoiceNum = `WM-${seq}-${yearSuffix}`;
+
+      // Resolve RTO spokesperson & email
+      const rtoDoc = await RtoModel.findOne({ name: new RegExp('^' + rtoName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }).lean();
+      const spokesperson = rtoDoc?.spokesperson || rtoDoc?.contactName || 'RTO Manager';
+      const rtoEmail = rtoDoc?.contactEmail || '';
+
+      let rtoSubtotal = 0;
+
+      for (const p of rtoPayments) {
+        const pIdStr = String(p._id);
+        if (percentageMap.has(pIdStr)) {
+          p.chargePercentage = percentageMap.get(pIdStr);
+        }
+        const pct = p.chargePercentage ?? 100;
+        const orig = p.originalPrice || 500;
+        p.paymentAmount = Number(((orig * pct) / 100).toFixed(2));
+        p.gstEnabled = Boolean(gstEnabled);
+        p.gstAmount = p.gstEnabled ? Number((p.paymentAmount * 0.10).toFixed(2)) : 0;
+        p.totalAmount = Number((p.paymentAmount + p.gstAmount).toFixed(2));
+
+        p.paymentStatus = 'Invoice Sent';
+        p.invoiceNumber = invoiceNum;
+        if (!p.invoiceGeneratedDate) p.invoiceGeneratedDate = now;
+        p.invoiceSentDate = now;
+        p.spokesperson = spokesperson;
+        if (req.user) {
+          p.updatedBy = req.user._id;
+          p.updatedByName = req.user.name || '';
+        }
+
+        rtoSubtotal += p.paymentAmount;
+        await p.save();
+      }
+
+      // Trigger Email send for this RTO invoice
+      const sendResult = await sendPaymentInvoiceEmail({
+        rtoName,
+        rtoPayments,
+        invoiceNumber: invoiceNum,
+        spokesperson,
+        rtoEmail,
+        gstEnabled: Boolean(gstEnabled),
+      });
+
+      const targetEmail = rtoEmail || sendResult.recipientEmail || 'RTO inbox';
+      const msg = `Your invoice ${invoiceNum} for ${rtoName} (${rtoPayments.length} student${rtoPayments.length > 1 ? 's' : ''}) has been sent successfully to ${targetEmail}.`;
+
+      confirmationMessages.push(msg);
+
+      generatedInvoices.push({
+        rtoName,
+        invoiceNumber: invoiceNum,
+        studentCount: rtoPayments.length,
+        subtotal: rtoSubtotal,
+        recipientEmail: targetEmail,
+        sent: sendResult.sent,
+        message: msg,
+      });
+    }
 
     res.status(200).json({
       success: true,
-      message: `Successfully generated/sent invoices for ${result.modifiedCount} student(s).`,
-      data: { modifiedCount: result.modifiedCount },
+      message: confirmationMessages.join('\n'),
+      confirmationMessages,
+      data: {
+        invoicesCount: generatedInvoices.length,
+        studentsCount: payments.length,
+        invoices: generatedInvoices,
+      },
     });
   } catch (error) {
+    console.error('bulkGenerateInvoiceController error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -465,7 +602,6 @@ export const bulkGenerateInvoiceController = async (req, res) => {
 /**
  * POST /payments/bulk-payment-received
  * Bulk action: Mark Payment Received for selected records
- * Automatically sets 30% Received for 30% charge students and Full Payment Received for 100% charge students
  */
 export const bulkPaymentReceivedController = async (req, res) => {
   try {
@@ -482,7 +618,7 @@ export const bulkPaymentReceivedController = async (req, res) => {
     const payments = await PaymentModel.find({ _id: { $in: paymentIds } });
 
     const bulkOps = payments.map((p) => {
-      const targetStatus = p.chargePercentage === 30 ? '30% Received' : 'Full Payment Received';
+      const targetStatus = p.chargePercentage < 100 ? '30% Received' : 'Full Payment Received';
       return {
         updateOne: {
           filter: { _id: p._id },
