@@ -70,12 +70,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleQuickFill = () => {
-    setEmail('wasiq.shah@mantisplacements.com');
-    setPassword('Admin@123');
-    dispatch(clearError());
-  };
-
   const toggleMode = () => {
     setIsSignup(!isSignup);
     setSignupSuccess(false);
@@ -399,7 +393,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Remember me & Quick Admin Fill */}
+              {/* Remember me */}
               <div className="flex items-center justify-between pt-1">
                 <label className="flex items-center space-x-2 cursor-pointer select-none">
                   <input
@@ -410,13 +404,6 @@ export default function LoginPage() {
                   />
                   <span className="text-xs text-slate-600 font-medium">Remember me</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={handleQuickFill}
-                  className="text-xs font-semibold text-[#0147A6] hover:underline cursor-pointer"
-                >
-                  Auto-fill Admin Credentials
-                </button>
               </div>
 
               {/* Action Button */}
