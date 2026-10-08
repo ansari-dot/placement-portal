@@ -42,7 +42,7 @@ const PLACEMENT_STATUSES = [
 
 const PAYMENT_STATUSES = [
   'Pending',
-  'Invoice Sent',
+  'Invoice Generated',
   '30% Received',
   'Full Payment Received',
 ];
@@ -83,6 +83,7 @@ const getPlacementStatusBadge = (status) => {
 
 const getPaymentStatusBadge = (status) => {
   switch (status) {
+    case 'Invoice Generated':
     case 'Invoice Sent':
       return 'bg-blue-50 text-blue-700 border-blue-200';
     case '30% Received':
@@ -171,14 +172,14 @@ export default function WorkflowStep5Payments() {
       if (res?.confirmationMessages && res.confirmationMessages.length > 0) {
         res.confirmationMessages.forEach((msg) => toast.success(msg));
       } else {
-        toast.success(res?.message || 'Invoices generated & sent successfully!');
+        toast.success(res?.message || 'Invoices generated successfully!');
       }
       setInvoiceModal({ isOpen: false, payments: [] });
       setSelectedIds([]);
       loadData();
     } catch (err) {
-      console.error('Failed to generate/send invoices:', err);
-      toast.error(err?.response?.data?.message || 'Failed to generate/send invoices.');
+      console.error('Failed to generate invoices:', err);
+      toast.error(err?.response?.data?.message || 'Failed to generate invoices.');
     }
   };
 
@@ -296,7 +297,7 @@ export default function WorkflowStep5Payments() {
       isOpen: true,
       actionType: 'invoice',
       title: 'Generate Invoices',
-      message: `Are you sure you want to generate/send invoices for ${selectedIds.length} selected student(s)? Payment status will update to "Invoice Sent" and current date will be recorded.`,
+      message: `Are you sure you want to generate invoices for ${selectedIds.length} selected student(s)? Payment status will update to "Invoice Generated" and current date will be recorded.`,
       count: selectedIds.length,
     });
   };
@@ -350,7 +351,7 @@ export default function WorkflowStep5Payments() {
   const metrics = useMemo(() => {
     const total = payments.length;
     const pending = payments.filter((p) => (p.paymentStatus || 'Pending') === 'Pending').length;
-    const invoiceSent = payments.filter((p) => p.paymentStatus === 'Invoice Sent').length;
+    const invoiceSent = payments.filter((p) => p.paymentStatus === 'Invoice Generated' || p.paymentStatus === 'Invoice Sent').length;
     const received30 = payments.filter((p) => p.paymentStatus === '30% Received').length;
     const fullReceived = payments.filter((p) => p.paymentStatus === 'Full Payment Received').length;
     return { total, pending, invoiceSent, received30, fullReceived };
@@ -413,7 +414,7 @@ export default function WorkflowStep5Payments() {
 
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Invoice Sent</p>
+            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Invoice Generated</p>
             <h3 className="text-lg font-bold text-slate-900 mt-0.5">{metrics.invoiceSent}</h3>
           </div>
           <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center border border-blue-100">

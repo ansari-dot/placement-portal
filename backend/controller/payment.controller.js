@@ -526,7 +526,7 @@ export const updatePaymentStatusController = async (req, res) => {
     }
 
     if (paymentStatus) {
-      const validStatuses = ['Pending', 'Invoice Sent', '30% Received', 'Full Payment Received'];
+      const validStatuses = ['Pending', 'Invoice Generated', 'Invoice Sent', '30% Received', 'Full Payment Received'];
       if (!validStatuses.includes(paymentStatus)) {
         return res.status(400).json({
           success: false,
@@ -561,7 +561,7 @@ export const updatePaymentStatusController = async (req, res) => {
     payment.totalAmount = Number((payment.paymentAmount + payment.gstAmount).toFixed(2));
 
     const now = new Date();
-    if (paymentStatus === 'Invoice Sent') {
+    if (paymentStatus === 'Invoice Sent' || paymentStatus === 'Invoice Generated') {
       if (!payment.invoiceGeneratedDate) payment.invoiceGeneratedDate = now;
       payment.invoiceSentDate = now;
       if (!payment.invoiceNumber) {
@@ -680,7 +680,7 @@ export const bulkGenerateInvoiceController = async (req, res) => {
         p.gstAmount = p.gstEnabled ? Number((p.paymentAmount * 0.10).toFixed(2)) : 0;
         p.totalAmount = Number((p.paymentAmount + p.gstAmount).toFixed(2));
 
-        p.paymentStatus = 'Invoice Sent';
+        p.paymentStatus = 'Invoice Generated';
         p.invoiceNumber = invoiceNum;
         if (!p.invoiceGeneratedDate) p.invoiceGeneratedDate = now;
         p.invoiceSentDate = now;

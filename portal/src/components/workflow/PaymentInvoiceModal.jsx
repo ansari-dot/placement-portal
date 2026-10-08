@@ -98,6 +98,11 @@ export default function PaymentInvoiceModal({
           </div>
 
           <div className="flex items-center space-x-3">
+            {/* Email Sending Status Indicator */}
+            <span className="text-[10px] bg-slate-800 text-amber-300 border border-slate-700 px-2.5 py-1 rounded-lg font-semibold flex items-center space-x-1">
+              <span>🔒 Email Sending Disabled</span>
+            </span>
+
             {/* GST Toggle Control */}
             <label className="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer text-xs font-semibold">
               <input
@@ -123,8 +128,8 @@ export default function PaymentInvoiceModal({
                 disabled={isSending}
                 className="flex items-center space-x-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-md transition cursor-pointer disabled:opacity-50"
               >
-                <Send className="w-4 h-4" />
-                <span>{isSending ? 'Sending Invoices...' : 'Send Invoice'}</span>
+                <FileText className="w-4 h-4" />
+                <span>{isSending ? 'Generating Invoice...' : 'Generate Invoice'}</span>
               </button>
             )}
 
@@ -315,8 +320,8 @@ export default function PaymentInvoiceModal({
               disabled={isSending}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>{isSending ? 'Sending...' : 'Confirm & Send Invoices'}</span>
+              <FileText className="w-3.5 h-3.5" />
+              <span>{isSending ? 'Generating...' : 'Confirm & Generate Invoices'}</span>
             </button>
           </div>
         </div>

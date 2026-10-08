@@ -73,7 +73,7 @@ const paymentSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['Pending', 'Invoice Sent', '30% Received', 'Full Payment Received'],
+      enum: ['Pending', 'Invoice Generated', 'Invoice Sent', '30% Received', 'Full Payment Received'],
       default: 'Pending',
     },
     invoiceGeneratedDate: {
