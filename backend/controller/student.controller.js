@@ -254,13 +254,13 @@ export const deleteStudentController = async (req, res) => {
             });
         }
 
-        // Cascade: remove from all workflow steps (requests, appointments, internships)
+        // Cascade: remove from all workflow steps (requests, appointments, internships, payments, attendance)
         // Uses both the MongoDB _id string and the business studentId (e.g. "STU1")
         try {
-            await purgeStudentFromWorkflows(id, student.studentId || '');
+            await purgeStudentFromWorkflows(student._id ? student._id.toString() : id, student.studentId || id);
         } catch (purgeErr) {
             // Log but don't fail the response — student is already deleted
-            console.error("Workflow cascade purge failed:", purgeErr.message);
+            console.error("Workflow & payment cascade purge failed:", purgeErr.message);
         }
 
         res.status(200).json({

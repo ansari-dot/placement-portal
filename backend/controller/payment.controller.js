@@ -95,24 +95,43 @@ export const syncChargeableStudents = async () => {
   isSyncing = true;
 
   try {
-    // 0. Deduplicate any existing duplicate payment entries in DB
-    const allPayments = await PaymentModel.find().sort({ updatedAt: -1 }).lean();
+    // 0. Deduplicate duplicate payment entries & purge orphaned payment records for deleted students
+    const [allPayments, existingStudents] = await Promise.all([
+      PaymentModel.find().sort({ updatedAt: -1 }).lean(),
+      StudentModel.find({}, { _id: 1, studentId: 1 }).lean(),
+    ]);
+
+    const validStudentKeys = new Set();
+    existingStudents.forEach((stu) => {
+      if (stu._id) validStudentKeys.add(String(stu._id));
+      if (stu.studentId) validStudentKeys.add(String(stu.studentId));
+    });
+
     const seenKeys = new Set();
-    const duplicateIds = [];
+    const idsToRemove = [];
 
     for (const p of allPayments) {
-      const studentKey = p.student ? String(p.student) : (p.studentId ? String(p.studentId) : null);
-      if (studentKey) {
+      const studentDbId = p.student ? String(p.student) : null;
+      const studentBizId = p.studentId ? String(p.studentId) : null;
+
+      const isStudentValid =
+        (studentDbId && validStudentKeys.has(studentDbId)) ||
+        (studentBizId && validStudentKeys.has(studentBizId));
+
+      if (!isStudentValid) {
+        idsToRemove.push(p._id);
+      } else {
+        const studentKey = studentDbId || studentBizId;
         if (seenKeys.has(studentKey)) {
-          duplicateIds.push(p._id);
+          idsToRemove.push(p._id);
         } else {
           seenKeys.add(studentKey);
         }
       }
     }
 
-    if (duplicateIds.length > 0) {
-      await PaymentModel.deleteMany({ _id: { $in: duplicateIds } });
+    if (idsToRemove.length > 0) {
+      await PaymentModel.deleteMany({ _id: { $in: idsToRemove } });
     }
 
     // 1. Auto-sync / derive student placementStatus from live Workflow & Appointment/Internship models
@@ -698,33 +717,39 @@ export const bulkGenerateInvoiceController = async (req, res) => {
         gstEnabled: Boolean(gstEnabled),
       });
 
-      // Persist immutable InvoiceModel document
+      // Persist / update InvoiceModel document
       try {
-        await InvoiceModel.create({
-          invoiceNumber: invoiceNum,
-          rtoName,
-          rtoSnapshot: {
-            spokesperson,
-            contactEmail: rtoEmail,
-            contactPhone: rtoDoc?.contactPhone || '',
-            address: rtoDoc?.address || '',
+        await InvoiceModel.findOneAndUpdate(
+          { invoiceNumber: invoiceNum },
+          {
+            $set: {
+              invoiceNumber: invoiceNum,
+              rtoName,
+              rtoSnapshot: {
+                spokesperson,
+                contactEmail: rtoEmail,
+                contactPhone: rtoDoc?.contactPhone || '',
+                address: rtoDoc?.address || '',
+              },
+              items: invoiceItems,
+              subtotal: rtoSubtotal,
+              gstEnabled: Boolean(gstEnabled),
+              gstRate: gstEnabled ? 10 : 0,
+              gstAmount: gstAmt,
+              totalAmount: totalAmt,
+              amountPaid: 0,
+              outstandingBalance: totalAmt,
+              invoiceDate: now,
+              status: sendResult.sent ? 'Sent' : 'Email Failed',
+              emailStatus: sendResult.sent ? 'Sent' : 'Failed',
+              emailSentAt: sendResult.sent ? now : null,
+              recipientEmail: rtoEmail || sendResult.recipientEmail || '',
+              createdBy: req.user?._id || null,
+              createdByName: req.user?.name || '',
+            },
           },
-          items: invoiceItems,
-          subtotal: rtoSubtotal,
-          gstEnabled: Boolean(gstEnabled),
-          gstRate: gstEnabled ? 10 : 0,
-          gstAmount: gstAmt,
-          totalAmount: totalAmt,
-          amountPaid: 0,
-          outstandingBalance: totalAmt,
-          invoiceDate: now,
-          status: sendResult.sent ? 'Sent' : 'Email Failed',
-          emailStatus: sendResult.sent ? 'Sent' : 'Failed',
-          emailSentAt: sendResult.sent ? now : null,
-          recipientEmail: rtoEmail || sendResult.recipientEmail || '',
-          createdBy: req.user?._id || null,
-          createdByName: req.user?.name || '',
-        });
+          { upsert: true, returnDocument: 'after' }
+        );
       } catch (invErr) {
         console.warn('[InvoiceModel] Snapshot save error:', invErr.message);
       }

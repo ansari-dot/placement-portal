@@ -1630,15 +1630,34 @@ export const purgeStudentFromWorkflows = async (studentId, studentBizId = '') =>
     if (changed) await workflow.save({ validateBeforeSave: false });
   }
 
-  // Remove mirrored standalone records as well. Otherwise an old appointment
-  // keyed by a reused business studentId can affect a future student's status.
+  // Remove mirrored standalone records, payment records, and attendance records as well.
   const studentKeys = [studentId, studentBizId].filter(Boolean).map(String);
+  const validMongoIds = studentKeys.filter((id) => mongoose.Types.ObjectId.isValid(id));
   if (studentKeys.length > 0) {
-    await Promise.all([
-      AppointmentModel.deleteMany({ studentId: { $in: studentKeys } }),
-      InternshipModel.deleteMany({ studentId: { $in: studentKeys } }),
-      InternshipRequestModel.deleteMany({ studentId: { $in: studentKeys } }),
-    ]);
+    try {
+      const PaymentModel = (await import('../model/payment.model.js')).default;
+      const AttendanceModel = (await import('../model/attendance.model.js')).default;
+
+      await Promise.all([
+        AppointmentModel.deleteMany({ studentId: { $in: studentKeys } }),
+        InternshipModel.deleteMany({ studentId: { $in: studentKeys } }),
+        InternshipRequestModel.deleteMany({ studentId: { $in: studentKeys } }),
+        PaymentModel.deleteMany({
+          $or: [
+            { student: { $in: validMongoIds } },
+            { studentId: { $in: studentKeys } },
+          ],
+        }),
+        AttendanceModel.deleteMany({
+          $or: [
+            { student: { $in: validMongoIds } },
+            { studentId: { $in: studentKeys } },
+          ],
+        }),
+      ]);
+    } catch (dbErr) {
+      console.warn("Cascade delete standalone/payment/attendance records failed:", dbErr.message);
+    }
   }
 
   // ── Cascade: delete orphaned industries from the Industries tab ──────────

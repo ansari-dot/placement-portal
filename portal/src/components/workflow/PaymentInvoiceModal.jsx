@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Printer, CheckCircle2, X, Building2, Send, DollarSign } from 'lucide-react';
 import logo1 from '../../assets/logo1.png';
 
@@ -11,6 +11,15 @@ export default function PaymentInvoiceModal({
   const [gstEnabled, setGstEnabled] = useState(false);
   const [customPercentages, setCustomPercentages] = useState({});
   const [isSending, setIsSending] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && payments && payments.length > 0) {
+      const hasGst = payments.some((p) => Boolean(p.gstEnabled));
+      setGstEnabled(hasGst);
+    } else if (!isOpen) {
+      setGstEnabled(false);
+    }
+  }, [isOpen, payments]);
 
   if (!isOpen || !payments || payments.length === 0) return null;
 

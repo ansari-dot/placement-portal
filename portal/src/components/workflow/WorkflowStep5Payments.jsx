@@ -17,6 +17,7 @@ import {
   Printer,
   Eye,
   Download,
+  X,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
@@ -256,6 +257,17 @@ export default function WorkflowStep5Payments() {
     } catch (err) {
       console.error('Failed to update status:', err);
       toast.error(err.response?.data?.message || 'Failed to update payment status.');
+    }
+  };
+
+  const handleToggleGst = async (paymentId, newGstState) => {
+    try {
+      await updatePaymentStatus(paymentId, { gstEnabled: newGstState });
+      toast.success(newGstState ? '10% GST added to payment' : 'GST removed from payment');
+      loadData();
+    } catch (err) {
+      console.error('Failed to toggle GST:', err);
+      toast.error(err.response?.data?.message || 'Failed to update GST setting.');
     }
   };
 
@@ -722,19 +734,42 @@ export default function WorkflowStep5Payments() {
                             <span className="text-[10px] text-rose-500 font-medium">Unconfigured RTO price</span>
                           </div>
                         ) : (
-                          <div className="flex flex-col items-end">
+                          <div className="flex flex-col items-end gap-0.5">
                             <span className="font-bold text-slate-900 text-xs">
-                              AUD {p.paymentAmount?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                              AUD {(p.totalAmount || p.paymentAmount)?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
                             </span>
-                            <span
-                              className={`text-[10px] font-semibold px-1.5 py-0.2 rounded ${
-                                is30Pct
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-emerald-100 text-emerald-800'
-                              }`}
-                            >
-                              {is30Pct ? `30% Charge` : '100% Charge'}
-                            </span>
+                            <div className="flex items-center space-x-1">
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.2 rounded ${
+                                  is30Pct
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-emerald-100 text-emerald-800'
+                                }`}
+                              >
+                                {is30Pct ? `30% Charge` : '100% Charge'}
+                              </span>
+
+                              {p.gstEnabled ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleGst(pId, false)}
+                                  title="Click to remove 10% GST"
+                                  className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-blue-100 hover:bg-rose-100 text-blue-800 hover:text-rose-800 transition cursor-pointer flex items-center space-x-1 border border-blue-200"
+                                >
+                                  <span>+10% GST</span>
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleGst(pId, true)}
+                                  title="Click to add 10% GST"
+                                  className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-800 transition cursor-pointer border border-slate-200"
+                                >
+                                  + Add GST
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
                       </td>
