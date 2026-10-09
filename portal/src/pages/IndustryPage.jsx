@@ -3,7 +3,7 @@ import IndustryLayout from '../components/layout/IndustryLayout';
 import IndustriesDashboard from '../components/industry/IndustriesDashboard';
 import AddNewIndustryWizard from '../components/industry/AddNewIndustryWizard';
 // CHANGED: ScoreTab import and Trophy icon removed - Score now lives on its own page (ScorePage.jsx)
-import { fetchIndustries, createIndustry, updateIndustry, fetchIndustryStats, deleteIndustry } from '../api/industryApi';
+import { fetchIndustries, createIndustry, createPartnerIndustry, updateIndustry, fetchIndustryStats, deleteIndustry } from '../api/industryApi';
 import { toast } from 'react-toastify';
 import { Building2 } from 'lucide-react';
 import { fetchUsers } from '../api/userApi';
@@ -47,7 +47,7 @@ export default function IndustryPage() {
   const handleCreatePartner = async (event) => {
     event.preventDefault();
     try {
-      await createIndustry({ ...partnerForm, industryCategory: 'Partner' });
+      await createPartnerIndustry(partnerForm);
       toast.success('Partner Industry added');
       setPartnerForm({ industryName: '', industryType: '', address: '', suburb: '', state: '', postCode: '', country: 'Australia', contactPersonName: '', contactPhone: '', contactEmail: '', onboardedByName: '', onboardedBy: '', partnershipInfo: '', documents: [] });
       setCurrentView('dashboard');

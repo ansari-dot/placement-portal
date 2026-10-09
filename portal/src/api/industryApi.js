@@ -11,6 +11,11 @@ export const createIndustry = async (industryData) => {
   return response.data;
 };
 
+export const createPartnerIndustry = async (industryData) => {
+  const response = await api.post("/industries/partners", industryData);
+  return response.data;
+};
+
 export const updateIndustry = async (id, industryData) => {
   const response = await api.put(`/industries/${id}`, industryData);
   return response.data;

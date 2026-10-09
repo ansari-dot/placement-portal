@@ -1,10 +1,11 @@
 import express from 'express';
-import { getAllIndustriesController, createIndustryController, updateIndustryController, getIndustryStatsController, deleteIndustryController, getMyIndustriesController } from '../controller/industry.controller.js';
+import { getAllIndustriesController, createIndustryController, createPartnerIndustryController, updateIndustryController, getIndustryStatsController, deleteIndustryController, getMyIndustriesController } from '../controller/industry.controller.js';
 import { softAuth } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
 router.get('/', getAllIndustriesController);
+router.post('/partners', softAuth, createPartnerIndustryController);
 router.post('/', softAuth, createIndustryController);
 router.get('/stats', getIndustryStatsController);
 // Must be before /:id to avoid route param collision

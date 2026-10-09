@@ -238,7 +238,7 @@ export const getAllIndustriesController = async (req, res) => {
   }
 };
 
-export const createIndustryController = async (req, res) => {
+const createIndustry = async (req, res, isPartnerOnboarding) => {
   try {
     const {
       industryName,
@@ -256,12 +256,15 @@ export const createIndustryController = async (req, res) => {
       abn,
       website,
       shortDescription,
-      industryCategory = 'Random',
       onboardedByName,
       onboardedBy,
       partnershipInfo,
       documents,
     } = req.body;
+    // Classification comes from the route, not a client supplied category.
+    // Placement contacts can therefore never become Partner Industries by
+    // passing industryCategory: 'Partner' in their request body.
+    const industryCategory = isPartnerOnboarding ? 'Partner' : 'Random';
 
     // Validate all required fields
     const missing = [];
@@ -334,6 +337,9 @@ export const createIndustryController = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const createIndustryController = (req, res) => createIndustry(req, res, false);
+export const createPartnerIndustryController = (req, res) => createIndustry(req, res, true);
 
 export const updateIndustryController = async (req, res) => {
   try {
