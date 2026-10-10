@@ -44,3 +44,9 @@ export const fetchScoreStats = async () => {
   const response = await api.get('/users/score-stats');
   return response.data;
 };
+
+export const fetchOnboardingEligibleUsers = async () => {
+  const response = await api.get('/users/onboarding-eligible');
+  return response.data;
+};
+

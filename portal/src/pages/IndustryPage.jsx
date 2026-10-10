@@ -6,7 +6,8 @@ import AddNewIndustryWizard from '../components/industry/AddNewIndustryWizard';
 import { fetchIndustries, createIndustry, updateIndustry, fetchIndustryStats, deleteIndustry } from '../api/industryApi';
 import { toast } from 'react-toastify';
 import { Building2 } from 'lucide-react';
-import { fetchUsers } from '../api/userApi';
+import { fetchUsers, fetchOnboardingEligibleUsers } from '../api/userApi';
+import { AUSTRALIAN_STATES } from '../constants/australianStates';
 
 export default function IndustryPage() {
 
@@ -41,7 +42,9 @@ export default function IndustryPage() {
 
   useEffect(() => {
     loadData();
-    fetchUsers({ status: 'Active' }).then(r => setUsers((r.data || []).filter(user => ['Administrator', 'Coordinator', 'Staff', 'RTO Manager'].includes(user.role)))).catch(() => {});
+    fetchOnboardingEligibleUsers()
+      .then(r => setUsers(r.data || []))
+      .catch(() => {});
   }, [loadData]);
 
   const handleCreatePartner = async (event) => {
@@ -118,9 +121,18 @@ export default function IndustryPage() {
           <div><h2 className="text-xl font-bold">Add Partner Industry</h2><p className="text-sm text-slate-500">Formal partner onboarding. No student is required.</p></div>
           <div className="grid md:grid-cols-2 gap-4">
             {[
-              ['industryName','Industry Name'],['industryType','Industry Type'],['address','Address'],['suburb','City/Suburb'],['state','State'],['postCode','Postcode'],['country','Country'],['contactPersonName','Contact Person Name'],['contactPhone','Contact Number'],['contactEmail','Email'],['onboardedByName','Onboarded By'],['partnershipInfo','MOU / Partnership Information']
+              ['industryName','Industry Name'],['industryType','Industry Type'],['address','Address'],['suburb','City/Suburb']
             ].map(([key,label]) => <label key={key} className="text-xs font-semibold text-slate-600">{label} <span className="text-rose-500">*</span><input required value={partnerForm[key]} onChange={e=>updatePartner(key,e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}
-            <label className="text-xs font-semibold text-slate-600">Portal User (optional)<select value={partnerForm.onboardedBy} onChange={e=>{const u=users.find(x=>x._id===e.target.value); setPartnerForm(old=>({...old,onboardedBy:e.target.value,onboardedByName:u?.name||old.onboardedByName}));}} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm"><option value="">Link later</option>{users.map(u=><option key={u._id} value={u._id}>{u.name} ({u.role})</option>)}</select></label>
+            <label className="text-xs font-semibold text-slate-600">State / Territory <span className="text-rose-500">*</span>
+              <select required value={partnerForm.state} onChange={e=>updatePartner('state',e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="">Select Australian State</option>
+                {AUSTRALIAN_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
+              </select>
+            </label>
+            {[
+              ['postCode','Postcode'],['country','Country'],['contactPersonName','Contact Person Name'],['contactPhone','Contact Number'],['contactEmail','Email'],['onboardedByName','Onboarded By'],['partnershipInfo','MOU / Partnership Information']
+            ].map(([key,label]) => <label key={key} className="text-xs font-semibold text-slate-600">{label} <span className="text-rose-500">*</span><input required value={partnerForm[key]} onChange={e=>updatePartner(key,e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}
+            <label className="text-xs font-semibold text-slate-600">Portal User (optional)<select value={partnerForm.onboardedBy} onChange={e=>{const u=users.find(x=>x._id===e.target.value); setPartnerForm(old=>({...old,onboardedBy:e.target.value,...(!old.onboardedByName && u ? { onboardedByName: u.name } : {})}));}} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm"><option value="">Link later</option>{users.map(u=><option key={u._id} value={u._id}>{u.name} ({u.role})</option>)}</select></label>
             <label className="text-xs font-semibold text-slate-600">Documents <span className="text-rose-500">*</span><input required={partnerForm.documents.length === 0} type="file" multiple onChange={e=>{
               const files = Array.from(e.target.files || []);
               Promise.all(files.map(file => new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, fileName: file.name, file: reader.result, size: `${(file.size / 1024).toFixed(1)} KB`, uploadDate: new Date().toLocaleDateString() }); reader.readAsDataURL(file); }))).then(docs => updatePartner('documents', [...partnerForm.documents, ...docs]));

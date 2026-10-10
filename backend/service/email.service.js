@@ -597,13 +597,21 @@ export const sendPaymentInvoiceEmail = async (invoicePayload) => {
     let recipientEmails = [];
     let gstEnabled = false;
 
+    let isIndependent = Boolean(invoicePayload.isIndependent || invoicePayload.rtoName === 'Independent Student');
+
     if (invoicePayload.rtoPayments && Array.isArray(invoicePayload.rtoPayments)) {
-      // Grouped RTO Invoice
+      // Grouped RTO or Independent Invoice
       rtoName = invoicePayload.rtoName || '';
       spokesperson = invoicePayload.spokesperson || '';
       invoiceNumber = invoicePayload.invoiceNumber || 'WM-51-26';
       gstEnabled = Boolean(invoicePayload.gstEnabled);
-      if (invoicePayload.rtoEmail) recipientEmails.push(invoicePayload.rtoEmail);
+
+      if (isIndependent) {
+        const studentEmail = invoicePayload.studentEmail || invoicePayload.billedTo?.email || invoicePayload.rtoEmail;
+        if (studentEmail) recipientEmails.push(studentEmail);
+      } else {
+        if (invoicePayload.rtoEmail) recipientEmails.push(invoicePayload.rtoEmail);
+      }
 
       studentItems = invoicePayload.rtoPayments.map((p) => ({
         name: p.studentName,
@@ -617,8 +625,9 @@ export const sendPaymentInvoiceEmail = async (invoicePayload) => {
     } else {
       // Single Payment Doc
       const p = invoicePayload;
-      rtoName = p.rto || 'Registered Training Organisation';
-      spokesperson = p.spokesperson || '';
+      isIndependent = Boolean(p.studentType === 'Independent Student' || p.rto === 'Independent Student');
+      rtoName = isIndependent ? 'Independent Student' : (p.rto || 'Registered Training Organisation');
+      spokesperson = isIndependent ? p.studentName : (p.spokesperson || '');
       invoiceNumber = p.invoiceNumber || 'WM-51-26';
       gstEnabled = Boolean(p.gstEnabled);
 
@@ -631,7 +640,16 @@ export const sendPaymentInvoiceEmail = async (invoicePayload) => {
       const d = p.invoiceGeneratedDate ? new Date(p.invoiceGeneratedDate) : new Date();
       invoiceDateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 
-      if (p.rto) {
+      if (isIndependent) {
+        let stuDoc = null;
+        if (p.student) {
+          stuDoc = await StudentModel.findById(p.student).lean();
+        } else if (p.studentId) {
+          stuDoc = await StudentModel.findOne({ studentId: p.studentId }).lean();
+        }
+        const stuEmail = stuDoc?.emailAddress || stuDoc?.email;
+        if (stuEmail) recipientEmails.push(stuEmail);
+      } else if (p.rto) {
         const rtoDoc = await RtoModel.findOne({
           name: new RegExp('^' + p.rto.trim() + '$', 'i'),
         }).lean();
@@ -644,8 +662,9 @@ export const sendPaymentInvoiceEmail = async (invoicePayload) => {
       }
     }
 
-    // STRICT SECURITY RULE: Invoices are sent ONLY to RTO buyer contact emails.
-    // Student email addresses are NEVER added as invoice recipients under any circumstance.
+    // STRICT SECURITY RULE:
+    // - For RTO students, invoices are sent ONLY to RTO buyer contact emails.
+    // - For Independent students, invoices are billed directly to the student's email.
     recipientEmails = [...new Set(recipientEmails.filter(Boolean))];
 
     const subtotal = studentItems.reduce((sum, item) => sum + item.amount, 0);
@@ -699,7 +718,7 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:#f8fafc;margin:0;padding
     <div style="margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #f1f5f9">
       <p style="margin:0;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill To:</p>
       ${spokesperson ? `<p style="margin:4px 0 0;font-size:14px;font-weight:700;color:#0f172a">${spokesperson}</p>` : ''}
-      <p style="margin:2px 0 0;font-size:14px;font-weight:600;color:#1e293b">${rtoName}</p>
+      <p style="margin:2px 0 0;font-size:14px;font-weight:600;color:#1e293b">${isIndependent ? 'Independent Student' : rtoName}</p>
     </div>
 
     <table class="tbl">
@@ -772,7 +791,9 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:#f8fafc;margin:0;padding
     try {
       const pdfBuffer = await generateInvoicePDFBuffer({
         invoiceNumber,
-        rtoName,
+        rtoName: isIndependent ? 'Independent Student' : rtoName,
+        isIndependent,
+        billedTo: invoicePayload.billedTo || { name: spokesperson, email: recipientEmails[0] || '' },
         rtoSnapshot: { spokesperson },
         items: studentItems,
         subtotal,

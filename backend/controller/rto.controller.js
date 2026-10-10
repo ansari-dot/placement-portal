@@ -114,16 +114,23 @@ export const createRTOController = async (req, res) => {
       });
     }
 
-    if (!onboardedByName || !String(onboardedByName).trim()) {
-      return res.status(400).json({ success: false, message: 'Onboarded By is required' });
-    }
-
     let linkedUser = null;
     if (onboardedBy) {
-      linkedUser = await UserModel.findById(onboardedBy).select('_id name');
+      linkedUser = await UserModel.findById(onboardedBy).select('_id name role status');
       if (!linkedUser) {
         return res.status(400).json({ success: false, message: 'Selected Portal User ID was not found' });
       }
+      if (!['Administrator', 'Coordinator', 'Staff'].includes(linkedUser.role) || linkedUser.status !== 'Active') {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected onboardedBy user must be an active Administrator, Coordinator, or Staff member',
+        });
+      }
+    }
+
+    const resolvedOnboardedByName = String(onboardedByName || linkedUser?.name || '').trim();
+    if (!resolvedOnboardedByName) {
+      return res.status(400).json({ success: false, message: 'Onboarded By is required' });
     }
 
     // Auto-generate a clean code if none is provided
@@ -168,7 +175,7 @@ export const createRTOController = async (req, res) => {
       status: 'Active',
       students: 0,
       createdBy: req.user?._id || null,
-      onboardedByName: String(onboardedByName).trim(),
+      onboardedByName: resolvedOnboardedByName,
       onboardedBy: linkedUser?._id || null,
     });
 
@@ -194,8 +201,14 @@ export const updateRTOController = async (req, res) => {
       else updates.onboardedByName = String(updates.onboardedByName).trim();
     }
     if (Object.prototype.hasOwnProperty.call(updates, 'onboardedBy') && updates.onboardedBy) {
-      const linkedUser = await UserModel.findById(updates.onboardedBy).select('_id name');
+      const linkedUser = await UserModel.findById(updates.onboardedBy).select('_id name role status');
       if (!linkedUser) return res.status(400).json({ success: false, message: 'Selected Portal User ID was not found' });
+      if (!['Administrator', 'Coordinator', 'Staff'].includes(linkedUser.role) || linkedUser.status !== 'Active') {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected onboardedBy user must be an active Administrator, Coordinator, or Staff member',
+        });
+      }
       updates.onboardedBy = linkedUser._id;
     } else if (Object.prototype.hasOwnProperty.call(updates, 'onboardedBy')) {
       updates.onboardedBy = null;

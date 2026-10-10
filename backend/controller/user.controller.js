@@ -583,3 +583,34 @@ export const getScoreStatsController = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * GET /users/onboarding-eligible
+ * Retrieves all active internal portal users (Administrator, Coordinator, Staff)
+ * eligible to be assigned as onboarders for RTOs and Partner Industries.
+ * Excludes RTO Managers, Students, and Industry facility users.
+ */
+export const getOnboardingEligibleUsersController = async (req, res) => {
+  try {
+    const users = await UserModel.find({
+      status: 'Active',
+      role: { $in: ['Administrator', 'Coordinator', 'Staff'] },
+    })
+      .select('_id name email role department')
+      .sort({ name: 1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    console.error('getOnboardingEligibleUsersController error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch onboarding eligible users',
+      error: error.message,
+    });
+  }
+};
+

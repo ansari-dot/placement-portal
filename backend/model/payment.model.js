@@ -17,6 +17,11 @@ const paymentSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    studentType: {
+      type: String,
+      enum: ['RTO Student', 'Independent Student', 'Awaiting RTO Assignment'],
+      default: 'RTO Student',
+    },
     rto: {
       type: String,
       trim: true,
@@ -35,6 +40,28 @@ const paymentSchema = new mongoose.Schema(
     originalPrice: {
       type: Number,
       default: 0,
+    },
+    isPriceOverridden: {
+      type: Boolean,
+      default: false,
+    },
+    defaultPlacementFee: {
+      type: Number,
+      default: 0,
+    },
+    feeOverrideReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    feeUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    feeUpdatedAt: {
+      type: Date,
+      default: null,
     },
     chargePercentage: {
       type: Number,

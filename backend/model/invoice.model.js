@@ -20,8 +20,18 @@ const invoiceSchema = new mongoose.Schema(
     },
     rtoName: {
       type: String,
-      required: true,
+      default: '',
       index: true,
+    },
+    isIndependent: {
+      type: Boolean,
+      default: false,
+    },
+    billedTo: {
+      name: { type: String, default: '' },
+      email: { type: String, default: '' },
+      phone: { type: String, default: '' },
+      address: { type: String, default: '' },
     },
     rtoSnapshot: {
       spokesperson: { type: String, default: '' },

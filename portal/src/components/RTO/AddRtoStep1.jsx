@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { fetchUsers } from '../../api/userApi';
+import { fetchUsers, fetchOnboardingEligibleUsers } from '../../api/userApi';
 import { 
   Upload, FileText, ArrowRight, DollarSign, Calendar, Plus, Trash2, 
   CheckCircle2, X, Image as ImageIcon, ShieldCheck, HelpCircle, AlertCircle
@@ -39,8 +38,8 @@ export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, u
   const [staffUsers, setStaffUsers] = useState([]);
 
   useEffect(() => {
-    fetchUsers({ status: 'Active' })
-      .then((res) => setStaffUsers((res?.data || []).filter((user) => ['Coordinator', 'Staff', 'RTO Manager'].includes(user.role))))
+    fetchOnboardingEligibleUsers()
+      .then((res) => setStaffUsers(res?.data || []))
       .catch(() => setStaffUsers([]));
   }, []);
 
@@ -231,12 +230,17 @@ export default function AddRtoStep1({ onNext, onCancel, onSaveDraft, formData, u
               <label className="text-xs font-bold text-slate-700">Portal User ID <span className="text-slate-400 font-normal">(Optional)</span></label>
               <select value={formData.onboardedBy || ''}
                 onChange={(e) => {
-                  const user = staffUsers.find((item) => item._id === e.target.value);
-                  updateFormData({ onboardedBy: user?._id || '', ...(user ? { onboardedByName: user.name } : {}) });
+                  const val = e.target.value;
+                  const user = staffUsers.find((item) => item._id === val);
+                  // Preserve existing typed onboardedByName; only auto-fill if empty
+                  updateFormData({ 
+                    onboardedBy: user?._id || '', 
+                    ...(!formData.onboardedByName && user ? { onboardedByName: user.name } : {}) 
+                  });
                 }}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20">
                 <option value="">No portal account / link later</option>
-                {staffUsers.map((user) => <option key={user._id} value={user._id}>{user.name} — {user._id}</option>)}
+                {staffUsers.map((user) => <option key={user._id} value={user._id}>{user.name} ({user.role})</option>)}
               </select>
               <p className="text-[10px] text-slate-500">Link their account to show this RTO in My Progress and award 50 points.</p>
             </div>

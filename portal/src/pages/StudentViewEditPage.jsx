@@ -107,6 +107,7 @@ export default function StudentViewEditPage() {
         'waPhoneCode', 'whatsappNumber',
         'address', 'suburb', 'state', 'postCode', 'country',
         // Step 2 — Education
+        'studentType', 'rtoId', 'independentFee',
         'courseQualification', 'courseLevel', 'placementHours',
         'studentId', 'institute', 'assignedRto',
         'currentYearSemester', 'campus',
@@ -732,6 +733,94 @@ export default function StudentViewEditPage() {
                   </div>
                 </div>
 
+                {/* Student Classification & Billing */}
+                <div className="p-3.5 rounded-xl border border-blue-100 bg-blue-50/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800">
+                        Student Classification &amp; Billing
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        RTO Partner Student vs. Direct Billed Independent Student
+                      </p>
+                    </div>
+                    {isEdit ? (
+                      <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white p-0.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateField('studentType', 'RTO Student');
+                            if (formData.assignedRto === 'Independent Student') updateField('assignedRto', '');
+                          }}
+                          className={`px-3 py-1 font-semibold rounded-md transition ${
+                            (formData.studentType || 'RTO Student') === 'RTO Student'
+                              ? 'bg-blue-600 text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          RTO Student
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateField('studentType', 'Independent Student');
+                            updateField('assignedRto', 'Independent Student');
+                            updateField('rtoId', undefined);
+                          }}
+                          className={`px-3 py-1 font-semibold rounded-md transition ${
+                            formData.studentType === 'Independent Student'
+                              ? 'bg-blue-600 text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Independent Student
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">
+                        {formData.studentType || 'RTO Student'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-blue-100/60">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                        College / RTO
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.studentType === 'Independent Student' ? 'Independent Student (Direct Billing)' : (formData.assignedRto || formData.institute || 'Unassigned')}
+                        onChange={e => {
+                          if (isEdit && formData.studentType !== 'Independent Student') {
+                            updateField('assignedRto', e.target.value);
+                            updateField('institute', e.target.value);
+                          }
+                        }}
+                        disabled={!isEdit || formData.studentType === 'Independent Student'}
+                        className={fieldClass(isEdit && formData.studentType !== 'Independent Student')}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                        Placement Fee ($ AUD)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder={formData.studentType === 'Independent Student' ? 'Enter independent fee' : 'RTO Course Pricing'}
+                        value={formData.independentFee ?? ''}
+                        onChange={e => updateField('independentFee', e.target.value === '' ? '' : Number(e.target.value))}
+                        disabled={!isEdit}
+                        className={fieldClass(isEdit)}
+                      />
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {formData.studentType === 'Independent Student' ? 'Directly billed to student upon placement milestones' : 'Custom fee override or RTO course fee'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Documents section — matches EducationDetailsForm exactly */}
                 <div className="pt-2 border-t border-slate-100 space-y-4">
                   <div className="flex items-center space-x-2">
@@ -907,8 +996,8 @@ export default function StudentViewEditPage() {
                   </div>
                   {formData.transport === 'Yes' && (
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">Licence Number <span className="text-rose-500">*</span></label>
-                      <input type="text" placeholder="Enter driver licence number"
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">Licence Number <span className="text-slate-400 font-normal">(optional)</span></label>
+                      <input type="text" placeholder="Enter driver licence number (optional)"
                         value={formData.licenceNumber || ''}
                         onChange={e => updateField('licenceNumber', e.target.value)}
                         disabled={!isEdit} className={fieldClass(isEdit)} />

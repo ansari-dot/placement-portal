@@ -6,6 +6,7 @@ import {
   MapPin, ArrowUpRight, Trash2, X, Phone, Mail, User, Clock,
   ChevronUp
 } from 'lucide-react';
+import { AUSTRALIAN_STATES } from '../../constants/australianStates';
 
 // ─── Expandable placed-student cell (display-only) ───────────────────────────
 function PlacedStudentsCell({ students, variant }) {
@@ -285,7 +286,6 @@ export default function IndustriesDashboard({
                 {[
                   ['postcode', 'Postcode / Zip'],
                   ['city', 'City'],
-                  ['state', 'State'],
                 ].map(([key, placeholder]) => (
                   <input
                     key={key}
@@ -296,6 +296,19 @@ export default function IndustriesDashboard({
                     className="w-28 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 text-slate-700 placeholder-slate-400 shadow-sm"
                   />
                 ))}
+
+                <div className="relative">
+                  <select
+                    aria-label="Filter by Australian State"
+                    value={locationFilters.state}
+                    onChange={(e) => setLocationFilters(old => ({ ...old, state: e.target.value }))}
+                    className="appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500 shadow-sm cursor-pointer"
+                  >
+                    <option value="">All States</option>
+                    {AUSTRALIAN_STATES.map(s => <option key={s.code} value={s.code}>{s.code}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                </div>
 
                 <div className="relative">
                   <select 
@@ -990,14 +1003,15 @@ export default function IndustriesDashboard({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-700">State</label>
-                    <input
-                      type="text"
+                    <label className="font-bold text-slate-700">State / Territory</label>
+                    <select
                       value={editFormData.state}
                       onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value })}
-                      placeholder="e.g. VIC"
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
-                    />
+                    >
+                      <option value="">Select State</option>
+                      {AUSTRALIAN_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="font-bold text-slate-700">Postal Code</label>

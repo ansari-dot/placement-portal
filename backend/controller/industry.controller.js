@@ -4,6 +4,44 @@ import JobModel from '../model/job.model.js';
 import StudentModel from '../model/student.model.js';
 import UserModel from '../model/user.model.js';
 
+export const AUSTRALIAN_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
+
+export const STATE_NAME_TO_CODE = {
+  'ACT': 'ACT',
+  'AUSTRALIAN CAPITAL TERRITORY': 'ACT',
+  'NSW': 'NSW',
+  'NEW SOUTH WALES': 'NSW',
+  'NT': 'NT',
+  'NORTHERN TERRITORY': 'NT',
+  'QLD': 'QLD',
+  'QUEENSLAND': 'QLD',
+  'SA': 'SA',
+  'SOUTH AUSTRALIA': 'SA',
+  'TAS': 'TAS',
+  'TASMANIA': 'TAS',
+  'VIC': 'VIC',
+  'VICTORIA': 'VIC',
+  'WA': 'WA',
+  'WESTERN AUSTRALIA': 'WA',
+};
+
+export const normalizeAndValidateState = (inputState, isRequired = false) => {
+  if (!inputState || !String(inputState).trim()) {
+    return isRequired
+      ? { valid: false, code: '', error: 'State is required' }
+      : { valid: true, code: '' };
+  }
+  const raw = String(inputState).trim();
+  const upper = raw.toUpperCase();
+  if (AUSTRALIAN_STATES.includes(upper)) return { valid: true, code: upper };
+  for (const [key, code] of Object.entries(STATE_NAME_TO_CODE)) {
+    if (upper === key || upper.includes(`(${code})`) || upper.startsWith(code + ' ') || upper.startsWith(key)) {
+      return { valid: true, code };
+    }
+  }
+  return { valid: false, code: raw, error: `Invalid Australian state/territory "${raw}". Must be one of: ${AUSTRALIAN_STATES.join(', ')}` };
+};
+
 const safeRegex = (str) => new RegExp(`^${str.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
 // Helper to auto-sync any industries created in Workflow Step 2 or Step 3 into Industry collection.
@@ -279,7 +317,7 @@ export const createIndustryController = async (req, res) => {
     if (!contactEmail) missing.push('Email Address');
     if (!contactPhone) missing.push('Phone Number');
     if (!address) missing.push('Address');
-    if (industryCategory === 'Partner' && !onboardedByName?.trim()) missing.push('Onboarded By');
+    if (industryCategory === 'Partner' && !onboardedByName?.trim() && !onboardedBy) missing.push('Onboarded By');
     if (industryCategory === 'Partner' && !suburb) missing.push('City/Suburb');
     if (industryCategory === 'Partner' && !state) missing.push('State');
     if (industryCategory === 'Partner' && !postCode) missing.push('Postcode');
@@ -292,15 +330,38 @@ export const createIndustryController = async (req, res) => {
       });
     }
 
+    let finalState = state || '';
+    if (finalState) {
+      const { valid, code } = normalizeAndValidateState(finalState);
+      if (!valid) {
+        return res.status(400).json({
+          success: false,
+          message: 'State must be a valid Australian state or territory (ACT, NSW, NT, QLD, SA, TAS, VIC, WA)',
+        });
+      }
+      finalState = code;
+    }
+
     // Auto-generate a unique industry code if not provided
     const finalCode = industryCode || industryName.replace(/\s+/g, '').substring(0, 6).toUpperCase() + Date.now().toString().slice(-4);
 
-    const location = [suburb, state].filter(Boolean).join(', ') || 'Australia';
+    const location = [suburb, finalState].filter(Boolean).join(', ') || 'Australia';
 
     let linkedOnboarder = null;
-    if (industryCategory === 'Partner' && onboardedBy) {
-      linkedOnboarder = await UserModel.findById(onboardedBy).select('_id name');
+    if (onboardedBy) {
+      linkedOnboarder = await UserModel.findById(onboardedBy).select('_id name role status');
       if (!linkedOnboarder) return res.status(400).json({ success: false, message: 'Selected Portal User was not found' });
+      if (!['Administrator', 'Coordinator', 'Staff'].includes(linkedOnboarder.role) || linkedOnboarder.status !== 'Active') {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected onboardedBy user must be an active Administrator, Coordinator, or Staff member',
+        });
+      }
+    }
+
+    const resolvedOnboardedByName = String(onboardedByName || linkedOnboarder?.name || '').trim();
+    if (industryCategory === 'Partner' && !resolvedOnboardedByName) {
+      return res.status(400).json({ success: false, message: 'Onboarded By is required for Partner Industry' });
     }
 
     const industry = new IndustryModel({
@@ -313,14 +374,14 @@ export const createIndustryController = async (req, res) => {
       contactJobTitle,
       address,
       suburb,
-      state,
+      state: finalState,
       postCode,
       country: country || 'Australia',
       abn,
       website,
       shortDescription,
       industryCategory: industryCategory === 'Partner' ? 'Partner' : 'Random',
-      onboardedByName: industryCategory === 'Partner' ? String(onboardedByName).trim() : '',
+      onboardedByName: industryCategory === 'Partner' ? resolvedOnboardedByName : '',
       onboardedBy: linkedOnboarder?._id || null,
       partnershipInfo: industryCategory === 'Partner' ? (partnershipInfo || '') : '',
       documents: industryCategory === 'Partner' && Array.isArray(documents) ? documents : [],
@@ -354,10 +415,27 @@ export const updateIndustryController = async (req, res) => {
     }
     const oldName = (oldIndustry.name || '').trim();
 
+    if (Object.prototype.hasOwnProperty.call(updateData, 'state') && updateData.state) {
+      const { valid, code } = normalizeAndValidateState(updateData.state);
+      if (!valid) {
+        return res.status(400).json({
+          success: false,
+          message: 'State must be a valid Australian state or territory (ACT, NSW, NT, QLD, SA, TAS, VIC, WA)',
+        });
+      }
+      updateData.state = code;
+    }
+
     if (Object.prototype.hasOwnProperty.call(updateData, 'onboardedBy')) {
       if (updateData.onboardedBy) {
-        const linkedUser = await UserModel.findById(updateData.onboardedBy).select('_id');
+        const linkedUser = await UserModel.findById(updateData.onboardedBy).select('_id name role status');
         if (!linkedUser) return res.status(400).json({ success: false, message: 'Selected Portal User was not found' });
+        if (!['Administrator', 'Coordinator', 'Staff'].includes(linkedUser.role) || linkedUser.status !== 'Active') {
+          return res.status(400).json({
+            success: false,
+            message: 'Selected onboardedBy user must be an active Administrator, Coordinator, or Staff member',
+          });
+        }
         updateData.onboardedBy = linkedUser._id;
       } else {
         updateData.onboardedBy = null;

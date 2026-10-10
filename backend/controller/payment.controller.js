@@ -34,18 +34,19 @@ export const THIRTY_PERCENT_STATUSES = [
 /**
  * Helper: Resolve price & charging triggers for student based on assigned RTO and course
  */
-const resolveRtoCoursePrice = (rtoDoc, student) => {
+export const resolveRtoCoursePrice = (rtoDoc, student = {}) => {
   if (!rtoDoc) {
     return {
-      priceConfigured: true,
-      originalPrice: 500,
-      pricingError: '',
+      priceConfigured: false,
+      originalPrice: 0,
+      pricingError: 'RTO profile not found or not assigned',
+      spokesperson: '',
       withdrawalFeeRule: '30%',
       withdrawalFeePercentage: 30,
     };
   }
 
-  const studentCourse = (student.courseQualification || student.courses || '').trim().toLowerCase();
+  const studentCourse = (student?.courseQualification || student?.courses || '').trim().toLowerCase();
   const coursePricingList = rtoDoc.coursePricing || [];
 
   let originalPrice = 0;
@@ -71,14 +72,13 @@ const resolveRtoCoursePrice = (rtoDoc, student) => {
     originalPrice = Number(rtoDoc.payoutRate);
   }
 
-  if (!originalPrice) {
-    originalPrice = 500; // standard fallback
-  }
+  const priceConfigured = originalPrice > 0;
+  const pricingError = priceConfigured ? '' : 'No pricing configured for course in RTO profile';
 
   return {
-    priceConfigured: true,
+    priceConfigured,
     originalPrice,
-    pricingError: '',
+    pricingError,
     spokesperson: rtoDoc.spokesperson || rtoDoc.contactName || '',
     withdrawalFeeRule: rtoDoc.withdrawalFeeRule || '30%',
     withdrawalFeePercentage: rtoDoc.withdrawalFeePercentage ?? 30,
@@ -274,13 +274,42 @@ export const syncChargeableStudents = async () => {
       processedKeysInLoop.add(stuDbId);
       if (stuBizId) processedKeysInLoop.add(stuBizId);
 
-      const assignedRtoName = (stu.assignedRto || '').trim();
-      const matchedRto =
-        rtoMapByName.get(assignedRtoName.toLowerCase()) ||
-        rtoMapByCode.get(assignedRtoName.toLowerCase()) ||
-        null;
+      const isIndependentStudent = stu.studentType === 'Independent Student';
+      const assignedRtoName = isIndependentStudent ? 'Independent Student' : (stu.assignedRto || '').trim();
+      const matchedRto = isIndependentStudent
+        ? null
+        : (rtoMapByName.get(assignedRtoName.toLowerCase()) ||
+           rtoMapByCode.get(assignedRtoName.toLowerCase()) ||
+           null);
 
-      const { priceConfigured, originalPrice, pricingError, spokesperson, withdrawalFeeRule, withdrawalFeePercentage } = resolveRtoCoursePrice(matchedRto, stu);
+      let priceConfigured = false;
+      let originalPrice = 0;
+      let pricingError = '';
+      let spokesperson = '';
+      let withdrawalFeeRule = '30%';
+      let withdrawalFeePercentage = 30;
+
+      if (isIndependentStudent) {
+        const indFee = stu.independentFee != null ? Number(stu.independentFee) : null;
+        if (indFee !== null && indFee > 0) {
+          priceConfigured = true;
+          originalPrice = indFee;
+          pricingError = '';
+        } else {
+          priceConfigured = false;
+          originalPrice = 0;
+          pricingError = 'No placement fee entered for Independent Student';
+        }
+        spokesperson = stuName;
+      } else {
+        const pricingRes = resolveRtoCoursePrice(matchedRto, stu);
+        priceConfigured = pricingRes.priceConfigured;
+        originalPrice = pricingRes.originalPrice;
+        pricingError = pricingRes.pricingError;
+        spokesperson = pricingRes.spokesperson;
+        withdrawalFeeRule = pricingRes.withdrawalFeeRule;
+        withdrawalFeePercentage = pricingRes.withdrawalFeePercentage;
+      }
 
       const canonicalStatus = mapCanonicalStatus(stu.placementStatus);
       const isWithdrawal = THIRTY_PERCENT_STATUSES.includes(stu.placementStatus) || THIRTY_PERCENT_STATUSES.includes(canonicalStatus);
@@ -301,23 +330,31 @@ export const syncChargeableStudents = async () => {
       const existingPayment = existingPaymentMap.get(stuDbId) || (stuBizId ? existingPaymentMap.get(stuBizId) : null);
 
       if (existingPayment) {
+        // Respect isPriceOverridden so admin edits are never clobbered
+        const isOverridden = Boolean(existingPayment.isPriceOverridden);
+        const finalPrice = isOverridden ? existingPayment.originalPrice : originalPrice;
+        const finalPercentage = existingPayment.chargePercentage ?? chargePercentage;
+        const calculatedPaymentAmount = Number(((finalPrice * finalPercentage) / 100).toFixed(2));
+        const gstAmount = existingPayment.gstEnabled ? Number((calculatedPaymentAmount * 0.10).toFixed(2)) : 0;
+        const totalAmount = Number((calculatedPaymentAmount + gstAmount).toFixed(2));
+
         bulkOps.push({
           updateOne: {
             filter: { _id: existingPayment._id },
             update: {
               $set: {
+                studentType: isIndependentStudent ? 'Independent Student' : (stu.studentType || 'RTO Student'),
                 studentName: stuName || existingPayment.studentName,
                 rto: assignedRtoName || existingPayment.rto,
                 spokesperson: spokesperson || matchedRto?.contactName || existingPayment.spokesperson || '',
                 course: stu.courseQualification || stu.courses || existingPayment.course,
                 placementStatus: canonicalStatus,
-                chargePercentage: existingPayment.chargePercentage ?? chargePercentage,
-                originalPrice,
-                paymentAmount: existingPayment.chargePercentage !== undefined
-                  ? Number(((originalPrice * existingPayment.chargePercentage) / 100).toFixed(2))
-                  : paymentAmount,
-                priceConfigured,
-                pricingError,
+                defaultPlacementFee: originalPrice,
+                // Only update originalPrice if NOT overridden!
+                ...(isOverridden ? {} : { originalPrice, priceConfigured, pricingError }),
+                paymentAmount: calculatedPaymentAmount,
+                gstAmount,
+                totalAmount,
               },
             },
           },
@@ -328,6 +365,7 @@ export const syncChargeableStudents = async () => {
             document: {
               studentId: stuBizId || stuDbId,
               student: stu._id,
+              studentType: isIndependentStudent ? 'Independent Student' : (stu.studentType || 'RTO Student'),
               studentName: stuName,
               rto: assignedRtoName,
               spokesperson: spokesperson || matchedRto?.contactName || '',
@@ -335,8 +373,12 @@ export const syncChargeableStudents = async () => {
               placementStatus: canonicalStatus,
               service: 'Placement status',
               originalPrice,
+              defaultPlacementFee: originalPrice,
+              isPriceOverridden: false,
               chargePercentage,
               paymentAmount,
+              gstAmount: 0,
+              totalAmount: paymentAmount,
               paymentStatus: 'Pending',
               invoiceGeneratedDate: null,
               invoiceSentDate: null,
@@ -541,16 +583,27 @@ export const updatePaymentStatusController = async (req, res) => {
     }
 
     if (originalPrice !== undefined) {
-      payment.originalPrice = Number(originalPrice);
+      const numPrice = Number(originalPrice);
+      payment.originalPrice = numPrice;
+      payment.isPriceOverridden = true;
+      payment.priceConfigured = numPrice > 0;
+      payment.pricingError = numPrice > 0 ? '' : payment.pricingError;
+      payment.feeUpdatedAt = new Date();
+      if (req.user) {
+        payment.feeUpdatedBy = req.user._id;
+      }
+      if (req.body.feeOverrideReason) {
+        payment.feeOverrideReason = String(req.body.feeOverrideReason).trim();
+      }
     }
 
     if (gstEnabled !== undefined) {
       payment.gstEnabled = Boolean(gstEnabled);
     }
 
-    // Recalculate amounts
+    // Recalculate amounts without arbitrary fallback
     const pct = payment.chargePercentage ?? 100;
-    const orig = payment.originalPrice ?? 500;
+    const orig = payment.originalPrice ?? 0;
     payment.paymentAmount = Number(((orig * pct) / 100).toFixed(2));
 
     if (payment.gstEnabled) {
@@ -640,14 +693,35 @@ export const bulkGenerateInvoiceController = async (req, res) => {
       });
     }
 
-    // Group selected payments by RTO
-    const rtoGroups = new Map(); // rtoName -> Array<Payment>
+    // Group selected payments:
+    // Regular RTO students are grouped by RTO name.
+    // Independent students are billed individually directly to the student.
+    const invoiceGroups = [];
+    const rtoGroups = new Map();
+
     for (const p of payments) {
-      const rtoKey = (p.rto || 'Unassigned RTO').trim();
-      if (!rtoGroups.has(rtoKey)) {
-        rtoGroups.set(rtoKey, []);
+      const isInd = p.studentType === 'Independent Student' || (p.rto || '').trim() === 'Independent Student';
+      if (isInd) {
+        invoiceGroups.push({
+          isIndependent: true,
+          rtoName: 'Independent Student',
+          payments: [p],
+        });
+      } else {
+        const rtoKey = (p.rto || 'Unassigned RTO').trim();
+        if (!rtoGroups.has(rtoKey)) {
+          rtoGroups.set(rtoKey, []);
+        }
+        rtoGroups.get(rtoKey).push(p);
       }
-      rtoGroups.get(rtoKey).push(p);
+    }
+
+    for (const [rtoName, rtoPayments] of rtoGroups.entries()) {
+      invoiceGroups.push({
+        isIndependent: false,
+        rtoName,
+        payments: rtoPayments,
+      });
     }
 
     const now = new Date();
@@ -655,15 +729,45 @@ export const bulkGenerateInvoiceController = async (req, res) => {
     const generatedInvoices = [];
     const confirmationMessages = [];
 
-    for (const [rtoName, rtoPayments] of rtoGroups.entries()) {
-      // Get unique auto-incrementing invoice number sequence for this RTO invoice
+    for (const group of invoiceGroups) {
+      const { isIndependent, rtoName, payments: rtoPayments } = group;
+      // Get unique auto-incrementing invoice number sequence for this invoice
       const seq = await getNextSequence('invoiceNumber', 51);
       const invoiceNum = `WM-${seq}-${yearSuffix}`;
 
-      // Resolve RTO spokesperson & email
-      const rtoDoc = await RtoModel.findOne({ name: new RegExp('^' + rtoName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }).lean();
-      const spokesperson = rtoDoc?.spokesperson || rtoDoc?.contactName || 'RTO Manager';
-      const rtoEmail = rtoDoc?.contactEmail || '';
+      let spokesperson = '';
+      let rtoEmail = '';
+      let billedTo = { name: '', email: '', phone: '', address: '' };
+      let rtoDoc = null;
+
+      if (isIndependent) {
+        const p = rtoPayments[0];
+        let stuDoc = null;
+        if (p.student) {
+          stuDoc = await StudentModel.findById(p.student).lean();
+        } else if (p.studentId) {
+          stuDoc = await StudentModel.findOne({ studentId: p.studentId }).lean();
+        }
+        spokesperson = p.studentName;
+        rtoEmail = stuDoc?.emailAddress || stuDoc?.email || '';
+        billedTo = {
+          name: p.studentName,
+          email: rtoEmail,
+          phone: stuDoc?.phoneNumber || stuDoc?.phone || '',
+          address: stuDoc?.address || [stuDoc?.suburb, stuDoc?.state].filter(Boolean).join(', ') || '',
+        };
+      } else {
+        // Resolve RTO spokesperson & email (never fall back to generic "RTO Manager" when RTO name is known)
+        rtoDoc = await RtoModel.findOne({ name: new RegExp('^' + rtoName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }).lean();
+        spokesperson = rtoDoc?.spokesperson || rtoDoc?.contactName || rtoDoc?.name || rtoName;
+        rtoEmail = rtoDoc?.contactEmail || '';
+        billedTo = {
+          name: spokesperson,
+          email: rtoEmail,
+          phone: rtoDoc?.contactPhone || '',
+          address: rtoDoc?.address || '',
+        };
+      }
 
       let rtoSubtotal = 0;
       const invoiceItems = [];
@@ -674,7 +778,7 @@ export const bulkGenerateInvoiceController = async (req, res) => {
           p.chargePercentage = percentageMap.get(pIdStr);
         }
         const pct = p.chargePercentage ?? 100;
-        const orig = p.originalPrice || 150;
+        const orig = p.originalPrice; // Use actual price without arbitrary 150 fallback
         p.paymentAmount = Number(((orig * pct) / 100).toFixed(2));
         p.gstEnabled = Boolean(gstEnabled);
         p.gstAmount = p.gstEnabled ? Number((p.paymentAmount * 0.10).toFixed(2)) : 0;
@@ -707,13 +811,16 @@ export const bulkGenerateInvoiceController = async (req, res) => {
       const gstAmt = gstEnabled ? Number((rtoSubtotal * 0.10).toFixed(2)) : 0;
       const totalAmt = Number((rtoSubtotal + gstAmt).toFixed(2));
 
-      // Trigger Email send for this RTO invoice
+      // Trigger Email send for this invoice
       const sendResult = await sendPaymentInvoiceEmail({
+        isIndependent,
         rtoName,
         rtoPayments,
         invoiceNumber: invoiceNum,
         spokesperson,
         rtoEmail,
+        studentEmail: isIndependent ? rtoEmail : '',
+        billedTo,
         gstEnabled: Boolean(gstEnabled),
       });
 
@@ -725,11 +832,13 @@ export const bulkGenerateInvoiceController = async (req, res) => {
             $set: {
               invoiceNumber: invoiceNum,
               rtoName,
+              isIndependent,
+              billedTo,
               rtoSnapshot: {
                 spokesperson,
                 contactEmail: rtoEmail,
-                contactPhone: rtoDoc?.contactPhone || '',
-                address: rtoDoc?.address || '',
+                contactPhone: billedTo.phone || '',
+                address: billedTo.address || '',
               },
               items: invoiceItems,
               subtotal: rtoSubtotal,
@@ -754,15 +863,16 @@ export const bulkGenerateInvoiceController = async (req, res) => {
         console.warn('[InvoiceModel] Snapshot save error:', invErr.message);
       }
 
-      const targetEmail = rtoEmail || sendResult.recipientEmail || 'RTO inbox';
+      const displayName = isIndependent ? `${rtoPayments[0]?.studentName} (Independent Student)` : rtoName;
+      const targetEmail = rtoEmail || sendResult.recipientEmail || (isIndependent ? 'Student inbox' : 'RTO inbox');
       const msg = sendResult.sent
-        ? `Your invoice ${invoiceNum} for ${rtoName} (${rtoPayments.length} student${rtoPayments.length > 1 ? 's' : ''}) has been sent successfully to ${targetEmail}.`
-        : `Invoice ${invoiceNum} generated for ${rtoName}, but email could not be sent to ${targetEmail}. Retry available.`;
+        ? `Your invoice ${invoiceNum} for ${displayName} (${rtoPayments.length} student${rtoPayments.length > 1 ? 's' : ''}) has been sent successfully to ${targetEmail}.`
+        : `Invoice ${invoiceNum} generated for ${displayName}, but email could not be sent to ${targetEmail}. Retry available.`;
 
       confirmationMessages.push(msg);
 
       generatedInvoices.push({
-        rtoName,
+        rtoName: displayName,
         invoiceNumber: invoiceNum,
         studentCount: rtoPayments.length,
         subtotal: rtoSubtotal,

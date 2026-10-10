@@ -284,19 +284,15 @@ export default function RtoSourceForm({ formData, updateField, updateFields, err
             {formData.transport === 'Yes' && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Licence Number <span className="text-rose-500">*</span>
+                  Licence Number <span className="text-slate-400 font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="Enter driver licence number"
+                  placeholder="Enter driver licence number (optional)"
                   value={formData.licenceNumber || ''}
                   onChange={(e) => updateField('licenceNumber', e.target.value)}
-                  className={inputClass(errors?.licenceNumber)}
-                  autoFocus
+                  className={inputClass(false)}
                 />
-                {errors?.licenceNumber && (
-                  <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.licenceNumber}</p>
-                )}
               </div>
             )}
 

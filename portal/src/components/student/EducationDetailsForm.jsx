@@ -75,6 +75,7 @@ const selectClass = (hasError) =>
 
 export default function EducationDetailsForm({ formData, updateField, errors }) {
   const [activeRtos, setActiveRtos] = useState([]);
+  const [allRtos, setAllRtos] = useState([]);
   const [loadingRtos, setLoadingRtos] = useState(true);
   const [isOtherSource, setIsOtherSource] = useState(
     Boolean(
@@ -102,6 +103,7 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
       .then(res => {
         if (!isMounted) return;
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setAllRtos(list);
         const names = list
           .map(r => (typeof r === 'string' ? r : r?.name))
           .filter(Boolean);
@@ -121,6 +123,52 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
       isMounted = false;
     };
   }, []);
+
+  const resolveRtoPricing = () => {
+    if (formData.studentType === 'Independent Student') return null;
+    const currentRtoName = formData.institute || formData.assignedRto;
+    if (!currentRtoName || currentRtoName === 'Other') return null;
+    const rto = allRtos.find(r => (formData.rtoId && r._id === formData.rtoId) || r.name === currentRtoName);
+    if (!rto) return null;
+
+    const courseQ = String(formData.courseQualification || '').trim().toLowerCase();
+    const courseLvl = String(formData.courseLevel || '').trim().toLowerCase();
+
+    if (Array.isArray(rto.coursePricing) && rto.coursePricing.length > 0) {
+      const exact = rto.coursePricing.find(p => {
+        const pC = String(p.course || '').trim().toLowerCase();
+        const pQ = String(p.qualification || '').trim().toLowerCase();
+        return pC && pC === courseQ && pQ && pQ === courseLvl;
+      });
+      if (exact && typeof exact.pricing === 'number' && exact.pricing > 0) {
+        return { configured: true, price: exact.pricing, source: 'Exact Course & Qualification Match' };
+      }
+
+      const courseMatch = rto.coursePricing.find(p => {
+        const pC = String(p.course || '').trim().toLowerCase();
+        return pC && (pC === courseQ || courseQ.includes(pC) || pC.includes(courseQ));
+      });
+      if (courseMatch && typeof courseMatch.pricing === 'number' && courseMatch.pricing > 0) {
+        return { configured: true, price: courseMatch.pricing, source: `Course Match (${courseMatch.course})` };
+      }
+
+      const lvlMatch = rto.coursePricing.find(p => {
+        const pQ = String(p.qualification || '').trim().toLowerCase();
+        return pQ && (pQ === courseLvl || courseLvl.includes(pQ) || pQ.includes(courseLvl));
+      });
+      if (lvlMatch && typeof lvlMatch.pricing === 'number' && lvlMatch.pricing > 0) {
+        return { configured: true, price: lvlMatch.pricing, source: `Level Match (${lvlMatch.qualification})` };
+      }
+    }
+
+    if (typeof rto.payoutRate === 'number' && rto.payoutRate > 0) {
+      return { configured: true, price: rto.payoutRate, source: 'Base RTO Payout Rate' };
+    }
+
+    return { configured: false, price: 0, source: 'No configured price found in RTO agreement' };
+  };
+
+  const pricingInfo = resolveRtoPricing();
 
   const handleAddCustomDoc = () => {
     const current = Array.isArray(formData.additionalDocuments) ? formData.additionalDocuments : [];
@@ -228,6 +276,99 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
 
 
 
+          {/* Student Classification & Billing Mode */}
+          <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs font-bold text-slate-800">
+                  Student Classification &amp; Billing Mode <span className="text-rose-500">*</span>
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Select whether this student is enrolled through an RTO agreement or registered independently.
+                </p>
+              </div>
+              <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateField('studentType', 'RTO Student');
+                    if (formData.assignedRto === 'Independent Student') {
+                      updateField('assignedRto', '');
+                      updateField('institute', '');
+                    }
+                  }}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
+                    (formData.studentType || 'RTO Student') === 'RTO Student'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  RTO Student
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateField('studentType', 'Independent Student');
+                    updateField('assignedRto', 'Independent Student');
+                    updateField('institute', 'Independent Student');
+                    updateField('rtoId', undefined);
+                  }}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
+                    formData.studentType === 'Independent Student'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Independent Student
+                </button>
+              </div>
+            </div>
+
+            {formData.studentType === 'Independent Student' ? (
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-blue-100/60 items-center">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Placement Fee ($ AUD) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 1500"
+                    value={formData.independentFee || ''}
+                    onChange={(e) => updateField('independentFee', e.target.value)}
+                    className={inputClass(errors?.independentFee)}
+                  />
+                  {errors?.independentFee && (
+                    <p className="text-[10px] text-rose-600 font-medium mt-1">{errors.independentFee}</p>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-500 bg-white p-3 rounded-lg border border-slate-200">
+                  <span className="font-semibold text-slate-700">Direct Student Billing:</span> Invoices are issued directly to the student's personal contact details without RTO involvement.
+                </div>
+              </div>
+            ) : (
+              pricingInfo && (
+                <div className="pt-2 border-t border-blue-100/60 flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-slate-500">RTO Agreement Placement Fee:</span>
+                    {pricingInfo.configured ? (
+                      <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-mono">
+                        ${pricingInfo.price.toFixed(2)} AUD
+                      </span>
+                    ) : (
+                      <span className="font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                        Unconfigured ($0.00 Default - Admin Can Override)
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {pricingInfo.source}
+                  </span>
+                </div>
+              )
+            )}
+          </div>
+
           {/* Row 2: Student ID, College / RTO */}
           <div className="grid grid-cols-2 gap-5">
             <div>
@@ -279,37 +420,53 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
               </p>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO (optional)</label>
-              <div className="relative">
-                <select
-                  value={formData.institute || formData.assignedRto || ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    updateField('institute', val);
-                    updateField('assignedRto', val);
-                  }}
-                  disabled={loadingRtos}
-                  className={selectClass()}
-                >
-                  <option value="">{loadingRtos ? 'Loading College / RTO...' : 'Select College / RTO'}</option>
-                  {(formData.institute || formData.assignedRto) &&
-                    !activeRtos.includes(formData.institute || formData.assignedRto) &&
-                    (formData.institute || formData.assignedRto) !== 'Other' && (
-                      <option value={formData.institute || formData.assignedRto}>
-                        {formData.institute || formData.assignedRto}
-                      </option>
-                    )}
-                  {activeRtos.map((rto) => (
-                    <option key={rto} value={rto}>{rto}</option>
-                  ))}
-                  <option value="Other">Other</option>
-                </select>
-                <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={14} />
-                </span>
+            {formData.studentType === 'Independent Student' ? (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO</label>
+                <input
+                  type="text"
+                  value="Independent Student (Direct Billing)"
+                  disabled
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 font-semibold cursor-not-allowed"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Billed directly to student; not assigned to an RTO partner.</p>
               </div>
-            </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO (optional)</label>
+                <div className="relative">
+                  <select
+                    value={formData.institute || formData.assignedRto || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateField('institute', val);
+                      updateField('assignedRto', val);
+                      const matched = allRtos.find(r => r.name === val);
+                      if (matched) updateField('rtoId', matched._id);
+                    }}
+                    disabled={loadingRtos}
+                    className={selectClass()}
+                  >
+                    <option value="">{loadingRtos ? 'Loading College / RTO...' : 'Select College / RTO'}</option>
+                    {(formData.institute || formData.assignedRto) &&
+                      !activeRtos.includes(formData.institute || formData.assignedRto) &&
+                      (formData.institute || formData.assignedRto) !== 'Other' && (
+                        <option value={formData.institute || formData.assignedRto}>
+                          {formData.institute || formData.assignedRto}
+                        </option>
+                      )}
+                    {activeRtos.map((rto) => (
+                      <option key={rto} value={rto}>{rto}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
+                  <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                    <ChevronDown size={14} />
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
 
             {isOtherCollege && (
               <div>

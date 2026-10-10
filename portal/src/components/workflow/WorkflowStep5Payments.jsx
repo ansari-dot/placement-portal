@@ -18,6 +18,7 @@ import {
   Eye,
   Download,
   X,
+  Edit2,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
@@ -146,6 +147,50 @@ export default function WorkflowStep5Payments() {
     isOpen: false,
     payments: [],
   });
+
+  // Fee Override Modal State
+  const [feeOverrideModal, setFeeOverrideModal] = useState({
+    isOpen: false,
+    payment: null,
+    newPrice: '',
+    reason: '',
+    saving: false,
+  });
+
+  const openFeeOverrideModal = (paymentRecord) => {
+    setFeeOverrideModal({
+      isOpen: true,
+      payment: paymentRecord,
+      newPrice: paymentRecord.originalPrice !== undefined ? String(paymentRecord.originalPrice) : '',
+      reason: paymentRecord.feeOverrideReason || '',
+      saving: false,
+    });
+  };
+
+  const handleSaveFeeOverride = async (e) => {
+    e?.preventDefault();
+    if (!feeOverrideModal.payment) return;
+    const priceNum = Number(feeOverrideModal.newPrice);
+    if (isNaN(priceNum) || priceNum < 0) {
+      toast.error('Please enter a valid non-negative fee amount');
+      return;
+    }
+    const pId = feeOverrideModal.payment._id || feeOverrideModal.payment.id;
+    try {
+      setFeeOverrideModal(prev => ({ ...prev, saving: true }));
+      const res = await updatePaymentStatus(pId, {
+        originalPrice: priceNum,
+        feeOverrideReason: feeOverrideModal.reason,
+      });
+      toast.success(res?.message || 'Placement fee updated successfully');
+      setFeeOverrideModal({ isOpen: false, payment: null, newPrice: '', reason: '', saving: false });
+      loadData();
+    } catch (err) {
+      console.error('Failed to update fee override:', err);
+      toast.error(err?.response?.data?.message || 'Failed to update fee override');
+      setFeeOverrideModal(prev => ({ ...prev, saving: false }));
+    }
+  };
 
   const openSingleInvoiceModal = (paymentRecord) => {
     setInvoiceModal({
@@ -680,10 +725,16 @@ export default function WorkflowStep5Payments() {
 
                       {/* Column 2 — RTO Name */}
                       <td className="py-2.5 px-3 whitespace-nowrap font-medium text-slate-700">
-                        <div className="flex items-center space-x-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate max-w-[130px] inline-block">{p.rto || 'Unassigned'}</span>
-                        </div>
+                        {p.studentType === 'Independent Student' || p.rto === 'Independent Student' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            Independent Student
+                          </span>
+                        ) : (
+                          <div className="flex items-center space-x-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate max-w-[130px] inline-block">{p.rto || 'Unassigned'}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Column 3 — Placement Status */}
@@ -726,19 +777,45 @@ export default function WorkflowStep5Payments() {
 
                       {/* Column 7 — Payment Amount */}
                       <td className="py-2.5 px-3 whitespace-nowrap text-right">
-                        {!p.priceConfigured ? (
+                        {!p.priceConfigured && !p.isPriceOverridden ? (
                           <div className="flex flex-col items-end">
                             <span className="text-rose-600 font-bold flex items-center space-x-1">
                               <AlertTriangle className="w-3.5 h-3.5" />
                               <span>AUD 0</span>
                             </span>
                             <span className="text-[10px] text-rose-500 font-medium">Unconfigured RTO price</span>
+                            <button
+                              type="button"
+                              onClick={() => openFeeOverrideModal(p)}
+                              className="mt-1 inline-flex items-center space-x-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                            >
+                              <Edit2 className="w-2.5 h-2.5" />
+                              <span>Set Override Fee</span>
+                            </button>
                           </div>
                         ) : (
                           <div className="flex flex-col items-end gap-0.5">
-                            <span className="font-bold text-slate-900 text-xs">
-                              AUD {(p.totalAmount || p.paymentAmount)?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
-                            </span>
+                            <div className="flex items-center space-x-1.5">
+                              {p.isPriceOverridden && (
+                                <span
+                                  className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200"
+                                  title={p.feeOverrideReason ? `Override reason: ${p.feeOverrideReason}` : 'Price overridden by Admin'}
+                                >
+                                  Custom Fee
+                                </span>
+                              )}
+                              <span className="font-bold text-slate-900 text-xs">
+                                AUD {(p.totalAmount || p.paymentAmount)?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openFeeOverrideModal(p)}
+                                title="Edit placement fee override"
+                                className="p-1 hover:bg-slate-200 text-slate-400 hover:text-blue-600 rounded transition cursor-pointer"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </div>
                             <div className="flex items-center space-x-1">
                               <span
                                 className={`text-[10px] font-semibold px-1.5 py-0.2 rounded ${
@@ -889,6 +966,99 @@ export default function WorkflowStep5Payments() {
                 Confirm Action ({confirmModal.count})
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          PLACEMENT FEE OVERRIDE MODAL
+      ========================================================= */}
+      {feeOverrideModal.isOpen && feeOverrideModal.payment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center space-x-3 text-slate-900 font-bold text-base">
+                <div className="p-2 bg-purple-100 text-purple-600 rounded-xl">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Edit Placement Fee Override</h3>
+                  <p className="text-[11px] text-slate-400 font-normal">
+                    {feeOverrideModal.payment.studentName} ({feeOverrideModal.payment.studentId || 'N/A'})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setFeeOverrideModal({ isOpen: false, payment: null, newPrice: '', reason: '', saving: false })}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFeeOverride} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Default Agreement Fee
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={`AUD $${(feeOverrideModal.payment.defaultPlacementFee || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Custom Base Fee (AUD) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  placeholder="e.g. 750"
+                  value={feeOverrideModal.newPrice}
+                  onChange={(e) => setFeeOverrideModal(prev => ({ ...prev, newPrice: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 font-mono text-sm"
+                  autoFocus
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  This custom fee will persist across workflow syncs and will be used to compute 100% or 30% milestone invoices.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Override Reason (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Approved scholarship, Special client discount"
+                  value={feeOverrideModal.reason}
+                  onChange={(e) => setFeeOverrideModal(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setFeeOverrideModal({ isOpen: false, payment: null, newPrice: '', reason: '', saving: false })}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={feeOverrideModal.saving}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold transition cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  {feeOverrideModal.saving ? 'Saving...' : 'Save Override'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

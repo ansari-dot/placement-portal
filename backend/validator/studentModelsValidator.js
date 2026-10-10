@@ -210,6 +210,24 @@ export const studentSchema = z.object({
     .default(null),
 
   // ===== RTO & Source =====
+  studentType: z
+    .enum(["RTO Student", "Independent Student", "Awaiting RTO Assignment"])
+    .optional()
+    .default("RTO Student"),
+
+  rtoId: z
+    .string()
+    .nullable()
+    .optional()
+    .default(null),
+
+  independentFee: z
+    .coerce
+    .number()
+    .nullable()
+    .optional()
+    .default(null),
+
   assignedRto: z
     .string()
     .trim()

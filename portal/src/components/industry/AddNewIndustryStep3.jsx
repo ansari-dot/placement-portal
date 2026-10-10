@@ -5,17 +5,7 @@ import {
   Bookmark, AlertCircle
 } from 'lucide-react';
 import IndustryProgressPanel from './IndustryProgressPanel';
-
-const AU_STATES = [
-  'New South Wales (NSW)',
-  'Victoria (VIC)',
-  'Queensland (QLD)',
-  'Western Australia (WA)',
-  'South Australia (SA)',
-  'Tasmania (TAS)',
-  'Australian Capital Territory (ACT)',
-  'Northern Territory (NT)',
-];
+import { AUSTRALIAN_STATES } from '../../constants/australianStates';
 
 export default function AddNewIndustryStep3({ onNext, onPrev, formData, updateFormData }) {
   const [errors, setErrors] = useState({});
@@ -125,8 +115,8 @@ export default function AddNewIndustryStep3({ onNext, onPrev, formData, updateFo
                   className={selectClass('state')}
                 >
                   <option value="">Select state</option>
-                  {AU_STATES.map(s => (
-                    <option key={s} value={s}>{s}</option>
+                  {AUSTRALIAN_STATES.map(s => (
+                    <option key={s.code} value={s.code}>{s.label}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />

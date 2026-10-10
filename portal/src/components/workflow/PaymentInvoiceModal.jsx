@@ -41,11 +41,12 @@ export default function PaymentInvoiceModal({
     }
   };
 
-  // Group payments by RTO
-  const rtoGroups = payments.reduce((acc, p) => {
-    const rKey = (p.rto || 'Unassigned RTO').trim();
-    if (!acc[rKey]) acc[rKey] = [];
-    acc[rKey].push(p);
+  // Group payments: RTOs grouped by RTO name; Independent students grouped individually
+  const invoiceGroups = payments.reduce((acc, p) => {
+    const isInd = p.studentType === 'Independent Student' || (p.rto || '').trim() === 'Independent Student';
+    const groupKey = isInd ? `Independent_${p._id || p.id || p.studentName}` : (p.rto || 'Unassigned RTO').trim();
+    if (!acc[groupKey]) acc[groupKey] = [];
+    acc[groupKey].push(p);
     return acc;
   }, {});
 
@@ -89,8 +90,8 @@ export default function PaymentInvoiceModal({
             </div>
             <div>
               <h2 className="text-sm font-bold tracking-tight">
-                {Object.keys(rtoGroups).length > 1
-                  ? `Separate RTO Invoices (${Object.keys(rtoGroups).length} RTOs, ${payments.length} Students)`
+                {Object.keys(invoiceGroups).length > 1
+                  ? `Separate Invoices (${Object.keys(invoiceGroups).length} Invoices, ${payments.length} Students)`
                   : `Tax Invoice Preview (${payments.length} Student${payments.length > 1 ? 's' : ''})`}
               </h2>
               <p className="text-[11px] text-slate-400">Web Mantis PTY LTD Billing Statement & Remittance</p>
@@ -177,11 +178,15 @@ export default function PaymentInvoiceModal({
           </div>
         )}
 
-        {/* Printable Invoices (Grouped by RTO) */}
+        {/* Printable Invoices (Grouped by RTO / Independent Student) */}
         <div className="p-8 space-y-12 bg-white text-slate-800 text-xs print:p-6 print:space-y-8">
-          {Object.entries(rtoGroups).map(([rtoName, groupPayments], groupIdx) => {
+          {Object.entries(invoiceGroups).map(([groupKey, groupPayments], groupIdx) => {
             const firstItem = groupPayments[0] || {};
-            const spokesperson = firstItem.spokesperson || firstItem.rtoSpokesperson || 'Sharon';
+            const isIndependentGroup = firstItem.studentType === 'Independent Student' || (firstItem.rto || '').trim() === 'Independent Student' || groupKey.startsWith('Independent_');
+            const displayRtoName = isIndependentGroup ? 'Independent Student Direct Billing' : (firstItem.rto || groupKey || 'Unassigned RTO');
+            const spokesperson = isIndependentGroup
+              ? (firstItem.studentName || 'Student Direct Billing')
+              : (firstItem.spokesperson || firstItem.rtoSpokesperson || firstItem.rtoRepresentative || firstItem.rtoContactPerson || 'Accounts Receivable');
             const cleanId = String(firstItem.studentId || firstItem._id || groupIdx + 1).replace(/[^a-zA-Z0-9]/g, '').slice(-2) || '51';
             const yearSuffix = String(new Date().getFullYear()).slice(-2);
             const invoiceNumber = firstItem.invoiceNumber || `WM-${51 + groupIdx}-${yearSuffix}`;
@@ -191,12 +196,12 @@ export default function PaymentInvoiceModal({
             const itemCalculations = groupPayments.map((p) => {
               const pId = p._id || p.id;
               const chosenPct = customPercentages[pId] !== undefined ? customPercentages[pId] : (p.chargePercentage ?? 100);
-              const orig = p.originalPrice || 500;
+              const orig = p.originalPrice || p.paymentAmount || 0;
               const amt = Number(((orig * chosenPct) / 100).toFixed(2));
               groupSubtotal += amt;
               return {
                 studentName: p.studentName,
-                service: p.service || 'placement status',
+                service: p.service || (isIndependentGroup ? 'Independent Placement Fee' : 'RTO Student Placement Fee'),
                 amount: amt,
                 pct: chosenPct,
               };
@@ -206,7 +211,7 @@ export default function PaymentInvoiceModal({
             const totalAmount = groupSubtotal + gstAmount;
 
             return (
-              <div key={rtoName || groupIdx} className={`${groupIdx > 0 ? 'pt-10 border-t-2 border-dashed border-slate-300 print:page-break-before-always' : ''}`}>
+              <div key={groupKey || groupIdx} className={`${groupIdx > 0 ? 'pt-10 border-t-2 border-dashed border-slate-300 print:page-break-before-always' : ''}`}>
                 
                 {/* Header & Logo */}
                 <div className="flex flex-col sm:flex-row justify-between items-start border-b-2 border-slate-800 pb-5 gap-4">
@@ -232,8 +237,22 @@ export default function PaymentInvoiceModal({
                 {/* Bill To */}
                 <div className="my-5 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Bill To:</span>
-                  <p className="text-sm font-bold text-slate-900">{spokesperson}</p>
-                  <p className="text-xs font-bold text-blue-900">{rtoName}</p>
+                  {isIndependentGroup ? (
+                    <>
+                      <p className="text-sm font-bold text-slate-900">{firstItem.studentName}</p>
+                      {firstItem.studentEmail && <p className="text-xs text-slate-600">Email: {firstItem.studentEmail}</p>}
+                      {firstItem.studentPhone && <p className="text-xs text-slate-600">Phone: {firstItem.studentPhone}</p>}
+                      {firstItem.studentAddress && <p className="text-xs text-slate-600">Address: {firstItem.studentAddress}</p>}
+                      <span className="inline-block mt-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                        Independent Student Direct Billing
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-slate-900">{spokesperson}</p>
+                      <p className="text-xs font-bold text-blue-900">{displayRtoName}</p>
+                    </>
+                  )}
                 </div>
 
                 {/* Student Services Table */}

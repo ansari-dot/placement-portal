@@ -194,6 +194,20 @@ const studentSchema = new mongoose.Schema(
     },
 
     //** */ ===== RTO & Source =====
+    studentType: {
+      type: String,
+      enum: ['RTO Student', 'Independent Student', 'Awaiting RTO Assignment'],
+      default: 'RTO Student',
+    },
+    rtoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Rto',
+      default: null,
+    },
+    independentFee: {
+      type: Number,
+      default: null,
+    },
     assignedRto: {
       type: String,
       trim: true,

@@ -4,7 +4,7 @@ import RTOLayout from '../components/layout/RTOLayout';
 import RtoDashboard from '../components/RTO/RtoDashboard';
 import AddRtoWizard from '../components/RTO/AddRtoWizard';
 import { fetchRtos, createRto, fetchRtoStats, deleteRto, fetchMyRtos, updateRto } from '../api/rtoApi';
-import { fetchUsers } from '../api/userApi';
+import { fetchUsers, fetchOnboardingEligibleUsers } from '../api/userApi';
 import { Building2, User, MapPin, Calendar, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 // ── My RTOs tab — shows only RTOs onboarded by the logged-in user ──────────
@@ -16,8 +16,8 @@ function MyRTOsTab() {
   const [linkError, setLinkError] = useState(null);
 
   useEffect(() => {
-    fetchUsers({ status: 'Active' })
-      .then((res) => setStaffUsers((res?.data || []).filter((user) => ['Coordinator', 'Staff', 'RTO Manager'].includes(user.role))))
+    fetchOnboardingEligibleUsers()
+      .then((res) => setStaffUsers(res?.data || []))
       .catch(() => setStaffUsers([]));
   }, []);
 
@@ -25,9 +25,10 @@ function MyRTOsTab() {
     const user = staffUsers.find((item) => item._id === userId);
     setLinkError(null);
     try {
-      await updateRto(rto._id, { onboardedBy: user?._id || null, onboardedByName: user?.name || rto.onboardedByName });
+      const resolvedName = rto.onboardedByName || user?.name || '';
+      await updateRto(rto._id, { onboardedBy: user?._id || null, onboardedByName: resolvedName });
       setRtos((current) => current.map((item) => item._id === rto._id
-        ? { ...item, onboardedBy: user?._id || null, onboardedByName: user?.name || item.onboardedByName }
+        ? { ...item, onboardedBy: user?._id || null, onboardedByName: resolvedName }
         : item));
     } catch (err) {
       console.error('Failed to link RTO to portal user:', err);

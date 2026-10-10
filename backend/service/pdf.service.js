@@ -53,23 +53,44 @@ export const generateInvoicePDFBuffer = (invoice) => {
       let y = 135;
       doc.rect(40, y, 515, 55).fill(lightBg).stroke('#e2e8f0');
 
-      const spokesperson = invoice.rtoSnapshot?.spokesperson || invoice.spokesperson || 'RTO Representative';
-      const rtoName = invoice.rtoName || invoice.rto || 'Registered Training Organisation';
+      const isIndependent = invoice.isIndependent || invoice.rtoName === 'Independent Student';
 
       doc.fillColor(grayColor)
         .fontSize(8)
         .font('Helvetica-Bold')
         .text('BILL TO:', 55, y + 10);
 
-      doc.fillColor(textColor)
-        .fontSize(11)
-        .font('Helvetica-Bold')
-        .text(spokesperson, 55, y + 22);
+      if (isIndependent) {
+        const studentName = invoice.billedTo?.name || invoice.items?.[0]?.studentName || invoice.rtoPayments?.[0]?.studentName || invoice.spokesperson || 'Independent Student';
+        const contactInfo = [
+          invoice.billedTo?.email || invoice.recipientEmail,
+          invoice.billedTo?.phone,
+          invoice.billedTo?.address
+        ].filter(Boolean).join('  |  ');
 
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor(primaryColor)
-        .text(rtoName, 55, y + 36);
+        doc.fillColor(textColor)
+          .fontSize(11)
+          .font('Helvetica-Bold')
+          .text(studentName, 55, y + 22);
+
+        doc.fontSize(8.5)
+          .font('Helvetica')
+          .fillColor(primaryColor)
+          .text(contactInfo || 'Independent Student Placement', 55, y + 36, { width: 480, ellipsis: true });
+      } else {
+        const spokesperson = invoice.rtoSnapshot?.spokesperson || invoice.spokesperson || invoice.rtoName || 'RTO Representative';
+        const rtoName = invoice.rtoName || invoice.rto || 'Registered Training Organisation';
+
+        doc.fillColor(textColor)
+          .fontSize(11)
+          .font('Helvetica-Bold')
+          .text(spokesperson, 55, y + 22);
+
+        doc.fontSize(10)
+          .font('Helvetica')
+          .fillColor(primaryColor)
+          .text(rtoName, 55, y + 36);
+      }
 
       // Table Header
       y += 70;

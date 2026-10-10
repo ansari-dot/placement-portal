@@ -37,6 +37,11 @@ const initialFormData = {
   postCode: '',
   country: 'Australia',
 
+  // Student Classification & Placement Billing
+  studentType: 'RTO Student',
+  rtoId: '',
+  independentFee: '',
+
   // Education Details
   courseQualification: '',
   specialisation: '',
@@ -142,12 +147,16 @@ export default function AddNewStudentPage() {
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.emailAddress)) newErrors.emailAddress = 'Enter a valid email';
       if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
     } else if (step === 2) {
-      if (!formData.courseQualification) newErrors.courseQualification = 'Course is required';
-      if (!formData.courseLevel) newErrors.courseLevel = 'Certificate level is required';
-    } else if (step === 3) {
-      if (formData.transport === 'Yes' && (!formData.licenceNumber || !formData.licenceNumber.trim())) {
-        newErrors.licenceNumber = 'Licence number is required';
+      if (formData.studentType === 'Independent Student') {
+        if (!formData.independentFee || isNaN(Number(formData.independentFee)) || Number(formData.independentFee) <= 0) {
+          newErrors.independentFee = 'Valid placement fee is required for Independent Student';
+        }
+      } else {
+        if (!formData.courseQualification) newErrors.courseQualification = 'Course is required';
+        if (!formData.courseLevel) newErrors.courseLevel = 'Certificate level is required';
       }
+    } else if (step === 3) {
+      // Driver's licence is completely optional across all flows
     }
 
     setErrors(newErrors);
@@ -219,6 +228,7 @@ export default function AddNewStudentPage() {
       if (payload.expectedEndDate) payload.expectedEndDate = new Date(payload.expectedEndDate);
       if (payload.visaExpiryDate) payload.visaExpiryDate = new Date(payload.visaExpiryDate);
       if (payload.placementHours !== undefined && payload.placementHours !== '') payload.placementHours = Number(payload.placementHours);
+      if (payload.independentFee !== undefined && payload.independentFee !== '') payload.independentFee = Number(payload.independentFee);
 
       const response = await createStudent(payload);
       toast.success(response?.message || 'Student profile created successfully!');

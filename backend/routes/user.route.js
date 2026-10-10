@@ -9,13 +9,15 @@ import {
   getPendingUsersController,
   approveUserController,
   rejectUserController,
+  getOnboardingEligibleUsersController,
 } from '../controller/user.controller.js';
 import { protectRoute, requireAdmin, softAuth } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
-// Must be before /:id to avoid route param collision
+// Public/Soft routes & routes accessible to staff/coordinators (must be before /:id)
 router.get('/score-stats', softAuth, getScoreStatsController);
+router.get('/onboarding-eligible', protectRoute, getOnboardingEligibleUsersController);
 
 // The Users section, approvals, and account controls are administrator-only.
 router.use(protectRoute, requireAdmin);
