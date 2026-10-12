@@ -159,6 +159,9 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
       if (lvlMatch && typeof lvlMatch.pricing === 'number' && lvlMatch.pricing > 0) {
         return { configured: true, price: lvlMatch.pricing, source: `Level Match (${lvlMatch.qualification})` };
       }
+
+      // When qualification-specific pricing is defined, do not fall back to flat payoutRate
+      return { configured: false, price: 0, source: 'No matching course pricing found in RTO schedule' };
     }
 
     if (typeof rto.payoutRate === 'number' && rto.payoutRate > 0) {
@@ -521,7 +524,6 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                 )}
               </div>
             )}
-          </div>
 
           {/* ===== Section: Structured Compliance & Identity Documents ===== */}
           <div className="pt-2 border-t border-slate-100 space-y-4">
