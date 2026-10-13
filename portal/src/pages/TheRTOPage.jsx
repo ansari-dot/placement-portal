@@ -181,23 +181,34 @@ export default function TheRTOPage() {
 
   const handleCreateRto = useCallback(async (formData) => {
     try {
-      await createRto(formData);
-      await loadData();
+      const res = await createRto(formData);
+      if (res?.data) setRtos((current) => [res.data, ...current]);
+      loadData(); // background refresh
     } catch (err) {
       console.error('Failed to create RTO:', err);
       throw err;
     }
   }, [loadData]);
 
+  const deletingIds = React.useRef(new Set());
   const handleDeleteRto = useCallback(async (id) => {
+    if (!id || deletingIds.current.has(id)) return;
+    deletingIds.current.add(id);
+    const previous = rtos;
+    // Optimistically remove so the row disappears instantly
+    setRtos((current) => current.filter((r) => (r._id || r.id) !== id));
+    setStats((s) => ({ ...s, totalRtos: Math.max(0, (s.totalRtos || 0) - 1) }));
     try {
       await deleteRto(id);
-      await loadData();
+      loadData(); // background refresh, don't block UI
     } catch (err) {
       console.error('Failed to delete RTO:', err);
+      setRtos(previous);
       window.alert(err?.response?.data?.message || 'Failed to delete RTO. Please try again.');
+    } finally {
+      deletingIds.current.delete(id);
     }
-  }, [loadData]);
+  }, [loadData, rtos]);
 
   const handleUpdateRto = useCallback(async (id, formData) => {
     try {

@@ -233,10 +233,8 @@ export class RtoService {
   }
 
   static async deleteRto(id) {
-    const deletedRto = await RtoModel.findByIdAndDelete(id, { projection: { _id: 1 } });
-    if (!deletedRto) {
-      throw new NotFoundError('RTO not found');
-    }
+    // Idempotent: a repeated delete of an already-removed RTO is treated as success.
+    await RtoModel.deleteOne({ _id: id });
     return true;
   }
 

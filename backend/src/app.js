@@ -45,6 +45,21 @@ if (process.env.CLIENT_URL) {
 }
 
 app.disable('x-powered-by');
+// Behind nginx: use X-Forwarded-For so req.ip is the real client (rate limiter, audit logs)
+app.set('trust proxy', 1);
+
+// Log slow requests to help diagnose latency in production
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - start) / 1e6;
+    if (ms > 1000) {
+      const size = res.getHeader('content-length') || '?';
+      console.warn(`[SLOW] ${req.method} ${req.originalUrl} ${res.statusCode} ${ms.toFixed(0)}ms size=${size}B`);
+    }
+  });
+  next();
+});
 
 app.use(
   cors({
