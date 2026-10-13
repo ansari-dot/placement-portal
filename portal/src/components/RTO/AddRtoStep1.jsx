@@ -1,3 +1,4 @@
+import { useRef, useState, useEffect } from 'react';
 import { fetchUsers, fetchOnboardingEligibleUsers } from '../../api/userApi';
 import { 
   Upload, FileText, ArrowRight, DollarSign, Calendar, Plus, Trash2, 
