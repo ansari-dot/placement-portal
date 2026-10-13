@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
+import { fetchRtoById } from '../../api/rtoApi';
 import AddRtoStep1 from './AddRtoStep1';
 import AddRtoStep2Pricing from './AddRtoStep2Pricing';
 import AddRtoStep2 from './AddRtoStep2';
@@ -59,17 +60,30 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto, onUpda
   const [initializedRtoId] = useState(initialRto?._id || initialRto?.id || null);
   React.useEffect(() => {
     if (!initialRto) return;
-    setFormData((current) => ({
+    let cancelled = false;
+    const apply = (rto) => setFormData((current) => ({
       ...current,
-      ...initialRto,
-      rtoName: initialRto.name || initialRto.rtoName || '',
-      rtoCode: initialRto.code || initialRto.rtoCode || '',
-      addressLine1: initialRto.address || initialRto.addressLine1 || '',
-      partnershipSince: initialRto.partnershipSince || initialRto.date || current.partnershipSince,
-      country: initialRto.country || 'Australia',
-      coursePricing: initialRto.coursePricing?.length ? initialRto.coursePricing : current.coursePricing,
-      documents: initialRto.documents || [],
+      ...rto,
+      rtoName: rto.name || rto.rtoName || '',
+      rtoCode: rto.code || rto.rtoCode || '',
+      addressLine1: rto.address || rto.addressLine1 || '',
+      partnershipSince: rto.partnershipSince || rto.date || current.partnershipSince,
+      country: rto.country || 'Australia',
+      coursePricing: rto.coursePricing?.length ? rto.coursePricing : current.coursePricing,
+      documents: rto.documents || [],
     }));
+    apply(initialRto);
+    // List responses omit heavy file data; load the full record for editing.
+    const id = initialRto._id || initialRto.id;
+    if (id) {
+      fetchRtoById(id)
+        .then((res) => {
+          const full = res?.data || res;
+          if (!cancelled && full && (full._id || full.id)) apply(full);
+        })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
   }, [initialRto]);
   const totalSteps = 6;
 

@@ -5,6 +5,10 @@ import {
   NotFoundError,
 } from '../../core/errors/AppError.js';
 
+// Base64 files are stored inline in RTO documents; exclude them from list views
+// to keep payloads small (they are still returned by getRtoById).
+const LIST_EXCLUDE = '-registrationCertificate -documents.file';
+
 export class RtoService {
   static async getAllRtos({ search, status, loc }, user) {
     const query = {};
@@ -40,7 +44,7 @@ export class RtoService {
     if (status && status !== 'All') query.status = status;
     if (loc && loc !== 'All') query.loc = loc;
 
-    return await RtoModel.find(query).sort({ createdAt: -1 });
+    return await RtoModel.find(query).select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean();
   }
 
   static async getRtoById(id) {
@@ -204,14 +208,14 @@ export class RtoService {
   }
 
   static async getRtoStats() {
-    const [totalRtos, activeRtos, inactiveRtos, rtos] = await Promise.all([
+    const [totalRtos, activeRtos, inactiveRtos, studentAgg] = await Promise.all([
       RtoModel.countDocuments(),
       RtoModel.countDocuments({ status: 'Active' }),
       RtoModel.countDocuments({ status: 'Inactive' }),
-      RtoModel.find(),
+      RtoModel.aggregate([{ $group: { _id: null, total: { $sum: { $ifNull: ['$students', 0] } } } }]),
     ]);
 
-    const totalStudents = rtos.reduce((sum, rto) => sum + (rto.students || 0), 0);
+    const totalStudents = studentAgg[0]?.total || 0;
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -229,7 +233,7 @@ export class RtoService {
   }
 
   static async deleteRto(id) {
-    const deletedRto = await RtoModel.findByIdAndDelete(id);
+    const deletedRto = await RtoModel.findByIdAndDelete(id, { projection: { _id: 1 } });
     if (!deletedRto) {
       throw new NotFoundError('RTO not found');
     }
@@ -240,10 +244,11 @@ export class RtoService {
     if (!user) return [];
     const isAdmin = user.role === 'Administrator';
     return isAdmin
-      ? await RtoModel.find().sort({ createdAt: -1 }).lean()
+      ? await RtoModel.find().select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean()
       : await RtoModel.find({
           $or: [{ onboardedBy: user._id }, { createdBy: user._id, onboardedBy: null }],
         })
+          .select(LIST_EXCLUDE)
           .sort({ createdAt: -1 })
           .lean();
   }
