@@ -30,6 +30,7 @@ import {
   downloadInvoicePDF,
 } from '../../api/paymentApi';
 import { fetchRtos } from '../../api/rtoApi';
+import { repairStudentRto } from '../../api/studentsApi';
 import PaymentInvoiceModal from './PaymentInvoiceModal';
 
 const PLACEMENT_STATUSES = [
@@ -247,6 +248,24 @@ export default function WorkflowStep5Payments() {
     }
   };
 
+  const [repairing, setRepairing] = useState(false);
+
+  const handleRepairRto = async () => {
+    setRepairing(true);
+    try {
+      const res = await repairStudentRto();
+      toast.success(res.message || 'RTO repair complete');
+      if (res.repaired?.length > 0) {
+        res.repaired.forEach(r => toast.info(`Fixed: ${r.name} → ${r.rto}`, { autoClose: 4000 }));
+      }
+      loadData();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Repair failed');
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   // Fetch RTOs list for filter dropdown
   useEffect(() => {
     fetchRtos()
@@ -422,6 +441,15 @@ export default function WorkflowStep5Payments() {
           </div>
         </div>
         <div className="flex items-center space-x-3 shrink-0">
+          <button
+            onClick={handleRepairRto}
+            disabled={repairing || loading}
+            className="flex items-center space-x-2 px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-semibold border border-amber-200 transition shadow-xs"
+            title="Fix students whose RTO was wiped by a previous bug"
+          >
+            <UserCheck className={`w-3.5 h-3.5 ${repairing ? 'animate-spin' : ''}`} />
+            <span>{repairing ? 'Repairing...' : 'Repair RTO Data'}</span>
+          </button>
           <button
             onClick={loadData}
             disabled={loading}
@@ -729,10 +757,14 @@ export default function WorkflowStep5Payments() {
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                             Independent Student
                           </span>
+                        ) : p.studentType === 'Awaiting RTO Assignment' || (!p.rto && p.studentType !== 'Independent Student') ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            Awaiting RTO
+                          </span>
                         ) : (
                           <div className="flex items-center space-x-1.5">
                             <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="truncate max-w-[130px] inline-block">{p.rto || 'Unassigned'}</span>
+                            <span className="truncate max-w-[130px] inline-block">{p.rto}</span>
                           </div>
                         )}
                       </td>

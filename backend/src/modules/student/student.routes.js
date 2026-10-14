@@ -10,6 +10,7 @@ import {
   downloadBulkTemplateController,
   bulkImportStudentsController,
   bulkUploadDocumentsController,
+  repairStudentRtoController,
 } from './student.controller.js';
 import multer from 'multer';
 import { requireRoles } from '../../core/guards/roles.guard.js';
@@ -44,6 +45,7 @@ router.get('/all', getAllStudentsUnfilteredController);
 router.get('/:id', getStudentByIdController);
 router.put('/:id', validateBody(studentSchema.partial()), updateStudentController);
 router.patch('/:id/assign-coordinator', assignCoordinatorController);
+router.post('/repair/rto', requireRoles('Administrator'), repairStudentRtoController);
 router.delete('/:id', deleteStudentController);
 
 export default router;

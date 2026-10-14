@@ -133,6 +133,46 @@ export const getAllStudentsUnfilteredController = async (req, res, next) => {
   }
 };
 
+export const repairStudentRtoController = async (req, res, next) => {
+  try {
+    const StudentModel = (await import('./student.model.js')).default;
+    const RtoModel = (await import('../rto/rto.model.js')).default;
+    const PaymentModel = (await import('../payment/payment.model.js')).default;
+
+    const broken = await StudentModel.find({
+      rtoId: { $ne: null, $exists: true },
+      $or: [{ assignedRto: '' }, { assignedRto: { $exists: false } }],
+    }).lean();
+
+    const allRtos = await RtoModel.find({}, { _id: 1, name: 1 }).lean();
+    const rtoIdToName = new Map(allRtos.map(r => [String(r._id), r.name]));
+
+    const payments = await PaymentModel.find(
+      { student: { $in: broken.map(s => s._id) } },
+      { student: 1, rto: 1 }
+    ).lean();
+    const payMap = new Map(
+      payments.filter(p => p.rto && p.rto !== 'Independent Student').map(p => [String(p.student), p.rto])
+    );
+
+    const ops = [];
+    const repaired = [];
+    for (const s of broken) {
+      const rtoName = rtoIdToName.get(String(s.rtoId)) || payMap.get(String(s._id));
+      if (rtoName) {
+        ops.push({ updateOne: { filter: { _id: s._id }, update: { $set: { assignedRto: rtoName, studentType: 'RTO Student' } } } });
+        repaired.push({ id: s.studentId, name: `${s.firstName} ${s.lastName}`, rto: rtoName });
+      }
+    }
+
+    if (ops.length > 0) await StudentModel.bulkWrite(ops);
+
+    res.json({ success: true, message: `Repaired ${ops.length} students`, repaired, skipped: broken.length - ops.length });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const assignCoordinatorController = async (req, res, next) => {
   try {
     const { student, message } = await StudentService.assignCoordinator(

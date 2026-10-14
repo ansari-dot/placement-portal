@@ -221,6 +221,13 @@ export class StudentService {
       throw new NotFoundError('Student not found');
     }
 
+    // Immediately sync payment record so RTO/fee changes reflect in payments page
+    import('../payment/payment.service.js').then(({ syncSingleStudentPayment }) => {
+      syncSingleStudentPayment(student.toObject ? student.toObject() : student).catch((err) =>
+        console.error('[StudentService] Payment sync after update failed:', err.message)
+      );
+    }).catch(() => {});
+
     return student;
   }
 

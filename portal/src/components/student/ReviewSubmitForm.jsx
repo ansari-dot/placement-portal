@@ -363,7 +363,11 @@ export default function ReviewSubmitForm({ formData, onEdit, confirmed, setConfi
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">RTO</span>
-                <span className="font-semibold text-slate-800">{formatValue(formData.assignedRto)}</span>
+                <span className="font-semibold text-slate-800">
+                  {formData.studentType === 'Independent Student'
+                    ? 'Independent Student'
+                    : formData.assignedRto || 'Unassigned (Awaiting RTO)'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Source</span>

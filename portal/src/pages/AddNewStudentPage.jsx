@@ -230,6 +230,11 @@ export default function AddNewStudentPage() {
       if (payload.placementHours !== undefined && payload.placementHours !== '') payload.placementHours = Number(payload.placementHours);
       if (payload.independentFee !== undefined && payload.independentFee !== '') payload.independentFee = Number(payload.independentFee);
 
+      // If RTO Student but no RTO assigned, mark as Awaiting RTO Assignment
+      if (payload.studentType === 'RTO Student' && !payload.assignedRto) {
+        payload.studentType = 'Awaiting RTO Assignment';
+      }
+
       const response = await createStudent(payload);
       toast.success(response?.message || 'Student profile created successfully!');
       

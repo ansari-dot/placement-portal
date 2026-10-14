@@ -3,6 +3,7 @@
  */
 export const validateBody = (schema) => (req, res, next) => {
   if (!schema) return next();
+  const originalKeys = new Set(Object.keys(req.body || {}));
   const result = schema.safeParse(req.body);
   if (!result.success) {
     const errors = result.error.issues.map((err) => ({
@@ -16,7 +17,15 @@ export const validateBody = (schema) => (req, res, next) => {
       errors,
     });
   }
-  req.body = result.data;
+  // For updates (partial schemas): only keep fields that were actually sent,
+  // not fields that Zod filled in via .default() — prevents overwriting DB values
+  const parsed = result.data;
+  const isPartial = Object.keys(parsed).some(k => !originalKeys.has(k));
+  if (isPartial) {
+    req.body = Object.fromEntries(Object.entries(parsed).filter(([k]) => originalKeys.has(k)));
+  } else {
+    req.body = parsed;
+  }
   next();
 };
 

@@ -75,6 +75,7 @@ export default function StudentViewEditPage() {
   const [contactedIndustries, setContactedIndustries] = useState([]);
   const [internshipEndingInfo, setInternshipEndingInfo] = useState(null);
   const [activeRtos, setActiveRtos]               = useState([]);
+  const [allRtos, setAllRtos]                     = useState([]);
   const [isManualId, setIsManualId]               = useState(false);
   const [isOtherSource, setIsOtherSource]         = useState(false);
   const [selectedDays, setSelectedDays]           = useState({});
@@ -84,6 +85,7 @@ export default function StudentViewEditPage() {
     fetchRtos()
       .then(res => {
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setAllRtos(list);
         const names = list.map(r => (typeof r === 'string' ? r : r?.name)).filter(Boolean);
         setActiveRtos(Array.from(new Set(names)).sort((a, b) => a.localeCompare(b)));
       })
@@ -287,6 +289,10 @@ export default function StudentViewEditPage() {
           title: item.title || '',
           file: item.file instanceof File ? item.file.name : item.file || '',
         }));
+      }
+      // If RTO Student but no RTO assigned, mark as Awaiting RTO Assignment
+      if (payload.studentType === 'RTO Student' && !payload.assignedRto) {
+        payload.studentType = 'Awaiting RTO Assignment';
       }
       const response = await updateStudent(dbId, payload);
       toast.success(response?.message || 'Student updated successfully!');
@@ -753,7 +759,7 @@ export default function StudentViewEditPage() {
                             if (formData.assignedRto === 'Independent Student') updateField('assignedRto', '');
                           }}
                           className={`px-3 py-1 font-semibold rounded-md transition ${
-                            (formData.studentType || 'RTO Student') === 'RTO Student'
+                            formData.studentType !== 'Independent Student'
                               ? 'bg-blue-600 text-white'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
@@ -788,18 +794,41 @@ export default function StudentViewEditPage() {
                       <label className="block text-[11px] font-semibold text-slate-500 mb-1">
                         College / RTO
                       </label>
-                      <input
-                        type="text"
-                        value={formData.studentType === 'Independent Student' ? 'Independent Student (Direct Billing)' : (formData.assignedRto || formData.institute || 'Unassigned')}
-                        onChange={e => {
-                          if (isEdit && formData.studentType !== 'Independent Student') {
-                            updateField('assignedRto', e.target.value);
-                            updateField('institute', e.target.value);
-                          }
-                        }}
-                        disabled={!isEdit || formData.studentType === 'Independent Student'}
-                        className={fieldClass(isEdit && formData.studentType !== 'Independent Student')}
-                      />
+                      {isEdit && formData.studentType !== 'Independent Student' ? (
+                        <div className="relative">
+                          <select
+                            value={formData.assignedRto || formData.institute || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              updateField('assignedRto', val);
+                              updateField('institute', val);
+                              const matched = allRtos.find(r => r.name === val);
+                              if (matched) updateField('rtoId', matched._id);
+                              else updateField('rtoId', undefined);
+                              // Reset studentType when RTO is selected
+                              if (val) updateField('studentType', 'RTO Student');
+                            }}
+                            className={selectCls}
+                          >
+                            <option value="">Select College / RTO</option>
+                            {formData.assignedRto && !activeRtos.includes(formData.assignedRto) && formData.assignedRto !== 'Other' && (
+                              <option value={formData.assignedRto}>{formData.assignedRto}</option>
+                            )}
+                            {activeRtos.map(rto => (
+                              <option key={rto} value={rto}>{rto}</option>
+                            ))}
+                            <option value="Other">Other</option>
+                          </select>
+                          <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={formData.studentType === 'Independent Student' ? 'Independent Student (Direct Billing)' : (formData.assignedRto || formData.institute || 'Unassigned')}
+                          disabled
+                          className={fieldClass(false)}
+                        />
+                      )}
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-500 mb-1">

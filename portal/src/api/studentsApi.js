@@ -108,3 +108,9 @@ export const openStudentDocument = async (url) => {
 };
 
 export const isStoredDocument = (v) => typeof v === "string" && v.startsWith("/uploads/");
+
+export const repairStudentRto = async () => {
+  const response = await api.post("/students/repair/rto");
+  return response.data;
+};
+

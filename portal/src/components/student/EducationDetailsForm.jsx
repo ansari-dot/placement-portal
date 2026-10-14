@@ -467,6 +467,9 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                     <ChevronDown size={14} />
                   </span>
                 </div>
+                {!(formData.institute || formData.assignedRto) && (
+                  <p className="text-[10px] text-amber-600 font-medium mt-1">No RTO selected — student will be marked as Awaiting RTO Assignment</p>
+                )}
               </div>
             )}
           </div>

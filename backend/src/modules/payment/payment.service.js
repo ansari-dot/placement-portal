@@ -71,6 +71,10 @@ export const resolveRtoCoursePrice = (rtoDoc, student = {}) => {
         originalPrice = Number(matchedPricing.pricing);
       }
     }
+    // Fall back to base payoutRate if no course pricing matched
+    if (!originalPrice && Number(rtoDoc.payoutRate) > 0) {
+      originalPrice = Number(rtoDoc.payoutRate);
+    }
     if (!originalPrice) {
       pricingError = 'No matching pricing found for qualification in RTO course pricing schedule';
     }
@@ -284,6 +288,38 @@ export const syncChargeableStudents = async () => {
     }).lean();
 
     if (!eligibleStudents || eligibleStudents.length === 0) return;
+
+    // 2a. Repair students whose assignedRto was wiped — recover from payment record or rtoId
+    const repairCandidates = eligibleStudents.filter(s => !s.assignedRto);
+    if (repairCandidates.length > 0) {
+      const allRtosForRepair = await RtoModel.find({}, { _id: 1, name: 1 }).lean();
+      const rtoIdToName = new Map(allRtosForRepair.map(r => [String(r._id), r.name]));
+      const existingPaymentsForRepair = await PaymentModel.find(
+        { student: { $in: repairCandidates.map(s => s._id) } },
+        { student: 1, rto: 1 }
+      ).lean();
+      const paymentRtoByStudent = new Map(
+        existingPaymentsForRepair
+          .filter(p => p.rto && p.rto !== 'Independent Student')
+          .map(p => [String(p.student), p.rto])
+      );
+      const repairOps = [];
+      repairCandidates.forEach(s => {
+        const rtoName = (s.rtoId && rtoIdToName.get(String(s.rtoId)))
+          || paymentRtoByStudent.get(String(s._id));
+        if (rtoName) {
+          repairOps.push({
+            updateOne: {
+              filter: { _id: s._id },
+              update: { $set: { assignedRto: rtoName, studentType: 'RTO Student' } },
+            },
+          });
+          s.assignedRto = rtoName;
+          s.studentType = 'RTO Student';
+        }
+      });
+      if (repairOps.length > 0) await StudentModel.bulkWrite(repairOps);
+    }
 
     // 3. Fetch all RTOs to resolve pricing efficiently
     const rtos = await RtoModel.find().lean();
@@ -741,6 +777,89 @@ export const retrySendInvoiceEmailService = async (invoiceNumber) => {
   return InvoiceService.retrySendInvoiceEmail(invoiceNumber);
 };
 
+/**
+ * Sync a single student's payment record immediately after student update.
+ */
+export const syncSingleStudentPayment = async (studentDoc) => {
+  if (!studentDoc) return;
+
+  const stuDbId = String(studentDoc._id || studentDoc.id);
+  const stuBizId = studentDoc.studentId ? String(studentDoc.studentId) : '';
+  const stuName = [studentDoc.firstName, studentDoc.middleName, studentDoc.lastName].filter(Boolean).join(' ') || 'Student';
+
+  const isIndependentStudent = studentDoc.studentType === 'Independent Student';
+  const assignedRtoName = isIndependentStudent ? 'Independent Student' : (studentDoc.assignedRto || '').trim();
+
+  let matchedRto = null;
+  if (!isIndependentStudent && assignedRtoName) {
+    const rtos = await RtoModel.find().lean();
+    const rtoMapByName = new Map();
+    const rtoMapByCode = new Map();
+    rtos.forEach((r) => {
+      if (r.name) rtoMapByName.set(r.name.trim().toLowerCase(), r);
+      if (r.code) rtoMapByCode.set(r.code.trim().toLowerCase(), r);
+    });
+    matchedRto = rtoMapByName.get(assignedRtoName.toLowerCase()) || rtoMapByCode.get(assignedRtoName.toLowerCase()) || null;
+  }
+
+  let priceConfigured = false;
+  let originalPrice = 0;
+  let pricingError = '';
+  let spokesperson = '';
+
+  if (isIndependentStudent) {
+    const indFee = studentDoc.independentFee != null ? Number(studentDoc.independentFee) : null;
+    if (indFee !== null && indFee > 0) {
+      priceConfigured = true;
+      originalPrice = indFee;
+    } else {
+      pricingError = 'No placement fee entered for Independent Student';
+    }
+    spokesperson = stuName;
+  } else {
+    const pricingRes = resolveRtoCoursePrice(matchedRto, studentDoc);
+    priceConfigured = pricingRes.priceConfigured;
+    originalPrice = pricingRes.originalPrice;
+    pricingError = pricingRes.pricingError;
+    spokesperson = pricingRes.spokesperson;
+  }
+
+  const existingPayment = await PaymentModel.findOne({
+    $or: [
+      { student: studentDoc._id },
+      ...(stuBizId ? [{ studentId: stuBizId }] : []),
+      { studentId: stuDbId },
+    ],
+  });
+
+  if (!existingPayment) return;
+
+  const isOverridden = Boolean(existingPayment.isPriceOverridden);
+  const finalPrice = isOverridden ? existingPayment.originalPrice : originalPrice;
+  const finalPercentage = existingPayment.chargePercentage ?? 100;
+  const calculatedPaymentAmount = Number(((finalPrice * finalPercentage) / 100).toFixed(2));
+  const gstAmount = existingPayment.gstEnabled ? Number((calculatedPaymentAmount * 0.10).toFixed(2)) : 0;
+  const totalAmount = Number((calculatedPaymentAmount + gstAmount).toFixed(2));
+
+  await PaymentModel.updateOne(
+    { _id: existingPayment._id },
+    {
+      $set: {
+        studentName: stuName,
+        studentType: isIndependentStudent ? 'Independent Student' : (studentDoc.studentType || 'RTO Student'),
+        rto: assignedRtoName || existingPayment.rto,
+        course: studentDoc.courseQualification || studentDoc.courses || existingPayment.course,
+        spokesperson: spokesperson || matchedRto?.contactName || existingPayment.spokesperson || '',
+        defaultPlacementFee: originalPrice,
+        ...(isOverridden ? {} : { originalPrice, priceConfigured, pricingError }),
+        paymentAmount: calculatedPaymentAmount,
+        gstAmount,
+        totalAmount,
+      },
+    }
+  );
+};
+
 export class PaymentService {
   static getPayments = getPaymentsService;
   static getTotals = getPaymentTotalsService;
@@ -748,4 +867,5 @@ export class PaymentService {
   static bulkPaymentReceived = bulkPaymentReceivedService;
   static syncChargeableStudents = syncChargeableStudents;
   static resolveRtoCoursePrice = resolveRtoCoursePrice;
+  static syncSingleStudentPayment = syncSingleStudentPayment;
 }

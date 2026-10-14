@@ -77,7 +77,7 @@ export default function WorkflowPage() {
       .then((res) => {
         setCoordinators(res?.data ?? []);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // ─── Refresh workflow data ────────────────────────────────────────────────
@@ -152,7 +152,7 @@ export default function WorkflowPage() {
     };
 
     loadOrCreateWorkflow();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Re-fetch students when user returns to this tab/window ──────────────
@@ -161,7 +161,7 @@ export default function WorkflowPage() {
       try {
         const result = await fetchWorkflowStudents();
         setWorkflowStudents(result.data || []);
-      } catch (_) {}
+      } catch (_) { }
     };
     window.addEventListener('focus', refreshStudents);
     return () => window.removeEventListener('focus', refreshStudents);
@@ -270,16 +270,16 @@ export default function WorkflowPage() {
       if (!authUser) return [];
 
       // Normalise current user identity to plain strings for safe ObjectId comparison
-      const currentUserId   = String(authUser._id || authUser.id || '').trim();
+      const currentUserId = String(authUser._id || authUser.id || '').trim();
       const currentUserName = String(authUser.name || '').trim().toLowerCase();
 
       return workflowStudents.filter((stu) => {
-        const assignedId   = String(stu.assignedCoordinator   || '').trim();
+        const assignedId = String(stu.assignedCoordinator || '').trim();
         const assignedName = String(stu.assignedCoordinatorName || '').trim().toLowerCase();
 
         // Match by ObjectId string OR coordinator name (fallback)
         return (
-          (currentUserId   && assignedId   && assignedId   === currentUserId) ||
+          (currentUserId && assignedId && assignedId === currentUserId) ||
           (currentUserName && assignedName && assignedName === currentUserName)
         );
       });
@@ -297,14 +297,14 @@ export default function WorkflowPage() {
     const selectedCoord = coordinators.find(
       (c) => String(c._id || c.id) === String(selectedCoordinator)
     );
-    const coordId   = String(selectedCoord?._id || selectedCoord?.id || selectedCoordinator).trim();
+    const coordId = String(selectedCoord?._id || selectedCoord?.id || selectedCoordinator).trim();
     const coordName = String(selectedCoord?.name || '').trim().toLowerCase();
 
     return workflowStudents.filter((stu) => {
-      const assignedId   = String(stu.assignedCoordinator   || '').trim();
+      const assignedId = String(stu.assignedCoordinator || '').trim();
       const assignedName = String(stu.assignedCoordinatorName || '').trim().toLowerCase();
       return (
-        (assignedId   && assignedId   === coordId) ||
+        (assignedId && assignedId === coordId) ||
         (coordName && assignedName && assignedName === coordName)
       );
     });
@@ -389,13 +389,13 @@ export default function WorkflowPage() {
       });
 
       const TERMINAL_APPT_STATUSES = ['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site', 'Industry Rejected', 'Student Missed Appointment'];
-      const ACTIVE_APPT_STATUSES   = ['Scheduled', 'Confirmed'];
+      const ACTIVE_APPT_STATUSES = ['Scheduled', 'Confirmed'];
 
       // The most recent NON-terminal appointment wins over any terminal one.
       // If there is any active (Scheduled/Confirmed) appointment, that takes precedence
       // over any Withdrawn/Declined appointment regardless of date order.
-      const hasAnyActive    = sortedAppointments.some((a) => ACTIVE_APPT_STATUSES.includes(a.status));
-      const mostRecentAppt  = hasAnyActive
+      const hasAnyActive = sortedAppointments.some((a) => ACTIVE_APPT_STATUSES.includes(a.status));
+      const mostRecentAppt = hasAnyActive
         ? sortedAppointments.find((a) => ACTIVE_APPT_STATUSES.includes(a.status))
         : sortedAppointments[0];
       const mostRecentIsTerminal = !hasAnyActive && mostRecentAppt && TERMINAL_APPT_STATUSES.includes(mostRecentAppt.status);
@@ -534,7 +534,7 @@ export default function WorkflowPage() {
         email: stu.emailAddress || stu.email || '',
         id: stu.id || stu._id || '',
         studentId: stu.studentId || '',
-        rto: stu.assignedRto || stu.rto || '',
+        rto: stu.assignedRto || stu.rto || stu.institute || '',
         status: stu.status || 'Active',
         placementStatus: dynamicPlacementStatus,
         // ── Placement calculation fields — needed by Step3 outcome modal & Step4 end-date calc
@@ -572,7 +572,7 @@ export default function WorkflowPage() {
         // Coordinators always see only their students; admins filter only when a coordinator is selected
         const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
         if (!shouldFilter) return true;
-        const reqStuId   = norm(req.studentId);
+        const reqStuId = norm(req.studentId);
         const reqStuName = norm(req.student);
         return visibleStudentKeySet.has(reqStuId) || visibleStudentKeySet.has(reqStuName);
       })
@@ -581,7 +581,7 @@ export default function WorkflowPage() {
         const requestStudentName = norm(req.student);
         const student = workflowStudents.find((stu) => {
           const identifiers = [stu.id, stu._id, stu.studentId, stu.name,
-            `${stu.firstName || ''} ${stu.lastName || ''}`].map(norm);
+          `${stu.firstName || ''} ${stu.lastName || ''}`].map(norm);
           return identifiers.includes(requestStudentId) || identifiers.includes(requestStudentName);
         });
         const assignedCoordinatorId = String(
@@ -641,7 +641,7 @@ export default function WorkflowPage() {
       .filter((appt) => {
         const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
         if (!shouldFilter) return true;
-        const apptStuId   = norm(appt.studentId);
+        const apptStuId = norm(appt.studentId);
         const apptStuName = norm(appt.student);
         return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
       })
@@ -688,7 +688,7 @@ export default function WorkflowPage() {
           const ciId = String(ci._id || ci.id || '');
           const ciName = norm(ci.organizationName);
           return (apptContactId && ciId && apptContactId === ciId) ||
-                 (apptCompany && ciName && (apptCompany === ciName || ciName.includes(apptCompany) || apptCompany.includes(ciName)));
+            (apptCompany && ciName && (apptCompany === ciName || ciName.includes(apptCompany) || apptCompany.includes(ciName)));
         });
 
         const contactPerson = appt.contactPerson || matchedIndustry?.contactPerson || appt.interviewer || '—';
@@ -699,8 +699,8 @@ export default function WorkflowPage() {
           appt.availabilityDays,
         ].find((days) => days && (
           days instanceof Map ? days.size > 0 :
-          Array.isArray(days) || typeof days === 'string' ? days.length > 0 :
-          typeof days === 'object' && Object.keys(days).length > 0
+            Array.isArray(days) || typeof days === 'string' ? days.length > 0 :
+              typeof days === 'object' && Object.keys(days).length > 0
         ));
 
         return {
@@ -753,7 +753,7 @@ export default function WorkflowPage() {
     const filteredAppointments = allAppointments.filter((appt) => {
       const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
       if (!shouldFilter) return true;
-      const apptStuId   = norm(appt.studentId);
+      const apptStuId = norm(appt.studentId);
       const apptStuName = norm(appt.student);
       return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
     });
@@ -951,14 +951,14 @@ export default function WorkflowPage() {
     setWorkflow((prev) =>
       prev
         ? {
-            ...prev,
-            requests: (prev.requests || []).filter(
-              (r) =>
-                String(r._id) !== String(requestId) &&
-                r.reqId !== String(requestId) &&
-                r.id !== String(requestId)
-            ),
-          }
+          ...prev,
+          requests: (prev.requests || []).filter(
+            (r) =>
+              String(r._id) !== String(requestId) &&
+              r.reqId !== String(requestId) &&
+              r.id !== String(requestId)
+          ),
+        }
         : prev
     );
     try {
@@ -1137,14 +1137,14 @@ export default function WorkflowPage() {
     setWorkflow((prev) =>
       prev
         ? {
-            ...prev,
-            appointments: (prev.appointments || []).filter(
-              (a) =>
-                String(a._id) !== String(appointmentId) &&
-                a.apptId !== String(appointmentId) &&
-                a.id !== String(appointmentId)
-            ),
-          }
+          ...prev,
+          appointments: (prev.appointments || []).filter(
+            (a) =>
+              String(a._id) !== String(appointmentId) &&
+              a.apptId !== String(appointmentId) &&
+              a.id !== String(appointmentId)
+          ),
+        }
         : prev
     );
     try {
@@ -1190,20 +1190,20 @@ export default function WorkflowPage() {
     setWorkflow((prev) =>
       prev
         ? {
-            ...prev,
-            internships: (prev.internships || []).filter(
-              (i) =>
-                String(i._id) !== String(internshipId) &&
-                i.intId !== String(internshipId) &&
-                i.id !== String(internshipId)
-            ),
-            appointments: (prev.appointments || []).filter(
-              (a) =>
-                String(a._id) !== String(internshipId) &&
-                a.apptId !== String(internshipId) &&
-                a.id !== String(internshipId)
-            ),
-          }
+          ...prev,
+          internships: (prev.internships || []).filter(
+            (i) =>
+              String(i._id) !== String(internshipId) &&
+              i.intId !== String(internshipId) &&
+              i.id !== String(internshipId)
+          ),
+          appointments: (prev.appointments || []).filter(
+            (a) =>
+              String(a._id) !== String(internshipId) &&
+              a.apptId !== String(internshipId) &&
+              a.id !== String(internshipId)
+          ),
+        }
         : prev
     );
     try {
@@ -1259,8 +1259,8 @@ export default function WorkflowPage() {
           map[req.studentId] = priorityVal;
           map[norm(req.studentId)] = priorityVal;
         }
-        if (req.id)        map[req.id]          = priorityVal;
-        if (req._id)       map[String(req._id)]  = priorityVal;
+        if (req.id) map[req.id] = priorityVal;
+        if (req._id) map[String(req._id)] = priorityVal;
       });
     }
     return map;
