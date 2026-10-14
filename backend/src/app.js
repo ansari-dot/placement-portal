@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 
 import authRoutes from './modules/auth/auth.routes.js';
 import studentRoutes from './modules/student/student.routes.js';
@@ -15,7 +16,7 @@ import paymentRoutes from './modules/payment/payment.routes.js';
 import invoiceRoutes from './modules/invoice/invoice.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
 
-import { softAuth } from './core/guards/auth.guard.js';
+import { softAuth, authenticate } from './core/guards/auth.guard.js';
 import { errorHandler } from './core/middlewares/error.middleware.js';
 import { auditMutations } from './core/middlewares/audit.middleware.js';
 import { securityHeaders } from './core/middlewares/securityHeaders.js';
@@ -91,6 +92,8 @@ app.use(auditMutations);
 // Modular Routes
 app.use('/auth', authRoutes);
 app.use('/students', studentRoutes);
+// Uploaded student documents (bulk + profile). Auth-protected, not public.
+app.use('/uploads', authenticate, express.static(path.resolve(process.cwd(), 'uploads'), { fallthrough: false }));
 app.use('/workflows', workflowRoutes);
 app.use('/rtos', rtoRoutes);
 app.use('/industries', industryRoutes);

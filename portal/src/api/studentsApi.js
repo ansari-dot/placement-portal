@@ -59,3 +59,52 @@ export const snoozeStudent = async (id, { snoozed, snoozedAt, snoozeUntil, snooz
   });
   return response.data;
 };
+
+// ===== Bulk import =====
+
+// Download the Excel template (all Add-Student form fields)
+export const downloadBulkTemplate = async () => {
+  const response = await api.get("/students/bulk/template", { responseType: "blob" });
+  const url = URL.createObjectURL(response.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "student_bulk_import_template.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// Preview (commit=false) or import (commit=true) an Excel file
+export const bulkImportStudents = async (file, commit = false) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  const response = await api.post(`/students/bulk/import?commit=${commit}`, fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  if (commit) notifyPlacementDataChanged();
+  return response.data;
+};
+
+// Upload many documents; each file is matched to a student by its name
+export const bulkUploadStudentDocuments = async (files, onProgress) => {
+  const fd = new FormData();
+  files.forEach((f) => {
+    fd.append("files", f);
+    fd.append("paths", f.webkitRelativePath || f.name);
+  });
+  const response = await api.post("/students/bulk/documents", fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+    onUploadProgress: (e) => onProgress?.(e.total ? Math.round((e.loaded / e.total) * 100) : 0),
+  });
+  notifyPlacementDataChanged();
+  return response.data;
+};
+
+// Open a stored document (/uploads/...) using the logged-in session
+export const openStudentDocument = async (url) => {
+  const response = await api.get(url, { responseType: "blob" });
+  const blobUrl = URL.createObjectURL(response.data);
+  window.open(blobUrl, "_blank", "noopener");
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+};
+
+export const isStoredDocument = (v) => typeof v === "string" && v.startsWith("/uploads/");

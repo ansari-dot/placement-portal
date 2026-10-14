@@ -38,7 +38,7 @@ export class StudentService {
     return `${STUDENT_ID_PREFIX}${maxNum + 1}`;
   }
 
-  static async createStudent(studentData) {
+  static async createStudent(studentData, { silent = false } = {}) {
     const manualId = (studentData.studentId || '').trim();
 
     if (manualId) {
@@ -56,6 +56,8 @@ export class StudentService {
     }
 
     const student = await StudentModel.create(studentData);
+
+    if (silent) return student;
 
     try {
       const studentName = student.name || `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'A new student';

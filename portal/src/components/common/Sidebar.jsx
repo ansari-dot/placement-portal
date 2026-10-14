@@ -18,6 +18,7 @@ import {
   LogOut,
   ChevronRight,
   CreditCard,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -303,6 +304,14 @@ export default function Sidebar() {
                 Add New Student
               </span>
 
+            </Link>
+            )}
+
+            {/* Bulk Import — Admin only */}
+            {isAdmin && (
+            <Link to="/bulk-import" className={navLinkClass('/bulk-import')}>
+              <FileSpreadsheet className={iconClass('/bulk-import')} />
+              <span className="truncate">Bulk Import</span>
             </Link>
             )}
 

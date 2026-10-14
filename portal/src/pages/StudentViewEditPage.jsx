@@ -9,7 +9,7 @@ import {
 import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
-import { fetchStudentById, updateStudent } from '../api/studentsApi';
+import { fetchStudentById, updateStudent, openStudentDocument, isStoredDocument } from '../api/studentsApi';
 import { fetchWorkflows, fetchWorkflowById } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
 import { fetchRtos } from '../api/rtoApi';
@@ -872,8 +872,15 @@ export default function StudentViewEditPage() {
                               ? <Upload size={15} className="text-amber-600 shrink-0" />
                               : <Upload size={15} className="text-blue-600 shrink-0" />}
                             <span className={`text-xs font-semibold truncate ${hasFile ? 'text-emerald-700' : highlight ? 'text-amber-700' : 'text-blue-600'}`}>
-                              {hasFile ? (typeof fileName === 'string' ? fileName : fileName.name) : `Upload ${label}`}
+                              {hasFile ? (typeof fileName === 'string' ? fileName.split('/').pop().replace(/^\d+_/, '') : fileName.name) : `Upload ${label}`}
                             </span>
+                            {isStoredDocument(fileName) && (
+                              <button type="button"
+                                onClick={e => { e.preventDefault(); e.stopPropagation(); openStudentDocument(fileName).catch(() => toast.error('Could not open document')); }}
+                                className="ml-auto px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 shrink-0">
+                                View
+                              </button>
+                            )}
                             {hasFile && isEdit && (
                               <button type="button" onClick={e => { e.preventDefault(); updateField(field, null); }}
                                 className="ml-auto text-slate-400 hover:text-rose-500 transition shrink-0">
@@ -919,8 +926,15 @@ export default function StudentViewEditPage() {
                               <label className={`w-full px-3.5 py-2 bg-white border border-dashed border-slate-300 rounded-xl flex items-center space-x-2 ${isEdit ? 'cursor-pointer hover:border-blue-600' : 'cursor-default'} transition`}>
                                 <Upload size={14} className="text-blue-600 shrink-0" />
                                 <span className="text-xs font-semibold text-blue-600 truncate">
-                                  {docItem.file ? (docItem.file.name || docItem.file) : 'Upload File'}
+                                  {docItem.file ? (docItem.file.name || String(docItem.file).split('/').pop().replace(/^\d+_/, '')) : 'Upload File'}
                                 </span>
+                                {isStoredDocument(docItem.file) && (
+                                  <button type="button"
+                                    onClick={e => { e.preventDefault(); e.stopPropagation(); openStudentDocument(docItem.file).catch(() => toast.error('Could not open document')); }}
+                                    className="ml-auto px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 shrink-0">
+                                    View
+                                  </button>
+                                )}
                                 {isEdit && <input type="file" className="hidden" onChange={e => handleUpdateCustomDocFile(idx, e.target.files[0])} />}
                               </label>
                             </div>

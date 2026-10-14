@@ -11,6 +11,7 @@ import DashboardPage from "./pages/DashboardPage";
 import StudentsPage from "./pages/StudentsPage";
 import MyProgressPage from "./pages/MyProgressPage";
 import AddNewStudentPage from "./pages/AddNewStudentPage";
+import BulkImportStudentsPage from "./pages/BulkImportStudentsPage";
 import StudentViewEditPage from "./pages/StudentViewEditPage";
 import WorkflowPage from "./pages/WorkflowPage";
 import TheRTOPage from "./pages/TheRTOPage";
@@ -63,6 +64,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
             <AddNewStudentPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bulk-import"
+        element={
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
+            <BulkImportStudentsPage />
           </ProtectedRoute>
         }
       />
