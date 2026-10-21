@@ -1,56 +1,93 @@
+import mongoose from 'mongoose';
 import RtoModel from './rto.model.js';
 import UserModel from '../user/user.model.js';
 import {
   BadRequestError,
   NotFoundError,
+  ForbiddenError,
 } from '../../core/errors/AppError.js';
 
 // Base64 files are stored inline in RTO documents; exclude them from list views
 // to keep payloads small (they are still returned by getRtoById).
 const LIST_EXCLUDE = '-registrationCertificate -documents.file';
 
+export const buildCoordinatorRtoFilter = (user) => {
+  if (!user) return { _id: null };
+  const matches = [
+    { onboardedBy: user._id },
+    { createdBy: user._id },
+  ];
+  if (mongoose.Types.ObjectId.isValid(user._id)) {
+    matches.push({ onboardedBy: new mongoose.Types.ObjectId(user._id) });
+    matches.push({ createdBy: new mongoose.Types.ObjectId(user._id) });
+  }
+  if (user.name) {
+    matches.push({ onboardedByName: { $regex: `^${user.name.trim()}$`, $options: 'i' } });
+  }
+  return { $or: matches };
+};
+
+export const checkCoordinatorRtoOwnership = (rto, user) => {
+  if (!user || user.role !== 'Coordinator') return true;
+  const userIdStr = user._id ? String(user._id) : '';
+  const createdByStr = rto.createdBy ? String(rto.createdBy) : '';
+  const onboardedByStr = rto.onboardedBy ? String(rto.onboardedBy) : '';
+  const nameMatches = user.name && rto.onboardedByName &&
+    rto.onboardedByName.trim().toLowerCase() === user.name.trim().toLowerCase();
+
+  return (userIdStr && (createdByStr === userIdStr || onboardedByStr === userIdStr)) || Boolean(nameMatches);
+};
+
 export class RtoService {
   static async getAllRtos({ search, status, loc }, user) {
-    const query = {};
+    const filters = [];
     const role = user?.role;
     const userEmail = user?.email?.toLowerCase()?.trim();
 
-    if (user && role !== 'Administrator' && role !== 'Coordinator') {
-      if (role === 'RTO Manager') {
+    if (user && role !== 'Administrator') {
+      if (role === 'Coordinator') {
+        filters.push(buildCoordinatorRtoFilter(user));
+      } else if (role === 'RTO Manager') {
         let userRtoName = user.rtoName;
         if (!userRtoName && userEmail) {
           const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
           if (matchedRto) userRtoName = matchedRto.name;
         }
         if (userRtoName) {
-          query.name = { $regex: `^${userRtoName.trim()}$`, $options: 'i' };
+          filters.push({ name: { $regex: `^${userRtoName.trim()}$`, $options: 'i' } });
         } else if (userEmail) {
-          query.contactEmail = userEmail;
+          filters.push({ contactEmail: userEmail });
         } else {
-          query._id = null;
+          filters.push({ _id: null });
         }
       } else {
-        query._id = null; // Students & Industry users cannot view RTO lists
+        filters.push({ _id: null }); // Students & Industry users cannot view RTO lists
       }
     }
 
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { code: { $regex: search, $options: 'i' } },
-      ];
+      filters.push({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { code: { $regex: search, $options: 'i' } },
+        ],
+      });
     }
 
-    if (status && status !== 'All') query.status = status;
-    if (loc && loc !== 'All') query.loc = loc;
+    if (status && status !== 'All') filters.push({ status });
+    if (loc && loc !== 'All') filters.push({ loc });
 
+    const query = filters.length > 0 ? (filters.length === 1 ? filters[0] : { $and: filters }) : {};
     return await RtoModel.find(query).select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean();
   }
 
-  static async getRtoById(id) {
+  static async getRtoById(id, user) {
     const rto = await RtoModel.findById(id);
     if (!rto) {
       throw new NotFoundError('RTO not found');
+    }
+    if (user && user.role === 'Coordinator' && !checkCoordinatorRtoOwnership(rto, user)) {
+      throw new ForbiddenError('Access denied. You can only view RTOs added by you.');
     }
     return rto;
   }
@@ -105,9 +142,11 @@ export class RtoService {
       if (!['Administrator', 'Coordinator', 'Staff'].includes(linkedUser.role) || linkedUser.status !== 'Active') {
         throw new BadRequestError('Selected onboardedBy user must be an active Administrator, Coordinator, or Staff member');
       }
+    } else if (actingUser && (actingUser.role === 'Coordinator' || actingUser.role === 'Staff')) {
+      linkedUser = actingUser;
     }
 
-    const resolvedOnboardedByName = String(onboardedByName || linkedUser?.name || '').trim();
+    const resolvedOnboardedByName = String(onboardedByName || actingUser?.name || linkedUser?.name || '').trim();
     if (!resolvedOnboardedByName) {
       throw new BadRequestError('Onboarded By is required');
     }
@@ -154,14 +193,22 @@ export class RtoService {
       students: 0,
       createdBy: actingUser?._id || null,
       onboardedByName: resolvedOnboardedByName,
-      onboardedBy: linkedUser?._id || null,
+      onboardedBy: linkedUser?._id || (actingUser?.role === 'Coordinator' ? actingUser._id : null),
     });
 
     await rto.save();
     return rto;
   }
 
-  static async updateRto(id, updates) {
+  static async updateRto(id, updates, actingUser) {
+    const existing = await RtoModel.findById(id);
+    if (!existing) {
+      throw new NotFoundError('RTO not found');
+    }
+    if (actingUser && actingUser.role === 'Coordinator' && !checkCoordinatorRtoOwnership(existing, actingUser)) {
+      throw new ForbiddenError('Access denied. You can only edit RTOs added by you.');
+    }
+
     const rtoUpdates = { ...updates };
 
     if (Object.prototype.hasOwnProperty.call(rtoUpdates, 'onboardedByName')) {
@@ -207,12 +254,20 @@ export class RtoService {
     return rto;
   }
 
-  static async getRtoStats() {
+  static async getRtoStats(user) {
+    let baseFilter = {};
+    if (user && user.role === 'Coordinator') {
+      baseFilter = buildCoordinatorRtoFilter(user);
+    }
+
     const [totalRtos, activeRtos, inactiveRtos, studentAgg] = await Promise.all([
-      RtoModel.countDocuments(),
-      RtoModel.countDocuments({ status: 'Active' }),
-      RtoModel.countDocuments({ status: 'Inactive' }),
-      RtoModel.aggregate([{ $group: { _id: null, total: { $sum: { $ifNull: ['$students', 0] } } } }]),
+      RtoModel.countDocuments(baseFilter),
+      RtoModel.countDocuments({ ...baseFilter, status: 'Active' }),
+      RtoModel.countDocuments({ ...baseFilter, status: 'Inactive' }),
+      RtoModel.aggregate([
+        ...(Object.keys(baseFilter).length > 0 ? [{ $match: baseFilter }] : []),
+        { $group: { _id: null, total: { $sum: { $ifNull: ['$students', 0] } } } },
+      ]),
     ]);
 
     const totalStudents = studentAgg[0]?.total || 0;
@@ -220,6 +275,7 @@ export class RtoService {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const newThisMonth = await RtoModel.countDocuments({
+      ...baseFilter,
       createdAt: { $gte: thirtyDaysAgo },
     });
 
@@ -232,7 +288,14 @@ export class RtoService {
     };
   }
 
-  static async deleteRto(id) {
+  static async deleteRto(id, actingUser) {
+    if (actingUser && actingUser.role === 'Coordinator') {
+      const existing = await RtoModel.findById(id);
+      if (!existing) return true;
+      if (!checkCoordinatorRtoOwnership(existing, actingUser)) {
+        throw new ForbiddenError('Access denied. You can only delete RTOs added by you.');
+      }
+    }
     // Idempotent: a repeated delete of an already-removed RTO is treated as success.
     await RtoModel.deleteOne({ _id: id });
     return true;
@@ -243,11 +306,12 @@ export class RtoService {
     const isAdmin = user.role === 'Administrator';
     return isAdmin
       ? await RtoModel.find().select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean()
-      : await RtoModel.find({
-          $or: [{ onboardedBy: user._id }, { createdBy: user._id, onboardedBy: null }],
-        })
+      : await RtoModel.find(buildCoordinatorRtoFilter(user))
           .select(LIST_EXCLUDE)
           .sort({ createdAt: -1 })
           .lean();
   }
+
+  static checkCoordinatorRtoOwnership = checkCoordinatorRtoOwnership;
+  static buildCoordinatorRtoFilter = buildCoordinatorRtoFilter;
 }

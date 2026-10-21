@@ -97,7 +97,7 @@ export const getStudentByIdController = async (req, res, next) => {
 
 export const updateStudentController = async (req, res, next) => {
   try {
-    const student = await StudentService.updateStudent(req.params.id, req.body);
+    const student = await StudentService.updateStudent(req.params.id, req.body, req.user);
     res.status(200).json({
       message: 'Student updated successfully',
       success: true,
@@ -110,7 +110,7 @@ export const updateStudentController = async (req, res, next) => {
 
 export const deleteStudentController = async (req, res, next) => {
   try {
-    await StudentService.deleteStudent(req.params.id);
+    await StudentService.deleteStudent(req.params.id, req.user);
     res.status(200).json({
       message: 'Student deleted successfully',
       success: true,
@@ -122,7 +122,7 @@ export const deleteStudentController = async (req, res, next) => {
 
 export const getAllStudentsUnfilteredController = async (req, res, next) => {
   try {
-    const students = await StudentService.getAllStudentsUnfiltered();
+    const students = await StudentService.getAllStudentsUnfiltered(req.user);
     res.status(200).json({
       message: 'All students fetched successfully',
       success: true,

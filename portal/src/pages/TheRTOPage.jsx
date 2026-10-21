@@ -140,6 +140,7 @@ function MyRTOsTab() {
 export default function TheRTOPage() {
   const authUser = useSelector(state => state.auth?.user);
   const isAdmin = authUser?.role === 'Administrator';
+  const isCoordinator = authUser?.role === 'Coordinator';
 
   // View states: 'dashboard' | 'add-wizard'
   const [currentView, setCurrentView] = useState('dashboard');
@@ -230,10 +231,10 @@ export default function TheRTOPage() {
 
   return (
     <RTOLayout
-      title={currentView === 'dashboard' ? 'RTOs' : editingRto ? 'Edit RTO' : 'Add New RTO'}
+      title={currentView === 'dashboard' ? (isCoordinator ? 'My Added RTOs' : 'RTOs') : editingRto ? 'Edit RTO' : 'Add New RTO'}
       breadcrumbs={
         currentView === 'dashboard'
-          ? ['Dashboard', 'Partners', 'RTOs']
+          ? ['Dashboard', 'Partners', isCoordinator ? 'My Added RTOs' : 'RTOs']
           : ['Dashboard', 'Partners', 'RTOs', editingRto ? 'Edit RTO' : 'Add New RTO']
       }
     >
@@ -244,7 +245,7 @@ export default function TheRTOPage() {
             <div className="flex items-center gap-1 max-w-[1600px] mx-auto">
               <button onClick={() => setActiveTab('all')} className={tabClass('all')}>
                 <Building2 className="w-4 h-4" />
-                All RTOs
+                {isCoordinator ? 'My Added RTOs' : 'All RTOs'}
               </button>
               <button onClick={() => setActiveTab('my')} className={tabClass('my')}>
                 <User className="w-4 h-4" />

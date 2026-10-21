@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 import { CheckCircle2 } from 'lucide-react';
 import { fetchRtoById } from '../../api/rtoApi';
 import AddRtoStep1 from './AddRtoStep1';
@@ -9,14 +10,15 @@ import AddRtoStep4 from './AddRtoStep4';
 import AddRtoStep5 from './AddRtoStep5';
 
 export default function AddRtoWizard({ onCancel, onComplete, onCreateRto, onUpdateRto, initialRto }) {
+  const authUser = useSelector((state) => state.auth?.user);
   const [currentStep, setCurrentStep] = useState(1);
   const [toast, setToast] = useState(null);
   const [formData, setFormData] = useState({
     // Step 1: Basic Information & Media
     rtoName: '',
     rtoCode: '',
-    onboardedByName: '',
-    onboardedBy: '',
+    onboardedByName: authUser?.name || '',
+    onboardedBy: authUser?._id || authUser?.id || '',
     paymentCycle: 'Placement',
     payoutRate: '',
     coursePricing: [

@@ -94,6 +94,7 @@ export default function MyStudentsTable() {
   const navigate = useNavigate();
   const authUser = useSelector((state) => state.auth.user);
   const isAdmin = authUser?.role === 'Administrator';
+  const isCoordinator = authUser?.role === 'Coordinator';
 
   const [rowsPerPage, setRowsPerPage] = useState('10 per page');
   const [currentPage, setCurrentPage] = useState(1);
@@ -886,9 +887,11 @@ export default function MyStudentsTable() {
                 <p className="text-sm font-bold text-slate-900 mt-0.5">{genTargetStudent.name}</p>
                 <p className="text-xs text-slate-500">{genTargetStudent.id || genTargetStudent.studentId}</p>
               </div>
-              <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg border border-blue-200/80">
-                {genTargetStudent.rto || 'RTO'}
-              </span>
+              {!isCoordinator && genTargetStudent.rto && (
+                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg border border-blue-200/80">
+                  {genTargetStudent.rto}
+                </span>
+              )}
             </div>
 
             {/* Priority selector */}

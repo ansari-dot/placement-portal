@@ -71,10 +71,6 @@ export const resolveRtoCoursePrice = (rtoDoc, student = {}) => {
         originalPrice = Number(matchedPricing.pricing);
       }
     }
-    // Fall back to base payoutRate if no course pricing matched
-    if (!originalPrice && Number(rtoDoc.payoutRate) > 0) {
-      originalPrice = Number(rtoDoc.payoutRate);
-    }
     if (!originalPrice) {
       pricingError = 'No matching pricing found for qualification in RTO course pricing schedule';
     }

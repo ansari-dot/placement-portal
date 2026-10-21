@@ -9,6 +9,17 @@ export const sanitizeStudentDataForRole = (studentDoc, role) => {
   if (!studentDoc) return studentDoc;
   const s = typeof studentDoc.toObject === 'function' ? studentDoc.toObject() : { ...studentDoc };
 
+  if (role === 'Coordinator') {
+    // Company policy: Coordinators must not see RTO details in student profiles
+    delete s.assignedRto;
+    delete s.rto;
+    delete s.rtoId;
+    delete s.rtoName;
+    delete s.studentType;
+    delete s.independentFee;
+    return s;
+  }
+
   if (role === 'RTO Manager') {
     // RTO users must not be able to see:
     // - Other RTO names
@@ -54,7 +65,7 @@ export const sanitizeStudentDataForRole = (studentDoc, role) => {
 
 export const sanitizeRtoDataForRole = (rtoDoc, role) => {
   if (!rtoDoc) return rtoDoc;
-  const r = typeof rtoDoc.toObject === 'function' ? rtoDoc.toObject() : { ...rDoc };
+  const r = typeof rtoDoc.toObject === 'function' ? rtoDoc.toObject() : { ...rtoDoc };
 
   if (role === 'RTO Manager' || role === 'Student') {
     // Remove internal financial payouts or admin documents if appropriate

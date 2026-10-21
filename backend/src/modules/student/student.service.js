@@ -81,7 +81,20 @@ export class StudentService {
 
     if (user && role !== 'Administrator') {
       if (role === 'Coordinator') {
-        filter = { assignedCoordinator: user._id };
+        const coordMatches = [
+          { assignedCoordinator: user._id },
+          { assignedCoordinator: String(user._id) },
+        ];
+        if (mongoose.Types.ObjectId.isValid(user._id)) {
+          coordMatches.push({ assignedCoordinator: new mongoose.Types.ObjectId(user._id) });
+        }
+        if (user.name) {
+          coordMatches.push({ assignedCoordinatorName: { $regex: `^${user.name.trim()}$`, $options: 'i' } });
+        }
+        if (user.email) {
+          coordMatches.push({ assignedCoordinatorEmail: user.email.toLowerCase().trim() });
+        }
+        filter = { $or: coordMatches };
       } else if (role === 'RTO Manager') {
         let userRtoName = user.rtoName;
         if (!userRtoName && userEmail) {
@@ -155,7 +168,10 @@ export class StudentService {
     return rawStudents.map((s) => sanitizeStudentDataForRole(s, user?.role));
   }
 
-  static async getAllStudentsUnfiltered() {
+  static async getAllStudentsUnfiltered(user) {
+    if (user && user.role !== 'Administrator') {
+      return await this.getAllStudents(user);
+    }
     return await StudentModel.find({}).sort({ createdAt: -1 });
   }
 
@@ -183,6 +199,16 @@ export class StudentService {
         if (!isOwnRecord) {
           throw new ForbiddenError('Access denied. You can only view your own student profile.');
         }
+      } else if (role === 'Coordinator') {
+        const assignedId = student.assignedCoordinator ? student.assignedCoordinator.toString() : '';
+        const userId = user._id ? user._id.toString() : '';
+        const matchesCoordId = assignedId && userId && (assignedId === userId);
+        const matchesCoordName = user.name && student.assignedCoordinatorName &&
+          student.assignedCoordinatorName.trim().toLowerCase() === user.name.trim().toLowerCase();
+
+        if (!matchesCoordId && !matchesCoordName) {
+          throw new ForbiddenError('Access denied. You can only view students assigned to you.');
+        }
       } else if (role === 'RTO Manager') {
         let userRtoName = user.rtoName;
         if (!userRtoName && userEmail) {
@@ -202,7 +228,17 @@ export class StudentService {
     return sanitizeStudentDataForRole(student, role);
   }
 
-  static async updateStudent(id, studentData) {
+  static async updateStudent(id, studentData, actingUser) {
+    if (actingUser && actingUser.role === 'Coordinator') {
+      // Coordinator can only update their assigned student
+      await this.getStudentById(id, actingUser);
+      // Coordinators cannot modify RTO fields
+      delete studentData.assignedRto;
+      delete studentData.rtoId;
+      delete studentData.studentType;
+      delete studentData.independentFee;
+    }
+
     let student = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
       student = await StudentModel.findByIdAndUpdate(id, studentData, {
@@ -231,7 +267,10 @@ export class StudentService {
     return student;
   }
 
-  static async deleteStudent(id) {
+  static async deleteStudent(id, actingUser) {
+    if (actingUser && actingUser.role !== 'Administrator') {
+      throw new ForbiddenError('Only Administrators can delete students.');
+    }
     let student = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
       student = await StudentModel.findByIdAndDelete(id);

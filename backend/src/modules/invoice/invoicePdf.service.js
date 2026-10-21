@@ -78,18 +78,20 @@ export const generateInvoicePDFBuffer = (invoice) => {
           .fillColor(primaryColor)
           .text(contactInfo || 'Independent Student Placement', 55, y + 36, { width: 480, ellipsis: true });
       } else {
-        const spokesperson = invoice.rtoSnapshot?.spokesperson || invoice.spokesperson || invoice.rtoName || 'RTO Representative';
         const rtoName = invoice.rtoName || invoice.rto || 'Registered Training Organisation';
+        const spokesperson = invoice.rtoSnapshot?.spokesperson || invoice.spokesperson || '';
 
         doc.fillColor(textColor)
           .fontSize(11)
           .font('Helvetica-Bold')
-          .text(spokesperson, 55, y + 22);
+          .text(rtoName, 55, y + 20);
 
-        doc.fontSize(10)
-          .font('Helvetica')
-          .fillColor(primaryColor)
-          .text(rtoName, 55, y + 36);
+        if (spokesperson && spokesperson !== rtoName) {
+          doc.fontSize(9.5)
+            .font('Helvetica')
+            .fillColor(primaryColor)
+            .text(`Contact Person: ${spokesperson}`, 55, y + 35);
+        }
       }
 
       // Table Header

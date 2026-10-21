@@ -47,6 +47,8 @@ const mapBackendStudent = (s) => ({
 export default function AllStudentsTable() {
   const navigate = useNavigate();
   const authUser = useSelector((state) => state.auth.user);
+  const isAdmin = authUser?.role === 'Administrator';
+  const isCoordinator = authUser?.role === 'Coordinator';
 
   const [rowsPerPage, setRowsPerPage] = useState('10 per page');
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,9 +95,16 @@ export default function AllStudentsTable() {
   const updateFilter = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setCurrentPage(1); };
   const clearFilters = () => { setFilters(emptyFilters); setCurrentPage(1); };
 
-  // No coordinator filtering — show ALL students, only apply search/filter criteria
+  // Filter students: coordinators only see their assigned students, admins see all
   const filteredStudents = useMemo(() => {
     return students.filter(s => {
+      if (isCoordinator) {
+        const assignedId = s.assignedCoordinator ? String(s.assignedCoordinator) : '';
+        const userId = authUser?._id ? String(authUser._id) : '';
+        const nameMatches = authUser?.name && s.assignedCoordinatorName &&
+          s.assignedCoordinatorName.trim().toLowerCase() === authUser.name.trim().toLowerCase();
+        if ((!assignedId || assignedId !== userId) && !nameMatches) return false;
+      }
       if (filters.firstName && !(s.name || '').toLowerCase().includes(filters.firstName.toLowerCase())) return false;
       if (filters.lastName) {
         const parts = (s.name || '').split(' ');
@@ -329,7 +338,7 @@ export default function AllStudentsTable() {
                       onToggleActions={() => setOpenActionsId(openActionsId === student.id ? null : student.id)}
                       onRowAction={handleRowAction}
                       hiddenColumns={hiddenColumns}
-                      canAssign={true}
+                      canAssign={!isCoordinator}
                     />
                   ))}
                 </tbody>

@@ -249,8 +249,10 @@ export default function PaymentInvoiceModal({
                     </>
                   ) : (
                     <>
-                      <p className="text-sm font-bold text-slate-900">{spokesperson}</p>
-                      <p className="text-xs font-bold text-blue-900">{displayRtoName}</p>
+                      <p className="text-sm font-bold text-slate-900">{displayRtoName}</p>
+                      {spokesperson && spokesperson !== displayRtoName && (
+                        <p className="text-xs font-semibold text-slate-700">Contact Person: {spokesperson}</p>
+                      )}
                     </>
                   )}
                 </div>

@@ -717,8 +717,13 @@ body{font-family:"Segoe UI",Arial,sans-serif;background:#f8fafc;margin:0;padding
   <div class="body">
     <div style="margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #f1f5f9">
       <p style="margin:0;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill To:</p>
-      ${spokesperson ? `<p style="margin:4px 0 0;font-size:14px;font-weight:700;color:#0f172a">${spokesperson}</p>` : ''}
-      <p style="margin:2px 0 0;font-size:14px;font-weight:600;color:#1e293b">${isIndependent ? 'Independent Student' : rtoName}</p>
+      ${isIndependent ? `
+        <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#0f172a">${spokesperson}</p>
+        <p style="margin:2px 0 0;font-size:12px;font-weight:600;color:#4f46e5">Independent Student Direct Billing</p>
+      ` : `
+        <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#0f172a">${rtoName}</p>
+        ${spokesperson && spokesperson !== rtoName ? `<p style="margin:2px 0 0;font-size:13px;font-weight:600;color:#475569">Contact Person: ${spokesperson}</p>` : ''}
+      `}
     </div>
 
     <table class="tbl">

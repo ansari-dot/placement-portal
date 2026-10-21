@@ -8,7 +8,7 @@ import {
   NotFoundError,
   ForbiddenError,
 } from '../../core/errors/AppError.js';
-import { normalizeAndValidateState } from './industry.dto.js';
+import { normalizeAndValidateState, STATE_NAME_TO_CODE } from './industry.dto.js';
 
 const safeRegex = (str) => new RegExp(`^${str.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
@@ -104,7 +104,18 @@ export class IndustryService {
     const partialMatch = (value) => ({ $regex: String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' });
     if (postcode) query.postCode = partialMatch(postcode);
     if (city) query.suburb = partialMatch(city);
-    if (state && state !== 'All') query.state = partialMatch(state);
+    if (state && state !== 'All') {
+      const norm = normalizeAndValidateState(state);
+      const targetCode = (norm.valid && norm.code) ? norm.code : String(state).trim().toUpperCase();
+      const aliases = Object.entries(STATE_NAME_TO_CODE)
+        .filter(([_, code]) => code === targetCode)
+        .map(([name]) => name);
+      aliases.push(targetCode);
+      if (state) aliases.push(String(state).trim());
+      const uniqueAliases = [...new Set(aliases.map(a => String(a).trim()).filter(Boolean))];
+      const regexes = uniqueAliases.map(a => new RegExp(`^${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
+      query.state = { $in: regexes };
+    }
 
     if (status && status !== 'All') query.status = status;
     if (sector && sector !== 'All') query.sector = sector;

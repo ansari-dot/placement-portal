@@ -65,6 +65,7 @@ export default function StudentViewEditPage() {
   const isEdit = mode === 'edit';
   const authUser = useSelector((state) => state.auth.user);
   const isAdmin = authUser?.role === 'Administrator';
+  const isCoordinator = authUser?.role === 'Coordinator';
 
   const [student, setStudent]                     = useState(null);
   const [formData, setFormData]                   = useState({});
@@ -80,8 +81,9 @@ export default function StudentViewEditPage() {
   const [isOtherSource, setIsOtherSource]         = useState(false);
   const [selectedDays, setSelectedDays]           = useState({});
 
-  // Fetch RTO list for College/RTO dropdown
+  // Fetch RTO list for College/RTO dropdown (skip for coordinators who cannot view or configure RTOs)
   useEffect(() => {
+    if (isCoordinator) return;
     fetchRtos()
       .then(res => {
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
@@ -90,7 +92,7 @@ export default function StudentViewEditPage() {
         setActiveRtos(Array.from(new Set(names)).sort((a, b) => a.localeCompare(b)));
       })
       .catch(() => {});
-  }, []);
+  }, [isCoordinator]);
 
   const loadStudent = useCallback(async () => {
     setLoading(true);
@@ -280,6 +282,13 @@ export default function StudentViewEditPage() {
     setSaving(true);
     try {
       const payload = { ...formData };
+      if (isCoordinator) {
+        delete payload.assignedRto;
+        delete payload.rto;
+        delete payload.rtoId;
+        delete payload.studentType;
+        delete payload.independentFee;
+      }
       Object.keys(payload).forEach(key => { if (payload[key] === '') payload[key] = undefined; });
       const dbId = student?.id || student?._id || id;
       const docFields = ['policeCheckDoc','covidCheckDoc','ndisDoc','resumeDoc','wwccDoc','passportDoc','drivingLicenceDoc','infectionControlDoc','handHygieneDoc','cbrDoc'];
@@ -291,7 +300,7 @@ export default function StudentViewEditPage() {
         }));
       }
       // If RTO Student but no RTO assigned, mark as Awaiting RTO Assignment
-      if (payload.studentType === 'RTO Student' && !payload.assignedRto) {
+      if (!isCoordinator && payload.studentType === 'RTO Student' && !payload.assignedRto) {
         payload.studentType = 'Awaiting RTO Assignment';
       }
       const response = await updateStudent(dbId, payload);
@@ -739,116 +748,118 @@ export default function StudentViewEditPage() {
                   </div>
                 </div>
 
-                {/* Student Classification & Billing */}
-                <div className="p-3.5 rounded-xl border border-blue-100 bg-blue-50/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-800">
-                        Student Classification &amp; Billing
-                      </label>
-                      <p className="text-[11px] text-slate-500">
-                        RTO Partner Student vs. Direct Billed Independent Student
-                      </p>
-                    </div>
-                    {isEdit ? (
-                      <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white p-0.5 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateField('studentType', 'RTO Student');
-                            if (formData.assignedRto === 'Independent Student') updateField('assignedRto', '');
-                          }}
-                          className={`px-3 py-1 font-semibold rounded-md transition ${
-                            formData.studentType !== 'Independent Student'
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          RTO Student
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateField('studentType', 'Independent Student');
-                            updateField('assignedRto', 'Independent Student');
-                            updateField('rtoId', undefined);
-                          }}
-                          className={`px-3 py-1 font-semibold rounded-md transition ${
-                            formData.studentType === 'Independent Student'
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          Independent Student
-                        </button>
+                {/* Student Classification & Billing — omitted for Coordinator role per company policies */}
+                {!isCoordinator && (
+                  <div className="p-3.5 rounded-xl border border-blue-100 bg-blue-50/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800">
+                          Student Classification &amp; Billing
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          RTO Partner Student vs. Direct Billed Independent Student
+                        </p>
                       </div>
-                    ) : (
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">
-                        {formData.studentType || 'RTO Student'}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-blue-100/60">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                        College / RTO
-                      </label>
-                      {isEdit && formData.studentType !== 'Independent Student' ? (
-                        <div className="relative">
-                          <select
-                            value={formData.assignedRto || formData.institute || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              updateField('assignedRto', val);
-                              updateField('institute', val);
-                              const matched = allRtos.find(r => r.name === val);
-                              if (matched) updateField('rtoId', matched._id);
-                              else updateField('rtoId', undefined);
-                              // Reset studentType when RTO is selected
-                              if (val) updateField('studentType', 'RTO Student');
+                      {isEdit ? (
+                        <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white p-0.5 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateField('studentType', 'RTO Student');
+                              if (formData.assignedRto === 'Independent Student') updateField('assignedRto', '');
                             }}
-                            className={selectCls}
+                            className={`px-3 py-1 font-semibold rounded-md transition ${
+                              formData.studentType !== 'Independent Student'
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
                           >
-                            <option value="">Select College / RTO</option>
-                            {formData.assignedRto && !activeRtos.includes(formData.assignedRto) && formData.assignedRto !== 'Other' && (
-                              <option value={formData.assignedRto}>{formData.assignedRto}</option>
-                            )}
-                            {activeRtos.map(rto => (
-                              <option key={rto} value={rto}>{rto}</option>
-                            ))}
-                            <option value="Other">Other</option>
-                          </select>
-                          <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
+                            RTO Student
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateField('studentType', 'Independent Student');
+                              updateField('assignedRto', 'Independent Student');
+                              updateField('rtoId', undefined);
+                            }}
+                            className={`px-3 py-1 font-semibold rounded-md transition ${
+                              formData.studentType === 'Independent Student'
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Independent Student
+                          </button>
                         </div>
                       ) : (
-                        <input
-                          type="text"
-                          value={formData.studentType === 'Independent Student' ? 'Independent Student (Direct Billing)' : (formData.assignedRto || formData.institute || 'Unassigned')}
-                          disabled
-                          className={fieldClass(false)}
-                        />
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">
+                          {formData.studentType || 'RTO Student'}
+                        </span>
                       )}
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                        Placement Fee ($ AUD)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder={formData.studentType === 'Independent Student' ? 'Enter independent fee' : 'RTO Course Pricing'}
-                        value={formData.independentFee ?? ''}
-                        onChange={e => updateField('independentFee', e.target.value === '' ? '' : Number(e.target.value))}
-                        disabled={!isEdit}
-                        className={fieldClass(isEdit)}
-                      />
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {formData.studentType === 'Independent Student' ? 'Directly billed to student upon placement milestones' : 'Custom fee override or RTO course fee'}
-                      </p>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-blue-100/60">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                          College / RTO
+                        </label>
+                        {isEdit && formData.studentType !== 'Independent Student' ? (
+                          <div className="relative">
+                            <select
+                              value={formData.assignedRto || formData.institute || ''}
+                              onChange={e => {
+                                const val = e.target.value;
+                                updateField('assignedRto', val);
+                                updateField('institute', val);
+                                const matched = allRtos.find(r => r.name === val);
+                                if (matched) updateField('rtoId', matched._id);
+                                else updateField('rtoId', undefined);
+                                // Reset studentType when RTO is selected
+                                if (val) updateField('studentType', 'RTO Student');
+                              }}
+                              className={selectCls}
+                            >
+                              <option value="">Select College / RTO</option>
+                              {formData.assignedRto && !activeRtos.includes(formData.assignedRto) && formData.assignedRto !== 'Other' && (
+                                <option value={formData.assignedRto}>{formData.assignedRto}</option>
+                              )}
+                              {activeRtos.map(rto => (
+                                <option key={rto} value={rto}>{rto}</option>
+                              ))}
+                              <option value="Other">Other</option>
+                            </select>
+                            <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
+                          </div>
+                        ) : (
+                          <input
+                            type="text"
+                            value={formData.studentType === 'Independent Student' ? 'Independent Student (Direct Billing)' : (formData.assignedRto || formData.institute || 'Unassigned')}
+                            disabled
+                            className={fieldClass(false)}
+                          />
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                          Placement Fee ($ AUD)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder={formData.studentType === 'Independent Student' ? 'Enter independent fee' : 'RTO Course Pricing'}
+                          value={formData.independentFee ?? ''}
+                          onChange={e => updateField('independentFee', e.target.value === '' ? '' : Number(e.target.value))}
+                          disabled={!isEdit}
+                          className={fieldClass(isEdit)}
+                        />
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {formData.studentType === 'Independent Student' ? 'Directly billed to student upon placement milestones' : 'Custom fee override or RTO course fee'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Documents section — matches EducationDetailsForm exactly */}
                 <div className="pt-2 border-t border-slate-100 space-y-4">

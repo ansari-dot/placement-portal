@@ -448,8 +448,11 @@ export class UserService {
 
   static async getOnboardingEligibleUsers() {
     return await UserModel.find({
-      status: 'Active',
-      role: { $in: ['Administrator', 'Coordinator', 'Staff'] },
+      status: { $regex: /^active$/i },
+      role: { $in: [
+        'Administrator', 'Admin', 'Coordinator', 'Staff',
+        /^administrator$/i, /^admin$/i, /^coordinator$/i, /^staff$/i
+      ] },
     })
       .select('_id name email role department')
       .sort({ name: 1 })
