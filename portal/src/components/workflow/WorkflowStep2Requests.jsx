@@ -13,6 +13,7 @@ import { createIndustry, fetchIndustries } from '../../api/industryApi';
 import { snoozeStudent, updateStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 import PlacementRequestStudentDetails from './PlacementRequestStudentDetails';
+import { AUSTRALIAN_STATES } from '../../constants/australianStates';
 
 const getSnoozeUntil = (durationDays) => {
   const expiration = new Date();
@@ -1501,8 +1502,19 @@ export default function WorkflowStep2Requests({
                   <input type="text" value={orgForm.suburb} onChange={(e) => setOrgForm({ ...orgForm, suburb: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">State</label>
-                  <input type="text" value={orgForm.state} onChange={(e) => setOrgForm({ ...orgForm, state: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">State / Territory</label>
+                  <select
+                    value={orgForm.state}
+                    onChange={(e) => setOrgForm({ ...orgForm, state: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
+                  >
+                    <option value="">Select State</option>
+                    {AUSTRALIAN_STATES.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.code} - {s.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Zip Code</label>

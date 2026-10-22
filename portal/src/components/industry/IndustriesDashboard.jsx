@@ -746,86 +746,119 @@ export default function IndustriesDashboard({
                 </div>
               </div>
 
-              {/* Partnership Overview */}
-              <div className="space-y-3">
-                <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1.5">Partnership Overview</h4>
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Students Assigned</p>
-                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.students || 0}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Placed</p>
-                    <p className="font-medium text-emerald-600 mt-0.5">{viewingIndustry.placedCount || 0}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Rejected</p>
-                    <p className="font-medium text-rose-600 mt-0.5">{viewingIndustry.rejectedCount || 0}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-400 text-[10px] uppercase">Active Jobs</p>
-                    <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.jobs || 0}</p>
-                  </div>
-                </div>
-              </div>
+              {/* Partnership Overview & Students Details */}
+              {(() => {
+                const rawList = viewingIndustry.studentDetails || [];
+                const dedupMap = new Map();
+                for (const st of rawList) {
+                  const key = (st.studentName || st.studentId || '').trim().toLowerCase();
+                  if (!key) continue;
+                  const existing = dedupMap.get(key);
+                  if (!existing) {
+                    dedupMap.set(key, st);
+                  } else {
+                    const isCurPl = String(st.status || '').toLowerCase().includes('place') || String(st.status || '').toLowerCase().includes('accept') || String(st.status || '').toLowerCase().includes('complet');
+                    const isCurRej = String(st.status || '').toLowerCase().includes('reject') || String(st.status || '').toLowerCase().includes('declin');
+                    const isExtPl = String(existing.status || '').toLowerCase().includes('place') || String(existing.status || '').toLowerCase().includes('accept') || String(existing.status || '').toLowerCase().includes('complet');
+                    if (isCurPl && !isExtPl) {
+                      dedupMap.set(key, { ...existing, ...st, status: 'Placed' });
+                    } else if (isCurRej && !isExtPl) {
+                      dedupMap.set(key, { ...existing, ...st });
+                    }
+                  }
+                }
+                const uniqueStudents = Array.from(dedupMap.values());
+                const totalAssigned = uniqueStudents.length > 0 ? uniqueStudents.length : (viewingIndustry.students || 0);
+                const placedCount = uniqueStudents.length > 0
+                  ? uniqueStudents.filter(s => String(s.status || '').toLowerCase().includes('place') || String(s.status || '').toLowerCase().includes('accept') || String(s.status || '').toLowerCase().includes('complet')).length
+                  : (viewingIndustry.placedCount || 0);
+                const rejectedCount = uniqueStudents.length > 0
+                  ? uniqueStudents.filter(s => String(s.status || '').toLowerCase().includes('reject') || String(s.status || '').toLowerCase().includes('declin')).length
+                  : (viewingIndustry.rejectedCount || 0);
 
-              {/* Students & Internships Details */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                  <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600">Students &amp; Internships Status</h4>
-                  <div className="flex gap-2 text-[10px] font-semibold">
-                    <span className="text-emerald-600 font-bold">{viewingIndustry.placedCount || 0} Placed</span>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-rose-600 font-bold">{viewingIndustry.rejectedCount || 0} Rejected</span>
-                  </div>
-                </div>
-                {viewingIndustry.studentDetails && viewingIndustry.studentDetails.length > 0 ? (
-                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                    {viewingIndustry.studentDetails.map((st, sIdx) => {
-                      const isRej = String(st.status || '').toLowerCase().includes('reject') || String(st.status || '').toLowerCase().includes('declin');
-                      const isPl = String(st.status || '').toLowerCase().includes('place') || String(st.status || '').toLowerCase().includes('accept') || String(st.status || '').toLowerCase().includes('complet');
-                      return (
-                        <div
-                          key={sIdx}
-                          className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
-                            isPl
-                              ? 'bg-emerald-50/60 border-emerald-200'
-                              : isRej
-                              ? 'bg-rose-50/60 border-rose-200'
-                              : 'bg-slate-50 border-slate-200'
-                          }`}
-                        >
-                          <div>
-                            <p className="font-bold text-slate-800">{st.studentName}</p>
-                            {st.date && <p className="text-[10px] text-slate-400 mt-0.5">Date: {st.date}</p>}
-                            {st.rejectionReason && (
-                              <p className="text-[10px] text-rose-700 font-semibold mt-0.5">
-                                Reason: {st.rejectionReason}
-                              </p>
-                            )}
-                            {st.notes && (
-                              <p className="text-[10px] text-slate-500 italic mt-0.5">{st.notes}</p>
-                            )}
-                          </div>
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                              isPl
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                : isRej
-                                ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                : 'bg-blue-100 text-blue-800 border-blue-300'
-                            }`}
-                          >
-                            {st.status}
-                          </span>
+                return (
+                  <>
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600 border-b border-slate-100 pb-1.5">Partnership Overview</h4>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          <p className="font-semibold text-slate-400 text-[10px] uppercase">Students Assigned</p>
+                          <p className="font-medium text-slate-800 mt-0.5">{totalAssigned}</p>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic py-2">No students linked to this industry yet.</p>
-                )}
-              </div>
+                        <div>
+                          <p className="font-semibold text-slate-400 text-[10px] uppercase">Placed</p>
+                          <p className="font-medium text-emerald-600 mt-0.5">{placedCount}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-400 text-[10px] uppercase">Rejected</p>
+                          <p className="font-medium text-rose-600 mt-0.5">{rejectedCount}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-400 text-[10px] uppercase">Active Jobs</p>
+                          <p className="font-medium text-slate-800 mt-0.5">{viewingIndustry.jobs || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                        <h4 className="font-bold text-[10px] uppercase tracking-wider text-indigo-600">Students &amp; Internships Status</h4>
+                        <div className="flex gap-2 text-[10px] font-semibold">
+                          <span className="text-emerald-600 font-bold">{placedCount} Placed</span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-rose-600 font-bold">{rejectedCount} Rejected</span>
+                        </div>
+                      </div>
+                      {uniqueStudents.length > 0 ? (
+                        <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                          {uniqueStudents.map((st, sIdx) => {
+                            const isRej = String(st.status || '').toLowerCase().includes('reject') || String(st.status || '').toLowerCase().includes('declin');
+                            const isPl = String(st.status || '').toLowerCase().includes('place') || String(st.status || '').toLowerCase().includes('accept') || String(st.status || '').toLowerCase().includes('complet');
+                            return (
+                              <div
+                                key={sIdx}
+                                className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+                                  isPl
+                                    ? 'bg-emerald-50/60 border-emerald-200'
+                                    : isRej
+                                    ? 'bg-rose-50/60 border-rose-200'
+                                    : 'bg-slate-50 border-slate-200'
+                                }`}
+                              >
+                                <div>
+                                  <p className="font-bold text-slate-800">{st.studentName}</p>
+                                  {st.date && <p className="text-[10px] text-slate-400 mt-0.5">Date: {st.date}</p>}
+                                  {st.rejectionReason && (
+                                    <p className="text-[10px] text-rose-700 font-semibold mt-0.5">
+                                      Reason: {st.rejectionReason}
+                                    </p>
+                                  )}
+                                  {st.notes && (
+                                    <p className="text-[10px] text-slate-500 italic mt-0.5">{st.notes}</p>
+                                  )}
+                                </div>
+                                <span
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                    isPl
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : isRej
+                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                      : 'bg-blue-100 text-blue-800 border-blue-300'
+                                  }`}
+                                >
+                                  {st.status}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic py-2">No students linked to this industry yet.</p>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Footer */}

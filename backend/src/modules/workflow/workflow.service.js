@@ -1276,41 +1276,48 @@ export const deleteInternship = async (workflowId, internshipId) => {
 // ===== Workflow Data Aggregation =====
 export const getWorkflowDashboardData = async () => {
     const [
-        totalWorkflows,
-        activeWorkflows,
-        totalRequests,
-        totalAppointments,
-        totalInternships,
+        totalStudents,
+        activeStudentsCount,
         requests,
         appointments,
         internships,
         latestWorkflows,
-        workflowRecords
+        workflowRecords,
+        students
     ] = await Promise.all([
-        WorkflowModel.countDocuments(),
-        WorkflowModel.countDocuments({ status: "Active" }),
-        InternshipRequestModel.countDocuments(),
-        AppointmentModel.countDocuments(),
-        InternshipModel.countDocuments(),
+        StudentModel.countDocuments(),
+        StudentModel.countDocuments({
+            $and: [
+                { status: { $ne: 'Inactive' } },
+                { placementStatus: { $ne: 'Inactive' } },
+            ],
+        }),
         InternshipRequestModel.find().sort({ createdAt: -1 }),
         AppointmentModel.find().sort({ createdAt: -1 }),
         InternshipModel.find().sort({ createdAt: -1 }),
         WorkflowModel.find().sort({ updatedAt: -1 }).limit(5),
-        WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean()
+        WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean(),
+        StudentModel.find({}, { _id: 1, studentId: 1, placementStatus: 1, status: 1 }).lean(),
     ]);
 
-    // ── Placement Status counts — derived from student.placementStatus ──────
-    // Cross-reference appointments & internships to auto-correct any stale
-    // placementStatus values in the Student collection, then count the corrected values.
-    // Reuse already-fetched appointments/internships from the Promise.all above.
-    const [students] = await Promise.all([
-        StudentModel.find({}, { _id: 1, studentId: 1, placementStatus: 1 }).lean(),
-    ]);
-    // Embedded workflow records are authoritative. Standalone collections can
-    // contain orphaned rows after a student is deleted.
+    // Embedded workflow records are authoritative.
     const allAppointments = workflowRecords.flatMap(wf => wf.appointments || []);
     const allInternships = workflowRecords.flatMap(wf => wf.internships || []);
     const allRequests = workflowRecords.flatMap(wf => wf.requests || []);
+
+    const validStudentKeys = new Set(
+        students.flatMap(s => [String(s._id), s.studentId]).filter(Boolean)
+    );
+
+    const validAppointments = allAppointments.filter(a =>
+        validStudentKeys.has(String(a.studentId || a.student || ''))
+    );
+    const validInternships = allInternships.filter(i =>
+        validStudentKeys.has(String(i.studentId || i.student || ''))
+    );
+    const validRequests = allRequests.filter(r =>
+        validStudentKeys.has(String(r.studentId || ''))
+    );
 
     // Build lookup maps keyed by studentId (business ID) and _id string
     const apptsByStudent = {};
@@ -1441,18 +1448,18 @@ export const getWorkflowDashboardData = async () => {
     };
 
     const appointmentsStats = {
-        scheduled: appointments.filter((a) => ["Scheduled", "Rescheduled"].includes(a.status)).length,
-        completed: appointments.filter((a) => a.status === "Completed").length,
-        cancelled: appointments.filter((a) => ["Cancelled", "No Show"].includes(a.status)).length,
+        scheduled: validAppointments.filter((a) => ["Scheduled", "Rescheduled"].includes(a.status)).length,
+        completed: validAppointments.filter((a) => a.status === "Completed" || a.appointmentOutcome === "successful").length,
+        cancelled: validAppointments.filter((a) => ["Cancelled", "No Show", "Declined"].includes(a.status) || a.appointmentOutcome === "student_missed").length,
     };
 
     const internshipsStats = {
-        active: internships.filter((i) => i.status === "Active").length,
-        joined: internships.filter((i) => i.status === "Joined").length,
-        waitingToJoin: internships.filter((i) => i.status === "Waiting to Join").length,
-        completed: internships.filter((i) => i.status === "Completed").length,
-        onHold: internships.filter((i) => i.status === "On Hold").length,
-        cancelled: internships.filter((i) => i.status === "Cancelled").length,
+        active: validInternships.filter((i) => i.status === "Active" || i.status === "Joined" || i.status === "Placement Started").length,
+        joined: validInternships.filter((i) => i.status === "Joined").length,
+        waitingToJoin: validInternships.filter((i) => i.status === "Waiting to Join").length,
+        completed: validInternships.filter((i) => i.status === "Completed" || i.status === "Placement Completed").length,
+        onHold: validInternships.filter((i) => i.status === "On Hold").length,
+        cancelled: validInternships.filter((i) => ["Cancelled", "Withdrawn"].includes(i.status)).length,
     };
 
     const rawActivities = [];
@@ -1534,11 +1541,13 @@ export const getWorkflowDashboardData = async () => {
     }
 
     return {
-        totalWorkflows,
-        activeWorkflows,
-        totalRequests,
-        totalAppointments,
-        totalInternships,
+        totalWorkflows: totalStudents,
+        activeWorkflows: activeStudentsCount,
+        totalStudents,
+        activeStudents: activeStudentsCount,
+        totalRequests: validRequests.length,
+        totalAppointments: validAppointments.length,
+        totalInternships: validInternships.length,
         requestsStats,
         appointmentsStats,
         internshipsStats,

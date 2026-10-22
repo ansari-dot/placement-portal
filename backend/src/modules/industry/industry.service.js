@@ -141,48 +141,104 @@ export class IndustryService {
         const normName = ind.name.trim().toLowerCase();
 
         const studentMap = new Map();
-        let placedCount = 0;
-        let rejectedCount = 0;
-        let discussionCount = 0;
+        const nameMap = new Map();
+        const idMap = new Map();
+
+        const getOrCreateStudentEntry = (rawItem) => {
+          const rawName = (rawItem.student || rawItem.studentName || '').trim();
+          const normName = rawName.toLowerCase();
+          const rawId = (rawItem.studentId || '').trim();
+          const normId = rawId.toLowerCase();
+
+          let existingKey = null;
+          if (normName && nameMap.has(normName)) {
+            existingKey = nameMap.get(normName);
+          } else if (normId && idMap.has(normId)) {
+            existingKey = idMap.get(normId);
+          }
+
+          if (existingKey && studentMap.has(existingKey)) {
+            const existing = studentMap.get(existingKey);
+            if (!existing.studentId && rawId) existing.studentId = rawId;
+            if (!existing.studentName && rawName) existing.studentName = rawName;
+            if (normName) nameMap.set(normName, existingKey);
+            if (normId) idMap.set(normId, existingKey);
+            return existing;
+          }
+
+          const newKey = normName || normId || String(rawItem.id || Math.random());
+          const entry = {
+            studentName: rawName || 'Student',
+            studentId: rawId || '',
+            status: 'Scheduled',
+            date: '',
+            rejectionReason: null,
+            notes: '',
+          };
+          studentMap.set(newKey, entry);
+          if (normName) nameMap.set(normName, newKey);
+          if (normId) idMap.set(normId, newKey);
+          return entry;
+        };
 
         for (const wf of allWorkflows) {
-          for (const appt of wf.appointments || []) {
-            if ((appt.company || '').trim().toLowerCase() === normName) {
-              const key = appt.studentId || appt.student || appt.id;
-              const isRejected = appt.status === 'Declined' || appt.cancellationType === 'industry';
-              const isPlaced = appt.status === 'Completed' || appt.status === 'Confirmed';
-
-              if (isPlaced) placedCount++;
-              if (isRejected) rejectedCount++;
-
-              studentMap.set(key, {
-                studentName: appt.student || 'Student',
-                studentId: appt.studentId || '',
-                status: isPlaced ? 'Placed' : isRejected ? 'Rejected by Industry' : appt.status || 'Scheduled',
-                date: appt.date || '',
-                rejectionReason: isRejected ? appt.cancellationReason || 'Industry declined' : null,
-              });
+          // 1. Process internships first (direct/active placements)
+          for (const intern of wf.internships || []) {
+            if ((intern.company || '').trim().toLowerCase() === normName) {
+              const entry = getOrCreateStudentEntry(intern);
+              entry.status = 'Placed';
+              entry.date = intern.start || intern.commencementDate || entry.date || '';
             }
           }
 
+          // 2. Process appointments
+          for (const appt of wf.appointments || []) {
+            if ((appt.company || '').trim().toLowerCase() === normName) {
+              const entry = getOrCreateStudentEntry(appt);
+              const isRejected = appt.status === 'Declined' || appt.cancellationType === 'industry';
+              const isPlaced = appt.status === 'Completed' || appt.status === 'Confirmed';
+
+              if (isPlaced) {
+                entry.status = 'Placed';
+                if (appt.date) entry.date = appt.date;
+              } else if (isRejected) {
+                if (entry.status !== 'Placed') {
+                  entry.status = 'Rejected by Industry';
+                  entry.rejectionReason = appt.cancellationReason || 'Industry declined';
+                  if (appt.date) entry.date = appt.date;
+                }
+              } else {
+                if (entry.status !== 'Placed' && entry.status !== 'Rejected by Industry') {
+                  entry.status = appt.status || 'Scheduled';
+                  if (appt.date) entry.date = appt.date;
+                }
+              }
+            }
+          }
+
+          // 3. Process requests (contacted industries)
           for (const req of wf.requests || []) {
             for (const c of req.contactedIndustries || []) {
               if ((c.organizationName || '').trim().toLowerCase() === normName) {
-                const key = req.studentId || req.student || req.id;
-                if (!studentMap.has(key)) {
-                  const isRejected = c.response === 'Rejected';
-                  const isAccepted = c.response === 'Accepted';
-                  if (isAccepted) placedCount++;
-                  if (isRejected) rejectedCount++;
-                  if (!isAccepted && !isRejected) discussionCount++;
+                const entry = getOrCreateStudentEntry(req);
+                const isRejected = c.response === 'Rejected';
+                const isAccepted = c.response === 'Accepted';
 
-                  studentMap.set(key, {
-                    studentName: req.student || 'Student',
-                    studentId: req.studentId || '',
-                    status: isAccepted ? 'Accepted' : isRejected ? 'Rejected by Industry' : c.response || 'In Discussion',
-                    date: c.contactedDate ? new Date(c.contactedDate).toISOString().split('T')[0] : '',
-                    notes: c.notes || '',
-                  });
+                if (isAccepted) {
+                  entry.status = 'Placed';
+                } else if (isRejected) {
+                  if (entry.status !== 'Placed') {
+                    entry.status = 'Rejected by Industry';
+                    entry.notes = c.notes || entry.notes;
+                  }
+                } else {
+                  if (entry.status !== 'Placed' && entry.status !== 'Rejected by Industry') {
+                    entry.status = c.response || 'In Discussion';
+                    entry.notes = c.notes || entry.notes;
+                  }
+                }
+                if (c.contactedDate && !entry.date) {
+                  entry.date = new Date(c.contactedDate).toISOString().split('T')[0];
                 }
               }
             }
@@ -200,7 +256,7 @@ export class IndustryService {
         for (const wf of allWorkflows) {
           for (const intern of wf.internships || []) {
             if ((intern.company || '').trim().toLowerCase() !== normName) continue;
-            const key = (intern.studentId || '').trim().toLowerCase();
+            const key = (intern.studentId || intern.student || '').trim().toLowerCase();
             if (!key) continue;
             const record = {
               studentName: intern.student || 'Student',
@@ -217,7 +273,7 @@ export class IndustryService {
           }
           for (const appt of wf.appointments || []) {
             if ((appt.company || '').trim().toLowerCase() !== normName) continue;
-            const key = (appt.studentId || '').trim().toLowerCase();
+            const key = (appt.studentId || appt.student || '').trim().toLowerCase();
             if (!key) continue;
             if (currentlyPlacedMap.has(key) || previouslyPlacedMap.has(key)) continue;
             const record = {
@@ -240,8 +296,15 @@ export class IndustryService {
 
         indDoc.students = studentDetails.length;
         indDoc.studentDetails = studentDetails;
-        indDoc.placedCount = placedCount;
-        indDoc.rejectedCount = rejectedCount;
+        indDoc.placedCount = studentDetails.filter(s =>
+          String(s.status).toLowerCase().includes('place') ||
+          String(s.status).toLowerCase().includes('accept') ||
+          String(s.status).toLowerCase().includes('complet')
+        ).length;
+        indDoc.rejectedCount = studentDetails.filter(s =>
+          String(s.status).toLowerCase().includes('reject') ||
+          String(s.status).toLowerCase().includes('declin')
+        ).length;
         indDoc.jobs = jobCount || indDoc.jobs || 0;
         indDoc.currentlyPlacedStudents = Array.from(currentlyPlacedMap.values());
         indDoc.previouslyPlacedStudents = Array.from(previouslyPlacedMap.values());

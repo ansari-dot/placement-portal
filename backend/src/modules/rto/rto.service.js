@@ -81,17 +81,25 @@ export class RtoService {
     if (loc && loc !== 'All') filters.push({ loc });
 
     const query = filters.length > 0 ? (filters.length === 1 ? filters[0] : { $and: filters }) : {};
-    return await RtoModel.find(query).select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean();
+    const rtos = await RtoModel.find(query).select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean();
+    return await this.enrichRtosWithStudentCounts(rtos);
   }
 
   static async getRtoById(id, user) {
-    const rto = await RtoModel.findById(id);
+    const rto = await RtoModel.findById(id).lean();
     if (!rto) {
       throw new NotFoundError('RTO not found');
     }
     if (user && user.role === 'Coordinator' && !checkCoordinatorRtoOwnership(rto, user)) {
       throw new ForbiddenError('Access denied. You can only view RTOs added by you.');
     }
+    try {
+      const StudentModel = (await import('../student/student.model.js')).default;
+      const count = await StudentModel.countDocuments({
+        $or: [{ rtoId: rto._id }, { assignedRto: rto.name }],
+      });
+      rto.students = count;
+    } catch (_) {}
     return rto;
   }
 
@@ -298,23 +306,62 @@ export class RtoService {
     return rto;
   }
 
+  static async enrichRtosWithStudentCounts(rtos) {
+    if (!Array.isArray(rtos) || !rtos.length) return rtos;
+    try {
+      const StudentModel = (await import('../student/student.model.js')).default;
+      const rtoIds = rtos.map((r) => r._id);
+      const rtoNames = rtos.map((r) => r.name);
+
+      const [countsByRtoId, countsByName] = await Promise.all([
+        StudentModel.aggregate([
+          { $match: { rtoId: { $in: rtoIds } } },
+          { $group: { _id: '$rtoId', count: { $sum: 1 } } },
+        ]),
+        StudentModel.aggregate([
+          {
+            $match: {
+              assignedRto: { $in: rtoNames },
+              $or: [{ rtoId: { $exists: false } }, { rtoId: null }, { rtoId: { $nin: rtoIds } }],
+            },
+          },
+          { $group: { _id: '$assignedRto', count: { $sum: 1 } } },
+        ]),
+      ]);
+
+      const mapByRtoId = new Map(countsByRtoId.map((c) => [String(c._id), c.count]));
+      const mapByName = new Map(countsByName.map((c) => [String(c._id).trim().toLowerCase(), c.count]));
+
+      rtos.forEach((r) => {
+        const idCount = mapByRtoId.get(String(r._id)) || 0;
+        const nameCount = mapByName.get(String(r.name || '').trim().toLowerCase()) || 0;
+        r.students = idCount + nameCount;
+      });
+    } catch (countErr) {
+      console.warn('[RtoService] Failed to aggregate live student counts for RTOs:', countErr.message);
+    }
+    return rtos;
+  }
+
   static async getRtoStats(user) {
     let baseFilter = {};
     if (user && user.role === 'Coordinator') {
       baseFilter = buildCoordinatorRtoFilter(user);
     }
 
-    const [totalRtos, activeRtos, inactiveRtos, studentAgg] = await Promise.all([
+    const StudentModel = (await import('../student/student.model.js')).default;
+
+    const [totalRtos, activeRtos, inactiveRtos, totalStudents] = await Promise.all([
       RtoModel.countDocuments(baseFilter),
       RtoModel.countDocuments({ ...baseFilter, status: 'Active' }),
       RtoModel.countDocuments({ ...baseFilter, status: 'Inactive' }),
-      RtoModel.aggregate([
-        ...(Object.keys(baseFilter).length > 0 ? [{ $match: baseFilter }] : []),
-        { $group: { _id: null, total: { $sum: { $ifNull: ['$students', 0] } } } },
-      ]),
+      StudentModel.countDocuments({
+        $or: [
+          { rtoId: { $ne: null } },
+          { assignedRto: { $nin: ['', null, 'Independent Student', 'N/A'] } },
+        ],
+      }),
     ]);
-
-    const totalStudents = studentAgg[0]?.total || 0;
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -348,12 +395,13 @@ export class RtoService {
   static async getMyRtos(user) {
     if (!user) return [];
     const isAdmin = user.role === 'Administrator';
-    return isAdmin
+    const rtos = isAdmin
       ? await RtoModel.find().select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean()
       : await RtoModel.find(buildCoordinatorRtoFilter(user))
           .select(LIST_EXCLUDE)
           .sort({ createdAt: -1 })
           .lean();
+    return await this.enrichRtosWithStudentCounts(rtos);
   }
 
   static checkCoordinatorRtoOwnership = checkCoordinatorRtoOwnership;
