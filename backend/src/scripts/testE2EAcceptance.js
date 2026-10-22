@@ -121,6 +121,32 @@ export const runE2EAcceptanceSuite = async () => {
     });
     assert(userRtoBeta._id, `RTO Beta Manager created: ${userRtoBeta.email}`);
 
+    // Coordinator Chloe
+    const userCoordinatorChloe = await UserModel.create({
+      name: `Chloe Coordinator ${RUN_TAG}`,
+      email: testEmail('chloe.coordinator'),
+      password: 'Password@123',
+      role: 'Coordinator',
+      status: 'Active',
+      approved: true,
+      isDeleted: false,
+    });
+    assert(userCoordinatorChloe._id, `Coordinator Chloe created: ${userCoordinatorChloe.email}`);
+
+    // RTO Chloe (onboarded by Coordinator Chloe)
+    const rtoChloe = await RtoModel.create({
+      name: `RTO Chloe ${RUN_TAG}`,
+      rtoCode: `RTO-C-${RUN_TAG.slice(-4)}`,
+      contactEmail: testEmail('rto.chloe.contact'),
+      contactPerson: 'Director Chloe',
+      contactPhone: '0400999999',
+      payoutRate: 450,
+      onboardedByName: userCoordinatorChloe.name,
+      onboardedBy: userCoordinatorChloe._id,
+      createdBy: userCoordinatorChloe._id,
+    });
+    assert(rtoChloe._id, `RTO Chloe created by Coordinator: ${rtoChloe.name}`);
+
     // Facility 1: Industry Facility North
     const facilityNorth = await IndustryModel.create({
       name: `Care North ${RUN_TAG}`,
@@ -443,6 +469,22 @@ export const runE2EAcceptanceSuite = async () => {
     const sanitizedStudentForRto = await StudentService.getStudentById(studentAlpha._id, userRtoAlpha);
     assert(sanitizedStudentForRto.placementSite === undefined, 'Host facility / placementSite redacted from Student payload for RTO Manager');
     assert(sanitizedStudentForRto.additionalNotes === undefined, 'Internal notes redacted from Student payload for RTO Manager');
+
+    // 3.5 Coordinator RTO Scoping: Coordinator only sees their onboarded RTO, not Admin RTOs
+    const chloeRtos = await RtoService.getAllRtos({}, userCoordinatorChloe);
+    const chloeRtoNames = chloeRtos.map((r) => r.name);
+    assert(chloeRtoNames.includes(rtoChloe.name), 'Coordinator Chloe sees her own onboarded RTO');
+    assert(!chloeRtoNames.includes(rtoAlpha.name), 'Coordinator Chloe CANNOT see Admin-created RTO Alpha in RTO list');
+    assert(!chloeRtoNames.includes(rtoBeta.name), 'Coordinator Chloe CANNOT see Admin-created RTO Beta in RTO list');
+
+    // 3.6 Direct ID access by Coordinator Chloe to Admin RTO -> 403 Forbidden
+    let chloeDirectAdminRtoBlocked = false;
+    try {
+      await RtoService.getRtoById(rtoAlpha._id, userCoordinatorChloe);
+    } catch (err) {
+      chloeDirectAdminRtoBlocked = err.statusCode === 403;
+    }
+    assert(chloeDirectAdminRtoBlocked, 'Coordinator direct getRtoById access to Admin RTO returns 403 Forbidden');
 
     // -------------------------------------------------------------------------
     // 4. MULTI-TENANT ISOLATION: INDUSTRY NORTH vs INDUSTRY SOUTH

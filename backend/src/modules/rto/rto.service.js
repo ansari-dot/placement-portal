@@ -24,18 +24,33 @@ export const buildCoordinatorRtoFilter = (user) => {
   if (user.name) {
     matches.push({ onboardedByName: { $regex: `^${user.name.trim()}$`, $options: 'i' } });
   }
+  if (user.rtoId) {
+    matches.push({ _id: user.rtoId });
+    if (mongoose.Types.ObjectId.isValid(user.rtoId)) {
+      matches.push({ _id: new mongoose.Types.ObjectId(user.rtoId) });
+    }
+  }
+  if (user.rtoName) {
+    matches.push({ name: { $regex: `^${user.rtoName.trim()}$`, $options: 'i' } });
+  }
   return { $or: matches };
 };
 
 export const checkCoordinatorRtoOwnership = (rto, user) => {
-  if (!user || user.role !== 'Coordinator') return true;
+  if (!user) return true;
+  const role = user.role;
+  if (role !== 'Coordinator' && role !== 'Placement Coordinator') return true;
   const userIdStr = user._id ? String(user._id) : '';
   const createdByStr = rto.createdBy ? String(rto.createdBy) : '';
   const onboardedByStr = rto.onboardedBy ? String(rto.onboardedBy) : '';
   const nameMatches = user.name && rto.onboardedByName &&
     rto.onboardedByName.trim().toLowerCase() === user.name.trim().toLowerCase();
+  const rtoIdStr = rto._id ? String(rto._id) : '';
+  const userRtoIdStr = user.rtoId ? String(user.rtoId) : '';
+  const rtoIdMatches = Boolean(userRtoIdStr && rtoIdStr && userRtoIdStr === rtoIdStr);
+  const rtoNameMatches = Boolean(user.rtoName && rto.name && user.rtoName.trim().toLowerCase() === rto.name.trim().toLowerCase());
 
-  return (userIdStr && (createdByStr === userIdStr || onboardedByStr === userIdStr)) || Boolean(nameMatches);
+  return (userIdStr && (createdByStr === userIdStr || onboardedByStr === userIdStr)) || Boolean(nameMatches) || rtoIdMatches || rtoNameMatches;
 };
 
 export class RtoService {
@@ -44,13 +59,10 @@ export class RtoService {
     const role = user?.role;
     const userEmail = user?.email?.toLowerCase()?.trim();
 
-    if (user && role !== 'Administrator') {
-      if (role === 'Coordinator') {
-        if (my === 'true') {
-          filters.push(buildCoordinatorRtoFilter(user));
-        }
-        // By default, Coordinators can view all RTOs for directory and student assignments
-      } else if (role === 'RTO Manager') {
+    if (user && role !== 'Administrator' && role !== 'Admin') {
+      if (role === 'Coordinator' || role === 'Placement Coordinator') {
+        filters.push(buildCoordinatorRtoFilter(user));
+      } else if (role === 'RTO Manager' || role === 'RTO') {
         let userRtoName = user.rtoName;
         if (!userRtoName && userEmail) {
           const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
@@ -270,7 +282,8 @@ export class RtoService {
     if (!existing) {
       throw new NotFoundError('RTO not found');
     }
-    if (actingUser && actingUser.role === 'Coordinator' && !checkCoordinatorRtoOwnership(existing, actingUser)) {
+    const isCoordinator = actingUser?.role === 'Coordinator' || actingUser?.role === 'Placement Coordinator';
+    if (actingUser && isCoordinator && !checkCoordinatorRtoOwnership(existing, actingUser)) {
       throw new ForbiddenError('Access denied. You can only edit RTOs added by you.');
     }
 
@@ -369,22 +382,53 @@ export class RtoService {
 
   static async getRtoStats(user) {
     let baseFilter = {};
-    if (user && user.role === 'Coordinator') {
+    const role = user?.role;
+    const isCoordinator = role === 'Coordinator' || role === 'Placement Coordinator';
+    const isRto = role === 'RTO Manager' || role === 'RTO';
+
+    if (user && isCoordinator) {
       baseFilter = buildCoordinatorRtoFilter(user);
+    } else if (user && isRto) {
+      let userRtoName = user.rtoName;
+      const userEmail = user.email?.toLowerCase()?.trim();
+      if (!userRtoName && userEmail) {
+        const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
+        if (matchedRto) userRtoName = matchedRto.name;
+      }
+      if (userRtoName) {
+        baseFilter = { name: { $regex: `^${userRtoName.trim()}$`, $options: 'i' } };
+      } else if (userEmail) {
+        baseFilter = { contactEmail: userEmail };
+      } else {
+        baseFilter = { _id: null };
+      }
+    } else if (user && role !== 'Administrator' && role !== 'Admin') {
+      baseFilter = { _id: null };
     }
 
     const StudentModel = (await import('../student/student.model.js')).default;
+
+    let studentCountFilter = {
+      $or: [
+        { rtoId: { $ne: null } },
+        { assignedRto: { $nin: ['', null, 'Independent Student', 'N/A'] } },
+      ],
+    };
+    if (user && isCoordinator) {
+      studentCountFilter = {
+        $or: [
+          { assignedCoordinator: user._id },
+          { assignedCoordinator: String(user._id) },
+          ...(user.name ? [{ assignedCoordinatorName: { $regex: `^${user.name.trim()}$`, $options: 'i' } }] : []),
+        ],
+      };
+    }
 
     const [totalRtos, activeRtos, inactiveRtos, totalStudents] = await Promise.all([
       RtoModel.countDocuments(baseFilter),
       RtoModel.countDocuments({ ...baseFilter, status: 'Active' }),
       RtoModel.countDocuments({ ...baseFilter, status: 'Inactive' }),
-      StudentModel.countDocuments({
-        $or: [
-          { rtoId: { $ne: null } },
-          { assignedRto: { $nin: ['', null, 'Independent Student', 'N/A'] } },
-        ],
-      }),
+      StudentModel.countDocuments(studentCountFilter),
     ]);
 
     const thirtyDaysAgo = new Date();
@@ -404,7 +448,8 @@ export class RtoService {
   }
 
   static async deleteRto(id, actingUser) {
-    if (actingUser && actingUser.role === 'Coordinator') {
+    const isCoordinator = actingUser?.role === 'Coordinator' || actingUser?.role === 'Placement Coordinator';
+    if (actingUser && isCoordinator) {
       const existing = await RtoModel.findById(id);
       if (!existing) return true;
       if (!checkCoordinatorRtoOwnership(existing, actingUser)) {
@@ -418,7 +463,7 @@ export class RtoService {
 
   static async getMyRtos(user) {
     if (!user) return [];
-    const isAdmin = user.role === 'Administrator';
+    const isAdmin = user.role === 'Administrator' || user.role === 'Admin';
     const rtos = isAdmin
       ? await RtoModel.find().select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean()
       : await RtoModel.find(buildCoordinatorRtoFilter(user))

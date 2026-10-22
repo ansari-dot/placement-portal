@@ -139,8 +139,8 @@ function MyRTOsTab() {
 
 export default function TheRTOPage() {
   const authUser = useSelector(state => state.auth?.user);
-  const isAdmin = authUser?.role === 'Administrator';
-  const isCoordinator = authUser?.role === 'Coordinator';
+  const isAdmin = authUser?.role === 'Administrator' || authUser?.role === 'Admin';
+  const isCoordinator = authUser?.role === 'Coordinator' || authUser?.role === 'Placement Coordinator';
 
   // View states: 'dashboard' | 'add-wizard'
   const [currentView, setCurrentView] = useState('dashboard');
@@ -158,8 +158,9 @@ export default function TheRTOPage() {
   });
 
   const loadData = useCallback(async (filters = {}) => {
+    const queryFilters = isCoordinator ? { ...filters, my: 'true' } : filters;
     const [rtoListResult, rtoStatsResult] = await Promise.allSettled([
-        fetchRtos(filters),
+        fetchRtos(queryFilters),
         fetchRtoStats()
     ]);
 
@@ -176,7 +177,7 @@ export default function TheRTOPage() {
     } else if (rtoStatsResult.status === 'rejected') {
       console.error('Failed to load RTO stats:', rtoStatsResult.reason);
     }
-  }, []);
+  }, [isCoordinator]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -246,18 +247,29 @@ export default function TheRTOPage() {
       {currentView === 'dashboard' ? (
         <>
           {/* Tab bar */}
-          <div className="px-6 pt-1 bg-white border-b border-slate-200">
-            <div className="flex items-center gap-1 max-w-[1600px] mx-auto">
-              <button onClick={() => setActiveTab('all')} className={tabClass('all')}>
-                <Building2 className="w-4 h-4" />
-                {isCoordinator ? 'My Added RTOs' : 'All RTOs'}
-              </button>
-              <button onClick={() => setActiveTab('my')} className={tabClass('my')}>
-                <User className="w-4 h-4" />
-                {isAdmin ? 'My RTOs (All)' : 'My RTOs'}
-              </button>
+          {isAdmin ? (
+            <div className="px-6 pt-1 bg-white border-b border-slate-200">
+              <div className="flex items-center gap-1 max-w-[1600px] mx-auto">
+                <button onClick={() => setActiveTab('all')} className={tabClass('all')}>
+                  <Building2 className="w-4 h-4" />
+                  All RTOs
+                </button>
+                <button onClick={() => setActiveTab('my')} className={tabClass('my')}>
+                  <User className="w-4 h-4" />
+                  My RTOs (All)
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="px-6 pt-1 bg-white border-b border-slate-200">
+              <div className="flex items-center gap-1 max-w-[1600px] mx-auto">
+                <div className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600">
+                  <Building2 className="w-4 h-4" />
+                  My Added RTOs
+                </div>
+              </div>
+            </div>
+          )}
 
           {activeTab === 'all' && (
             <>
