@@ -78,8 +78,13 @@ export class UserService {
     }
   }
 
-  static async getAllUsers({ search, role, status, department }) {
+  static async getAllUsers(queryParams = {}) {
+    const { search, role, status, department, page, limit, includeDeleted } = queryParams;
     const query = {};
+
+    if (!includeDeleted || includeDeleted === 'false') {
+      query.isDeleted = { $ne: true };
+    }
 
     if (search) {
       query.$or = [
@@ -95,12 +100,25 @@ export class UserService {
 
     await this.seedInitialUsersIfEmpty(query);
 
-    const users = await UserModel.find(query).sort({ createdAt: -1 });
+    const isPaginated = page !== undefined || limit !== undefined;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+
+    let userQuery = UserModel.find(query).sort({ createdAt: -1 });
+
+    let total = 0;
+    if (isPaginated) {
+      total = await UserModel.countDocuments(query);
+      userQuery = userQuery.skip((pageNum - 1) * limitNum).limit(limitNum);
+    }
+
+    const users = await userQuery;
 
     const onlineThresholdMs = 3 * 60 * 1000;
     const now = Date.now();
-    return users.map((u) => {
+    const mappedUsers = users.map((u) => {
       const uObj = u.toObject ? u.toObject() : { ...u };
+      delete uObj.password;
       const lastActiveTime = uObj.lastActive ? new Date(uObj.lastActive).getTime() : 0;
       const isRecentlyActive = now - lastActiveTime < onlineThresholdMs;
       uObj.isOnline = Boolean(uObj.isOnline) && isRecentlyActive;
@@ -109,15 +127,37 @@ export class UserService {
       }
       return uObj;
     });
+
+    if (isPaginated) {
+      return {
+        users: mappedUsers,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      };
+    }
+
+    return mappedUsers;
+  }
+
+  static async getUserById(id) {
+    const user = await UserModel.findById(id).select('-password');
+    if (!user || user.isDeleted) {
+      throw new NotFoundError('User not found');
+    }
+    return user;
   }
 
   static async getPendingUsers() {
-    return await UserModel.find({ status: 'Pending' }).sort({ createdAt: -1 });
+    return await UserModel.find({ status: 'Pending', isDeleted: { $ne: true } })
+      .select('-password')
+      .sort({ createdAt: -1 });
   }
 
-  static async approveUser(id) {
+  static async approveUser(id, adminUser) {
     const user = await UserModel.findById(id);
-    if (!user) {
+    if (!user || user.isDeleted) {
       throw new NotFoundError('User not found');
     }
     if (user.status !== 'Pending') {
@@ -125,6 +165,13 @@ export class UserService {
     }
 
     user.status = 'Active';
+    user.approved = true;
+    user.approvedAt = new Date();
+    user.approvedBy = adminUser?._id || null;
+    user.rejectedAt = null;
+    user.rejectedBy = null;
+    user.rejectionReason = '';
+
     await user.save();
 
     try {
@@ -136,23 +183,101 @@ export class UserService {
         recipient: user._id,
       });
     } catch (notifyErr) {
-      console.error('Failed to notify approved user:', notifyErr);
+      console.error('Failed to notify approved user:', notifyErr.message);
     }
 
-    return user;
+    const resObj = user.toObject();
+    delete resObj.password;
+    return resObj;
   }
 
-  static async rejectUser(id) {
+  static async rejectUser(id, adminUser, reason = '') {
     const user = await UserModel.findById(id);
-    if (!user) {
+    if (!user || user.isDeleted) {
       throw new NotFoundError('User not found');
     }
     if (user.status !== 'Pending') {
       throw new BadRequestError('Only pending users can be rejected');
     }
 
-    await UserModel.findByIdAndDelete(id);
-    return user;
+    // Soft reject: Mark account as Rejected with administrator notes, preserving audit history
+    user.status = 'Rejected';
+    user.approved = false;
+    user.rejectedAt = new Date();
+    user.rejectedBy = adminUser?._id || null;
+    user.rejectionReason = (reason || '').trim() || 'Registration rejected by administrator';
+
+    await user.save();
+
+    const resObj = user.toObject();
+    delete resObj.password;
+    return resObj;
+  }
+
+  static async updateUserStatus(id, newStatus, adminUser, reason = '') {
+    const validStatuses = ['Active', 'Inactive', 'Disabled', 'Suspended'];
+    if (!validStatuses.includes(newStatus)) {
+      throw new BadRequestError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    const user = await UserModel.findById(id);
+    if (!user || user.isDeleted) {
+      throw new NotFoundError('User not found');
+    }
+
+    // Protect the last active Administrator from being deactivated or suspended
+    if (
+      user.role === 'Administrator' &&
+      newStatus !== 'Active'
+    ) {
+      const activeAdminCount = await UserModel.countDocuments({
+        role: { $in: ['Administrator', 'Admin'] },
+        status: 'Active',
+        isDeleted: { $ne: true },
+      });
+      if (activeAdminCount <= 1) {
+        throw new BadRequestError('The last active Administrator cannot be deactivated or disabled.');
+      }
+    }
+
+    user.status = newStatus;
+    user.approved = newStatus === 'Active';
+    if (newStatus === 'Active') {
+      user.approvedAt = new Date();
+      user.approvedBy = adminUser?._id || null;
+    }
+
+    await user.save();
+
+    const resObj = user.toObject();
+    delete resObj.password;
+    return resObj;
+  }
+
+  static async reactivateUser(id, adminUser) {
+    const user = await UserModel.findById(id);
+    if (!user || user.isDeleted) {
+      throw new NotFoundError('User not found');
+    }
+
+    if (user.status === 'Rejected') {
+      throw new BadRequestError('Rejected accounts cannot be reactivated directly. They must be reapproved through the explicit approval workflow.');
+    }
+
+    if (!['Disabled', 'Inactive', 'Suspended'].includes(user.status)) {
+      throw new BadRequestError('Only disabled, inactive, or suspended users can be reactivated.');
+    }
+
+    user.status = 'Active';
+    user.approved = true;
+    user.approvedAt = new Date();
+    user.approvedBy = adminUser?._id || null;
+
+    await user.save();
+
+    const resObj = user.toObject();
+    delete resObj.password;
+    return resObj;
   }
 
   static async getUserStats() {
@@ -167,21 +292,24 @@ export class UserService {
       inactiveUsers,
       pendingUsers,
     ] = await Promise.all([
-      UserModel.countDocuments(),
-      UserModel.countDocuments({ status: 'Active' }),
-      UserModel.countDocuments({ role: 'Administrator' }),
-      UserModel.countDocuments({ role: 'Coordinator' }),
-      UserModel.countDocuments({ role: 'RTO Manager' }),
-      UserModel.countDocuments({ role: 'Staff' }),
-      UserModel.countDocuments({ role: 'Industry' }),
-      UserModel.countDocuments({ status: { $ne: 'Active' } }),
-      UserModel.countDocuments({ status: 'Pending' }),
+      UserModel.countDocuments({ isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ status: 'Active', isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ role: { $in: ['Administrator', 'Admin'] }, isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ role: { $in: ['Coordinator', 'Placement Coordinator'] }, isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ role: { $in: ['RTO Manager', 'RTO'] }, isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ role: 'Staff', isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ role: { $in: ['Industry', 'Industry/Host'] }, isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ status: { $in: ['Inactive', 'Disabled', 'Suspended', 'Rejected'] }, isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ status: 'Pending', isDeleted: { $ne: true } }),
     ]);
 
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
-    const newThisMonth = await UserModel.countDocuments({ createdAt: { $gte: startOfMonth } });
+    const newThisMonth = await UserModel.countDocuments({
+      createdAt: { $gte: startOfMonth },
+      isDeleted: { $ne: true },
+    });
 
     return {
       totalUsers,
@@ -204,13 +332,16 @@ export class UserService {
       throw new ConflictError('User with this email already exists');
     }
 
+    const userStatus = status || 'Active';
     const user = await UserModel.create({
       name: name.trim(),
       email: normEmail,
       password: password?.trim() || 'User@123',
       role: role || 'Staff',
       department: department || 'Placement Operations',
-      status: status || 'Active',
+      status: userStatus,
+      approved: userStatus === 'Active',
+      isDeleted: false,
       phone: phone || '',
       avatar: avatar || '',
       lastLogin: new Date(),
@@ -231,7 +362,7 @@ export class UserService {
   }
 
   static async updateUser(id, updateData) {
-    const editableFields = ['name', 'email', 'password', 'role', 'department', 'status', 'phone', 'avatar'];
+    const editableFields = ['name', 'email', 'password', 'role', 'department', 'status', 'phone', 'avatar', 'rtoId', 'rtoName', 'industryId', 'facilityName'];
     const filteredUpdates = {};
     for (const key of editableFields) {
       if (updateData[key] !== undefined) {
@@ -255,7 +386,7 @@ export class UserService {
     }
 
     const currentUser = await UserModel.findById(id);
-    if (!currentUser) {
+    if (!currentUser || currentUser.isDeleted) {
       throw new NotFoundError('User not found');
     }
 
@@ -265,33 +396,51 @@ export class UserService {
         (filteredUpdates.status && filteredUpdates.status !== 'Active'));
 
     if (isRemovingAdminAccess) {
-      const activeAdminCount = await UserModel.countDocuments({ role: 'Administrator', status: 'Active' });
+      const activeAdminCount = await UserModel.countDocuments({
+        role: { $in: ['Administrator', 'Admin'] },
+        status: 'Active',
+        isDeleted: { $ne: true },
+      });
       if (activeAdminCount <= 1) {
         throw new BadRequestError('The last active Administrator cannot be deactivated or changed to another role.');
       }
     }
 
     Object.assign(currentUser, filteredUpdates);
+    if (filteredUpdates.status === 'Active') {
+      currentUser.approved = true;
+    }
     const updated = await currentUser.save();
     const userResponse = updated.toObject();
     delete userResponse.password;
     return userResponse;
   }
 
-  static async deleteUser(id) {
+  static async deleteUser(id, adminUser) {
     const user = await UserModel.findById(id);
-    if (!user) {
+    if (!user || user.isDeleted) {
       throw new NotFoundError('User not found');
     }
 
-    if (user.role === 'Administrator') {
-      const adminCount = await UserModel.countDocuments({ role: 'Administrator' });
+    if (user.role === 'Administrator' || user.role === 'Admin') {
+      const adminCount = await UserModel.countDocuments({
+        role: { $in: ['Administrator', 'Admin'] },
+        status: 'Active',
+        isDeleted: { $ne: true },
+      });
       if (adminCount <= 1) {
         throw new BadRequestError('Cannot delete the only Administrator account on the portal.');
       }
     }
 
-    await UserModel.findByIdAndDelete(id);
+    // Soft delete by default to preserve audit trails, attendance records, and placement history
+    user.isDeleted = true;
+    user.status = 'Inactive';
+    user.approved = false;
+    user.deletedAt = new Date();
+    user.deletedBy = adminUser?._id || null;
+    await user.save();
+
     return user;
   }
 

@@ -27,6 +27,9 @@ import {
   createInternship,
   updateInternship,
   deleteInternship,
+  bulkDeleteInternshipRequests,
+  bulkDeleteAppointments,
+  bulkDeleteInternships,
 } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
 import { updateStudent } from '../api/studentsApi';
@@ -1226,6 +1229,48 @@ export default function WorkflowPage() {
     }
   }, [workflowId, workflow, refreshWorkflowData]);
 
+  const handleBulkDeleteRequests = useCallback(async (requestIds) => {
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+    try {
+      await bulkDeleteInternshipRequests(wfId, requestIds);
+      await refreshWorkflowData();
+    } catch (err) {
+      console.error('Failed to bulk delete requests:', err);
+      for (const id of requestIds) {
+        try { await deleteInternshipRequest(wfId, id); } catch (_) {}
+      }
+      await refreshWorkflowData();
+    }
+  }, [workflowId, workflow, refreshWorkflowData]);
+
+  const handleBulkDeleteAppointments = useCallback(async (appointmentIds) => {
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+    try {
+      await bulkDeleteAppointments(wfId, appointmentIds);
+      await refreshWorkflowData();
+    } catch (err) {
+      console.error('Failed to bulk delete appointments:', err);
+      for (const id of appointmentIds) {
+        try { await deleteAppointment(wfId, id); } catch (_) {}
+      }
+      await refreshWorkflowData();
+    }
+  }, [workflowId, workflow, refreshWorkflowData]);
+
+  const handleBulkDeleteInternships = useCallback(async (internshipIds) => {
+    const wfId = workflowId || workflow?._id || workflow?.id || 'default';
+    try {
+      await bulkDeleteInternships(wfId, internshipIds);
+      await refreshWorkflowData();
+    } catch (err) {
+      console.error('Failed to bulk delete internships:', err);
+      for (const id of internshipIds) {
+        try { await deleteInternship(wfId, id); } catch (_) {}
+      }
+      await refreshWorkflowData();
+    }
+  }, [workflowId, workflow, refreshWorkflowData]);
+
   // ─── Coordinator assigned from Step1 — update local student list ────────
   const handleCoordinatorAssigned = useCallback(({ studentId, coordinatorId, coordinatorName }) => {
     setWorkflowStudents(prev =>
@@ -1339,6 +1384,7 @@ export default function WorkflowPage() {
             onCreateRequest={handleCreateRequest}
             onUpdateRequest={handleUpdateRequest}
             onDeleteRequest={handleDeleteRequest}
+            onBulkDeleteRequests={handleBulkDeleteRequests}
             onAddContact={handleAddContactToRequest}
             students={mapStudentsForStep1()}
             activeStudent={activeWorkflowStudent}
@@ -1355,6 +1401,7 @@ export default function WorkflowPage() {
             onCreateAppointment={handleCreateAppointment}
             onUpdateAppointment={handleUpdateAppointment}
             onDeleteAppointment={handleDeleteAppointment}
+            onBulkDeleteAppointments={handleBulkDeleteAppointments}
             students={mapStudentsForStep1()}
             requests={mapRequestsForStep2()}
             activeStudent={activeWorkflowStudent}
@@ -1374,6 +1421,7 @@ export default function WorkflowPage() {
             onCreateInternship={handleCreateInternship}
             onUpdateInternship={handleUpdateInternship}
             onDeleteInternship={handleDeleteInternship}
+            onBulkDeleteInternships={handleBulkDeleteInternships}
             onDeleteAppointment={handleDeleteAppointment}
             students={mapStudentsForStep1()}
           />

@@ -14,14 +14,26 @@ const JWT_SECRET = process.env.JWT_SECRET || 'mantis_portal_super_secret_key_202
 
 export class AuthService {
   static async login({ email, password }) {
-    const normEmail = email.toLowerCase().trim();
+    const normEmail = (email || '').toLowerCase().trim();
     const user = await UserModel.findOne({ email: normEmail }).select('+password');
 
-    if (!user) {
+    if (!user || user.isDeleted) {
       throw new UnauthorizedError('Invalid credentials. User not found.');
     }
 
-    if (user.status === 'Pending') {
+    if (user.status === 'Rejected') {
+      const err = new ForbiddenError('Your registration request was rejected by an Administrator. Please contact support.');
+      err.code = 'ACCOUNT_REJECTED';
+      throw err;
+    }
+
+    if (user.status === 'Disabled') {
+      const err = new ForbiddenError('Your account has been disabled. Please contact administration.');
+      err.code = 'ACCOUNT_DISABLED';
+      throw err;
+    }
+
+    if (user.status === 'Pending' || user.approved === false) {
       const err = new ForbiddenError('Your registration is waiting for Administrator approval.');
       err.code = 'ACCOUNT_PENDING_APPROVAL';
       throw err;
@@ -78,37 +90,73 @@ export class AuthService {
     return { user: userObj, token };
   }
 
-  static async signup({ name, email, password, role, phone }) {
-    const normEmail = email.toLowerCase().trim();
-    const existingUser = await UserModel.findOne({ email: normEmail });
-    if (existingUser) {
-      throw new ConflictError('User with this email already exists');
+  static async signup(payload) {
+    const { name, email, password, role, phone, rtoName, facilityName, course, studentId, notes } = payload;
+    const normEmail = (email || '').toLowerCase().trim();
+
+    // Enforce role trust boundary: Public signup must NEVER create an Administrator account
+    const forbiddenRoles = ['Administrator', 'Admin', 'Staff'];
+    if (forbiddenRoles.includes(role)) {
+      throw new BadRequestError('Privileged roles cannot be created through public signup.');
     }
 
-    const user = await UserModel.create({
-      name: name.trim(),
-      email: normEmail,
-      password: password.trim(),
-      role,
-      status: 'Pending',
-      phone: phone || '',
-      department: role === 'Industry' ? 'Industry Partner' : 'Placement Operations',
-    });
+    // Normalize canonical role
+    let canonicalRole = 'Student';
+    if (role === 'RTO' || role === 'RTO Manager') canonicalRole = 'RTO Manager';
+    else if (role === 'Placement Coordinator' || role === 'Coordinator') canonicalRole = 'Coordinator';
+    else if (role === 'Industry' || role === 'Industry/Host') canonicalRole = 'Industry';
+    else if (role === 'Student') canonicalRole = 'Student';
 
-    // Notify admins about the new signup request
+    // Check unique email
+    const existingUser = await UserModel.findOne({ email: normEmail });
+    if (existingUser) {
+      throw new ConflictError('A user with this email address already exists');
+    }
+
+    let user;
     try {
-      const admins = await UserModel.find({ role: 'Administrator', status: 'Active' });
+      user = await UserModel.create({
+        name: (name || '').trim(),
+        email: normEmail,
+        password: (password || '').trim(),
+        role: canonicalRole,
+        status: 'Pending',
+        approved: false,
+        isDeleted: false,
+        phone: (phone || '').trim(),
+        department: canonicalRole === 'Industry' ? 'Industry Partner' : canonicalRole === 'RTO Manager' ? 'RTO Relations' : 'Placement Operations',
+        registrationNotes: (notes || '').trim(),
+        requestedOrgName: (rtoName || '').trim(),
+        requestedFacilityName: (facilityName || '').trim(),
+        requestedCourse: (course || '').trim(),
+        requestedStudentId: (studentId || '').trim(),
+      });
+    } catch (err) {
+      if (err.code === 11000) {
+        throw new ConflictError('A user with this email address already exists');
+      }
+      throw err;
+    }
+
+    // Notify active administrators of the new signup request
+    try {
+      const admins = await UserModel.find({
+        role: { $in: ['Administrator', 'Admin'] },
+        status: 'Active',
+        isDeleted: false,
+      });
+
       for (const admin of admins) {
         await NotificationModel.create({
           title: 'New User Registration Request',
-          desc: `${name} (${role}) has requested access. Please review and approve.`,
+          desc: `${user.name} (${user.role}) has requested access. Please review and approve.`,
           type: 'system',
           link: '/users',
           recipient: admin._id,
         });
       }
     } catch (notifyErr) {
-      console.error('Failed to notify admins of signup:', notifyErr);
+      console.error('Failed to notify admins of signup:', notifyErr.message);
     }
 
     return {
@@ -117,6 +165,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       status: user.status,
+      approved: user.approved,
     };
   }
 

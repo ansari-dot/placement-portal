@@ -22,7 +22,18 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['Administrator', 'Coordinator', 'RTO Manager', 'Staff', 'Student', 'Industry'],
+    enum: [
+      'Administrator',
+      'Admin',
+      'Coordinator',
+      'Placement Coordinator',
+      'RTO Manager',
+      'RTO',
+      'Staff',
+      'Student',
+      'Industry',
+      'Industry/Host',
+    ],
     default: 'Staff',
   },
   department: {
@@ -32,8 +43,50 @@ const userSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Active', 'Inactive', 'Suspended', 'Pending'],
-    default: 'Active',
+    enum: ['Active', 'Inactive', 'Suspended', 'Pending', 'Rejected', 'Disabled'],
+    default: 'Pending',
+  },
+  approved: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  approvedAt: {
+    type: Date,
+    default: null,
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  rejectedAt: {
+    type: Date,
+    default: null,
+  },
+  rejectedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  rejectionReason: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
   },
   phone: {
     type: String,
@@ -59,6 +112,32 @@ const userSchema = new mongoose.Schema({
   lastSeen: {
     type: Date,
     default: Date.now,
+  },
+  // Public signup registration requests metadata
+  registrationNotes: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  requestedOrgName: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  requestedCourse: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  requestedFacilityName: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  requestedStudentId: {
+    type: String,
+    trim: true,
+    default: '',
   },
   // Entity bindings for strict Role-Based Access Control (RBAC)
   rtoId: {
@@ -89,6 +168,10 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+userSchema.index({ status: 1, role: 1, isDeleted: 1 });
+userSchema.index({ approved: 1, status: 1 });
+userSchema.index({ createdAt: -1 });
 
 // Hash password before saving if modified
 userSchema.pre('save', async function () {

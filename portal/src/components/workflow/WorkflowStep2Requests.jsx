@@ -6,7 +6,7 @@ import {
   Search, Filter, Download, Plus, MoreVertical,
   ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, List,
   X, XCircle, Building2, User, Calendar, Clock, CheckCircle2,
-  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Eye, Edit, CheckSquare, FileText, UserCheck, Copy
+  Briefcase, MapPin, Layers, ShieldCheck, ArrowUpRight, Eye, Edit, CheckSquare, FileText, UserCheck, Copy, Trash2
 } from 'lucide-react';
 import { fetchJobs } from '../../api/jobApi';
 import { createIndustry, fetchIndustries } from '../../api/industryApi';
@@ -27,6 +27,8 @@ export default function WorkflowStep2Requests({
   onNext,
   onCreateRequest,
   onUpdateRequest,
+  onDeleteRequest,
+  onBulkDeleteRequests,
   onAddContact,
   students = [],
   activeStudent = null,
@@ -87,6 +89,8 @@ export default function WorkflowStep2Requests({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const [showRowMenu, setShowRowMenu] = useState(null);
   const [rowMenuPos, setRowMenuPos] = useState({ top: 0, left: 0 });
 
@@ -97,6 +101,17 @@ export default function WorkflowStep2Requests({
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [showRowMenu]);
+
+  // Close bulk actions on outside click
+  useEffect(() => {
+    if (!showBulkActions) return;
+    const handleClickOutside = (e) => {
+      if (e.target.closest('[data-bulk-actions]')) return;
+      setShowBulkActions(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showBulkActions]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [showDrawer, setShowDrawer] = useState(false);
@@ -367,11 +382,16 @@ export default function WorkflowStep2Requests({
     showToast(`Exported as ${format.toUpperCase()}`);
   };
 
+  const allPageSelected = paginatedRequests.length > 0 && paginatedRequests.every(s => selectedRows.includes(s.reqId || s.id));
+  const isIndeterminate = !allPageSelected && paginatedRequests.some(s => selectedRows.includes(s.reqId || s.id));
+
   const handleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedRows(paginatedRequests.map(s => s.reqId));
+    const checked = e.target.checked;
+    const pageKeys = paginatedRequests.map(s => s.reqId || s.id);
+    if (checked) {
+      setSelectedRows(prev => [...new Set([...prev, ...pageKeys])]);
     } else {
-      setSelectedRows([]);
+      setSelectedRows(prev => prev.filter(k => !pageKeys.includes(k)));
     }
   };
 
@@ -381,13 +401,75 @@ export default function WorkflowStep2Requests({
     );
   };
 
+  const getSelectedRequestItems = () => {
+    return (requests || []).filter(item =>
+      selectedRows.includes(item.reqId) ||
+      selectedRows.includes(item.id) ||
+      selectedRows.includes(item.dbId) ||
+      selectedRows.includes(item._id)
+    );
+  };
+
   const handleBulkAction = (action) => {
     setShowBulkActions(false);
-    if (selectedRows.length === 0) {
+    if (action === 'Clear') {
+      setSelectedRows([]);
+      showToast('Selection cleared');
+      return;
+    }
+    const selectedItems = getSelectedRequestItems();
+    if (selectedItems.length === 0) {
       showToast('Please select requests first');
       return;
     }
-    showToast(`${action} applied to ${selectedRows.length} requests`);
+    if (action === 'Export') {
+      const headers = 'Request ID,Student,Title,Company,RTO,Status,Date';
+      const rows = selectedItems.map(s =>
+        `"${s.reqId || s.id || ''}","${(s.student || '').replace(/"/g, '""')}","${(s.title || '').replace(/"/g, '""')}","${(s.company || '').replace(/"/g, '""')}","${(s.rto || '').replace(/"/g, '""')}","${(s.status || '').replace(/"/g, '""')}","${s.date || ''}"`
+      );
+      const csvData = [headers, ...rows].join('\n');
+      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `selected_requests_${selectedItems.length}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${selectedItems.length} selected requests to CSV`);
+      return;
+    }
+    if (action === 'Delete') {
+      setShowBulkDeleteModal(true);
+      return;
+    }
+    showToast(`${action} applied to ${selectedItems.length} requests`);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    const selectedItems = getSelectedRequestItems();
+    const targetIds = selectedItems.map(item => item.id || item.dbId || item._id || item.reqId).filter(Boolean);
+    if (!targetIds.length) {
+      showToast('No requests selected');
+      return;
+    }
+    setIsDeletingBulk(true);
+    try {
+      if (onBulkDeleteRequests) {
+        await onBulkDeleteRequests(targetIds);
+      } else {
+        for (const id of targetIds) {
+          if (onDeleteRequest) await onDeleteRequest(id);
+        }
+      }
+      showToast(`Deleted ${targetIds.length} request(s) successfully`);
+      setSelectedRows([]);
+      setShowBulkDeleteModal(false);
+    } catch (err) {
+      console.error('Bulk delete requests failed:', err);
+      showToast('Failed to delete selected requests');
+    } finally {
+      setIsDeletingBulk(false);
+    }
   };
 
   const handleRowAction = async (action, item) => {
@@ -817,25 +899,33 @@ export default function WorkflowStep2Requests({
         <div className="flex justify-between items-center px-1">
           <p className="text-xs text-slate-500 font-medium">{filteredRequests.length} requests found</p>
           <div className="flex items-center space-x-3">
-            <div className="relative">
+            <div className="relative" data-bulk-actions>
               <button
                 onClick={() => setShowBulkActions(!showBulkActions)}
-                className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-xs hover:bg-slate-50"
+                className={`flex items-center border rounded-xl px-3 py-1.5 shadow-xs cursor-pointer transition ${
+                  selectedRows.length > 0
+                    ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium'
+                }`}
               >
-                <span className="text-xs text-slate-700 font-medium mr-2">
+                <span className="text-xs mr-2">
                   {selectedRows.length > 0 ? `${selectedRows.length} Selected` : 'Bulk Actions'}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
               </button>
               {showBulkActions && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
-                  <button onClick={() => handleBulkAction('Export')} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-xl z-30 p-1.5 space-y-0.5">
+                  <button onClick={() => handleBulkAction('Export')} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2 cursor-pointer">
                     <Download className="w-3.5 h-3.5 text-slate-400" />
                     <span>Export Selected</span>
                   </button>
-                  <button onClick={() => handleBulkAction('Status update')} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
-                    <CheckSquare className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Update Status</span>
+                  <button onClick={() => handleBulkAction('Delete')} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2 border-t border-slate-100 cursor-pointer font-medium">
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Delete Selected</span>
+                  </button>
+                  <button onClick={() => handleBulkAction('Clear')} className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:bg-slate-50 rounded-lg flex items-center space-x-2 cursor-pointer">
+                    <X className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Clear Selection</span>
                   </button>
                 </div>
               )}
@@ -857,6 +947,43 @@ export default function WorkflowStep2Requests({
           </div>
         </div>
 
+        {/* ─── Selection Bar ──────────────────────────────────────────────── */}
+        {selectedRows.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 px-4 flex items-center justify-between text-xs animate-in fade-in duration-150">
+            <div className="flex items-center space-x-3">
+              <span className="font-semibold text-blue-900">
+                {selectedRows.length} request{selectedRows.length === 1 ? '' : 's'} selected
+              </span>
+              {selectedRows.length < filteredRequests.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedRows(filteredRequests.map(r => r.reqId || r.id))}
+                  className="text-blue-700 underline font-medium hover:text-blue-900 cursor-pointer"
+                >
+                  Select all {filteredRequests.length} requests
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedRows([])}
+                className="text-slate-500 hover:text-slate-800 underline cursor-pointer"
+              >
+                Clear selection
+              </button>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(true)}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold flex items-center space-x-1.5 shadow-xs transition cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Selected ({selectedRows.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-x-auto">
           <table className="w-full min-w-[1180px] text-left border-collapse text-xs">
             <thead>
@@ -864,8 +991,9 @@ export default function WorkflowStep2Requests({
                 <th className="p-4 w-10">
                   <input
                     type="checkbox"
-                    className="rounded border-slate-300 accent-blue-600"
-                    checked={selectedRows.length === paginatedRequests.length && paginatedRequests.length > 0}
+                    className="rounded border-slate-300 accent-blue-600 cursor-pointer"
+                    checked={allPageSelected}
+                    ref={el => { if (el) el.indeterminate = isIndeterminate; }}
                     onChange={handleSelectAll}
                   />
                 </th>
@@ -882,7 +1010,7 @@ export default function WorkflowStep2Requests({
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {paginatedRequests.map((item, i) => {
                 const isSelected = selectedRequest ? selectedRequest.id === item.reqId : false;
-                const isRowSelected = selectedRows.includes(item.reqId);
+                const isRowSelected = selectedRows.includes(item.reqId) || selectedRows.includes(item.id);
                 const contactCount = (item.contactedIndustries || []).length;
                 return (
                   <tr
@@ -892,9 +1020,9 @@ export default function WorkflowStep2Requests({
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
-                        className="rounded border-slate-300 accent-blue-600"
+                        className="rounded border-slate-300 accent-blue-600 cursor-pointer"
                         checked={isRowSelected}
-                        onChange={() => handleSelectRow(item.reqId)}
+                        onChange={() => handleSelectRow(item.reqId || item.id)}
                       />
                     </td>
                     <td className="p-4">
@@ -954,9 +1082,13 @@ export default function WorkflowStep2Requests({
                               setShowRowMenu(null);
                             } else {
                               const rect = e.currentTarget.getBoundingClientRect();
+                              const menuHeight = 160;
+                              const menuWidth = 176;
+                              const spaceBelow = window.innerHeight - rect.bottom;
+                              const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
                               setRowMenuPos({
-                                top: rect.bottom + window.scrollY + 4,
-                                left: rect.right + window.scrollX - 176, // 176 = w-44
+                                top: openUpward ? Math.max(10, rect.top - menuHeight - 4) : rect.bottom + 4,
+                                left: Math.max(16, rect.right - menuWidth),
                               });
                               setShowRowMenu(item.reqId);
                             }
@@ -1830,6 +1962,69 @@ export default function WorkflowStep2Requests({
               >
                 {isSavingEdit ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Saving...</span></> : <span>Save Changes</span>}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Bulk Delete Confirmation Modal ────────────────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto mb-4 text-rose-600">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 text-center mb-2">
+                Delete Selected Requests
+              </h3>
+              <p className="text-xs text-slate-500 text-center mb-4">
+                Are you sure you want to delete <span className="font-bold text-slate-800">{selectedRows.length}</span> selected request{selectedRows.length === 1 ? '' : 's'}? This action will remove the placement requests from the workflow.
+              </p>
+
+              {/* Preview of selected items */}
+              <div className="max-h-40 overflow-y-auto bg-slate-50 rounded-xl p-3 border border-slate-200 divide-y divide-slate-100 text-xs text-slate-700 mb-6">
+                {getSelectedRequestItems().slice(0, 10).map((item, idx) => (
+                  <div key={idx} className="py-1.5 flex justify-between items-center first:pt-0 last:pb-0">
+                    <span className="font-medium text-slate-800 truncate mr-2">{item.student}</span>
+                    <span className="text-[11px] text-slate-500 shrink-0">{item.company || item.title}</span>
+                  </div>
+                ))}
+                {selectedRows.length > 10 && (
+                  <div className="pt-2 text-center text-[11px] text-slate-400 font-medium">
+                    + {selectedRows.length - 10} more request{selectedRows.length - 10 === 1 ? '' : 's'}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteModal(false)}
+                  disabled={isDeletingBulk}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBulkDelete}
+                  disabled={isDeletingBulk}
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center space-x-1.5 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isDeletingBulk ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete ({selectedRows.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

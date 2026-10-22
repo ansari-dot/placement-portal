@@ -27,7 +27,7 @@ export const getAllAttendanceController = async (req, res, next) => {
 
 export const updateAttendanceController = async (req, res, next) => {
   try {
-    const record = await AttendanceService.updateAttendance(req.params.id, req.body);
+    const record = await AttendanceService.updateAttendance(req.params.id, req.body, req.user);
     res.status(200).json({
       success: true,
       message: 'Attendance record updated successfully',
@@ -40,7 +40,7 @@ export const updateAttendanceController = async (req, res, next) => {
 
 export const deleteAttendanceController = async (req, res, next) => {
   try {
-    await AttendanceService.deleteAttendance(req.params.id);
+    await AttendanceService.deleteAttendance(req.params.id, req.user);
     res.status(200).json({
       success: true,
       message: 'Attendance record deleted successfully',

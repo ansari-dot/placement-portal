@@ -1,4 +1,5 @@
 import StudentModel from '../student/student.model.js';
+import WorkflowModel from './workflow.model.js';
 import {
   createWorkflow,
   getAllWorkflows,
@@ -17,6 +18,9 @@ import {
   createInternship,
   updateInternship,
   deleteInternship,
+  bulkDeleteInternshipRequests,
+  bulkDeleteAppointments,
+  bulkDeleteInternships,
   getWorkflowDashboardData,
   getWorkflowStudents,
 } from './workflow.service.js';
@@ -28,64 +32,7 @@ import {
   internshipSchema,
 } from './workflow.dto.js';
 
-// Filter workflow subdocuments dynamically: Coordinators only see their assigned students, Admins see all
-const filterWorkflowForUser = async (workflow, user) => {
-  if (!workflow) return workflow;
-  if (!user || user.role === 'Administrator') return workflow;
-
-  try {
-    const assignedStudents = await StudentModel.find(
-      {
-        $or: [
-          { assignedCoordinator: user._id },
-          { assignedCoordinator: String(user._id) },
-          { assignedCoordinatorName: user.name },
-          { assignedCoordinatorEmail: user.email },
-        ],
-      },
-      { _id: 1, studentId: 1, firstName: 1, lastName: 1, name: 1 }
-    );
-
-    const allowedKeys = new Set();
-    assignedStudents.forEach((stu) => {
-      if (stu._id) allowedKeys.add(String(stu._id).toLowerCase());
-      if (stu.studentId) allowedKeys.add(String(stu.studentId).toLowerCase());
-      const fullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim().toLowerCase();
-      const name = String(stu.name || fullName).trim().toLowerCase();
-      if (name) allowedKeys.add(name);
-    });
-
-    const wfObj = workflow.toObject ? workflow.toObject() : JSON.parse(JSON.stringify(workflow));
-
-    if (Array.isArray(wfObj.appointments)) {
-      wfObj.appointments = wfObj.appointments.filter((a) => {
-        const aId = String(a.studentId || '').toLowerCase();
-        const aName = String(a.student || '').toLowerCase();
-        return allowedKeys.has(aId) || allowedKeys.has(aName);
-      });
-    }
-
-    if (Array.isArray(wfObj.requests)) {
-      wfObj.requests = wfObj.requests.filter((r) => {
-        const rId = String(r.studentId || '').toLowerCase();
-        const rName = String(r.student || '').toLowerCase();
-        return allowedKeys.has(rId) || allowedKeys.has(rName);
-      });
-    }
-
-    if (Array.isArray(wfObj.students)) {
-      wfObj.students = wfObj.students.filter((s) => {
-        const sId = String(s._id || s.id || s.studentId || '').toLowerCase();
-        return allowedKeys.has(sId);
-      });
-    }
-
-    return wfObj;
-  } catch (err) {
-    console.warn('filterWorkflowForUser error:', err.message);
-    return workflow;
-  }
-};
+import { filterWorkflowForUser } from '../../core/utils/rbacScope.js';
 
 export const createWorkflowController = async (req, res, next) => {
   try {
@@ -409,6 +356,34 @@ export const updateAppointmentController = async (req, res, next) => {
       }
     });
 
+    // Date chronology validation
+    if (cleanedData.commencementDate && cleanedData.expectedCompletionDate) {
+      const startT = new Date(cleanedData.commencementDate).getTime();
+      const endT = new Date(cleanedData.expectedCompletionDate).getTime();
+      if (!isNaN(startT) && !isNaN(endT) && endT < startT) {
+        return res.status(400).json({
+          success: false,
+          message: 'Expected completion date cannot be before commencement date.',
+        });
+      }
+    }
+
+    // Role-based facility ownership check for Industry users
+    const user = req.user;
+    if (user && (user.role === 'Industry' || user.role === 'Industry/Host')) {
+      const facName = (user.facilityName || '').trim().toLowerCase();
+      const existingWf = await WorkflowModel.findById(id).lean();
+      const appt = (existingWf?.appointments || []).find(
+        (a) => (a._id?.toString() === appointmentId || a.apptId === appointmentId)
+      );
+      if (!appt || (facName && (appt.company || '').trim().toLowerCase() !== facName)) {
+        return res.status(404).json({
+          success: false,
+          message: 'Appointment not found or not assigned to your facility.',
+        });
+      }
+    }
+
     const appointment = await updateAppointment(id, appointmentId, cleanedData);
 
     if (!appointment) {
@@ -494,6 +469,34 @@ export const updateInternshipController = async (req, res, next) => {
       }
     });
 
+    // Date chronology validation
+    if (cleanedData.start && cleanedData.end) {
+      const startT = new Date(cleanedData.start).getTime();
+      const endT = new Date(cleanedData.end).getTime();
+      if (!isNaN(startT) && !isNaN(endT) && endT < startT) {
+        return res.status(400).json({
+          success: false,
+          message: 'Internship end date cannot be before start date.',
+        });
+      }
+    }
+
+    // Role-based facility ownership check for Industry users
+    const user = req.user;
+    if (user && (user.role === 'Industry' || user.role === 'Industry/Host')) {
+      const facName = (user.facilityName || '').trim().toLowerCase();
+      const existingWf = await WorkflowModel.findById(id).lean();
+      const intern = (existingWf?.internships || []).find(
+        (i) => (i._id?.toString() === internshipId || i.intId === internshipId)
+      );
+      if (!intern || (facName && (intern.company || '').trim().toLowerCase() !== facName)) {
+        return res.status(404).json({
+          success: false,
+          message: 'Placement record not found or not assigned to your facility.',
+        });
+      }
+    }
+
     const internship = await updateInternship(id, internshipId, cleanedData);
 
     if (!internship) {
@@ -575,6 +578,60 @@ export const checkPlacementAlertsController = async (req, res, next) => {
     const result = await checkAndSendPlacementAlerts();
     res.status(200).json({
       message: 'Placement alert check completed',
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkDeleteInternshipRequestsController = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { requestIds } = req.body;
+    if (!Array.isArray(requestIds) || !requestIds.length) {
+      return res.status(400).json({ message: 'requestIds array is required', success: false });
+    }
+    const result = await bulkDeleteInternshipRequests(id, requestIds);
+    res.status(200).json({
+      message: `Deleted ${result.count || requestIds.length} request(s) successfully`,
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkDeleteAppointmentsController = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { appointmentIds } = req.body;
+    if (!Array.isArray(appointmentIds) || !appointmentIds.length) {
+      return res.status(400).json({ message: 'appointmentIds array is required', success: false });
+    }
+    const result = await bulkDeleteAppointments(id, appointmentIds);
+    res.status(200).json({
+      message: `Deleted ${result.count || appointmentIds.length} appointment(s) successfully`,
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkDeleteInternshipsController = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { internshipIds } = req.body;
+    if (!Array.isArray(internshipIds) || !internshipIds.length) {
+      return res.status(400).json({ message: 'internshipIds array is required', success: false });
+    }
+    const result = await bulkDeleteInternships(id, internshipIds);
+    res.status(200).json({
+      message: `Deleted ${result.count || internshipIds.length} placement(s) successfully`,
       success: true,
       data: result,
     });

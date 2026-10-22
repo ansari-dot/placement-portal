@@ -1273,6 +1273,141 @@ export const deleteInternship = async (workflowId, internshipId) => {
     return removed || { success: true };
 };
 
+export const bulkDeleteInternshipRequests = async (workflowId, requestIds) => {
+    const normalizedIds = (requestIds || []).map(id => String(id || '').trim()).filter(Boolean);
+    if (!normalizedIds.length) return { success: true, count: 0 };
+
+    let workflow = null;
+    if (workflowId && mongoose.Types.ObjectId.isValid(workflowId)) {
+        workflow = await WorkflowModel.findById(workflowId);
+    }
+    if (!workflow) {
+        workflow = await WorkflowModel.findOne().sort({ createdAt: -1 });
+    }
+
+    if (workflow) {
+        workflow.requests = (workflow.requests || []).filter(r => {
+            const rDb = String(r._id || '');
+            const rBiz = String(r.reqId || '');
+            const rId = String(r.id || '');
+            return !normalizedIds.includes(rDb) && !normalizedIds.includes(rBiz) && !normalizedIds.includes(rId);
+        });
+        await workflow.save({ validateBeforeSave: false });
+    }
+
+    try {
+        const objectIds = normalizedIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+        const orClauses = [];
+        if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
+        orClauses.push({ reqId: { $in: normalizedIds } });
+        orClauses.push({ id: { $in: normalizedIds } });
+        await InternshipRequestModel.deleteMany({ $or: orClauses });
+    } catch (e) {
+        console.warn('InternshipRequestModel bulk delete sync skipped:', e.message);
+    }
+
+    return { success: true, count: normalizedIds.length };
+};
+
+export const bulkDeleteAppointments = async (workflowId, appointmentIds) => {
+    const normalizedIds = (appointmentIds || []).map(id => String(id || '').trim()).filter(Boolean);
+    if (!normalizedIds.length) return { success: true, count: 0 };
+
+    let workflow = null;
+    if (workflowId && mongoose.Types.ObjectId.isValid(workflowId)) {
+        workflow = await WorkflowModel.findById(workflowId);
+    }
+    if (!workflow) {
+        workflow = await WorkflowModel.findOne().sort({ createdAt: -1 });
+    }
+
+    if (workflow) {
+        workflow.appointments = (workflow.appointments || []).filter(a => {
+            const aDb = String(a._id || '');
+            const aBiz = String(a.apptId || '');
+            const aId = String(a.id || '');
+            return !normalizedIds.includes(aDb) && !normalizedIds.includes(aBiz) && !normalizedIds.includes(aId);
+        });
+        // Also remove linked internships if any
+        workflow.internships = (workflow.internships || []).filter(i => {
+            const iDb = String(i._id || '');
+            const iBiz = String(i.intId || '');
+            const iId = String(i.id || '');
+            return !normalizedIds.includes(iDb) && !normalizedIds.includes(iBiz) && !normalizedIds.includes(iId);
+        });
+        await workflow.save({ validateBeforeSave: false });
+    }
+
+    try {
+        const objectIds = normalizedIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+        const orClauses = [];
+        if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
+        orClauses.push({ apptId: { $in: normalizedIds } });
+        orClauses.push({ id: { $in: normalizedIds } });
+        await AppointmentModel.deleteMany({ $or: orClauses });
+        await InternshipModel.deleteMany({
+            $or: [
+                ...(objectIds.length ? [{ _id: { $in: objectIds } }] : []),
+                { intId: { $in: normalizedIds } },
+                { id: { $in: normalizedIds } }
+            ]
+        });
+    } catch (e) {
+        console.warn('Appointment bulk delete sync skipped:', e.message);
+    }
+
+    return { success: true, count: normalizedIds.length };
+};
+
+export const bulkDeleteInternships = async (workflowId, internshipIds) => {
+    const normalizedIds = (internshipIds || []).map(id => String(id || '').trim()).filter(Boolean);
+    if (!normalizedIds.length) return { success: true, count: 0 };
+
+    let workflow = null;
+    if (workflowId && mongoose.Types.ObjectId.isValid(workflowId)) {
+        workflow = await WorkflowModel.findById(workflowId);
+    }
+    if (!workflow) {
+        workflow = await WorkflowModel.findOne().sort({ createdAt: -1 });
+    }
+
+    if (workflow) {
+        workflow.internships = (workflow.internships || []).filter(i => {
+            const iDb = String(i._id || '');
+            const iBiz = String(i.intId || '');
+            const iId = String(i.id || '');
+            return !normalizedIds.includes(iDb) && !normalizedIds.includes(iBiz) && !normalizedIds.includes(iId);
+        });
+        workflow.appointments = (workflow.appointments || []).filter(a => {
+            const aDb = String(a._id || '');
+            const aBiz = String(a.apptId || '');
+            const aId = String(a.id || '');
+            return !normalizedIds.includes(aDb) && !normalizedIds.includes(aBiz) && !normalizedIds.includes(aId);
+        });
+        await workflow.save({ validateBeforeSave: false });
+    }
+
+    try {
+        const objectIds = normalizedIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+        const orClauses = [];
+        if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
+        orClauses.push({ intId: { $in: normalizedIds } });
+        orClauses.push({ id: { $in: normalizedIds } });
+        await InternshipModel.deleteMany({ $or: orClauses });
+        await AppointmentModel.deleteMany({
+            $or: [
+                ...(objectIds.length ? [{ _id: { $in: objectIds } }] : []),
+                { apptId: { $in: normalizedIds } },
+                { id: { $in: normalizedIds } }
+            ]
+        });
+    } catch (e) {
+        console.warn('Internship bulk delete sync skipped:', e.message);
+    }
+
+    return { success: true, count: normalizedIds.length };
+};
+
 // ===== Workflow Data Aggregation =====
 export const getWorkflowDashboardData = async () => {
     const [

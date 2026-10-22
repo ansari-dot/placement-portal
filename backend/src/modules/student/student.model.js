@@ -499,6 +499,26 @@ const studentSchema = new mongoose.Schema(
       },
       default: "Awaiting",
     },
+    appointmentDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    appointmentTime: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    commencementDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    completionDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
   },
   {
     timestamps: true,

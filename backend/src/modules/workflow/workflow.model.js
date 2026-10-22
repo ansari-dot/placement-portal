@@ -6,6 +6,7 @@ const internshipRequestSchema = new mongoose.Schema(
     reqId: {
       type: String,
       unique: true,
+      sparse: true,
       trim: true,
       uppercase: true,
     },
@@ -130,6 +131,7 @@ const appointmentSchema = new mongoose.Schema(
     apptId: {
       type: String,
       unique: true,
+      sparse: true,
       trim: true,
       uppercase: true,
     },
@@ -289,6 +291,7 @@ const internshipSchema = new mongoose.Schema(
     intId: {
       type: String,
       unique: true,
+      sparse: true,
       trim: true,
       uppercase: true,
     },

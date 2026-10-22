@@ -10,7 +10,9 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "create-admin": "node src/scripts/createAdmin.js",
-    "test": "node src/scripts/runRealDatabaseAudit.js && node src/scripts/verifySecuritySuite.js"
+    "migrate:lifecycle": "node src/scripts/migrateUserLifecycle.js",
+    "test:rbac": "node src/scripts/testRbacAndLifecycle.js",
+    "test": "node src/scripts/verifySecuritySuite.js && node src/scripts/testRbacAndLifecycle.js && node src/scripts/runRealDatabaseAudit.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -17,6 +17,7 @@ export default function WorkflowStep3Appointments({
   onCreateAppointment,
   onUpdateAppointment,
   onDeleteAppointment,
+  onBulkDeleteAppointments,
   students = [],
   requests = [],
   activeStudent = null,
@@ -131,6 +132,23 @@ export default function WorkflowStep3Appointments({
   const [showFilters, setShowFilters] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
+
+  // Bulk Selection State
+  const [selectedRows, setSelectedRows] = useState([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+
+  // Close the bulk actions menu on outside click
+  useEffect(() => {
+    if (!showBulkActions) return;
+    const handleClickOutside = (e) => {
+      if (e.target.closest('[data-bulk-actions]')) return;
+      setShowBulkActions(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showBulkActions]);
 
   // Reschedule state in drawer
   const [isRescheduling, setIsRescheduling] = useState(false);
@@ -350,6 +368,94 @@ export default function WorkflowStep3Appointments({
       return true;
     });
   }, [appointments, searchTerm]);
+
+  const allPageSelected = filteredAppointments.length > 0 && filteredAppointments.every(a => selectedRows.includes(a.id || a._id || a.apptId));
+  const isIndeterminate = !allPageSelected && filteredAppointments.some(a => selectedRows.includes(a.id || a._id || a.apptId));
+
+  const handleSelectAll = (e) => {
+    const checked = e.target.checked;
+    const allIds = filteredAppointments.map(a => a.id || a._id || a.apptId).filter(Boolean);
+    if (checked) {
+      setSelectedRows(allIds);
+    } else {
+      setSelectedRows([]);
+    }
+  };
+
+  const handleSelectRow = (id) => {
+    setSelectedRows(prev =>
+      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
+    );
+  };
+
+  const getSelectedAppointmentItems = () => {
+    return appointments.filter(a =>
+      selectedRows.includes(a.id) ||
+      selectedRows.includes(a._id) ||
+      selectedRows.includes(a.apptId)
+    );
+  };
+
+  const handleBulkAction = (action) => {
+    setShowBulkActions(false);
+    if (action === 'Clear') {
+      setSelectedRows([]);
+      showToast('Selection cleared');
+      return;
+    }
+    const selectedItems = getSelectedAppointmentItems();
+    if (selectedItems.length === 0) {
+      showToast('Please select appointments first');
+      return;
+    }
+    if (action === 'Export') {
+      const headers = 'Appointment ID,Student,Company,Position,Date,Time,Meeting Type,Location';
+      const rows = selectedItems.map(a =>
+        `"${a.apptId || a.id || ''}","${(a.student || '').replace(/"/g, '""')}","${(a.company || '').replace(/"/g, '""')}","${(a.position || '').replace(/"/g, '""')}","${a.date || ''}","${a.time || ''}","${a.meetingType || ''}","${(a.location || '').replace(/"/g, '""')}"`
+      );
+      const csvData = [headers, ...rows].join('\n');
+      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `selected_appointments_${selectedItems.length}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${selectedItems.length} selected appointments to CSV`);
+      return;
+    }
+    if (action === 'Delete') {
+      setShowBulkDeleteModal(true);
+      return;
+    }
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    const selectedItems = getSelectedAppointmentItems();
+    const targetIds = selectedItems.map(a => a.id || a._id || a.apptId).filter(Boolean);
+    if (!targetIds.length) {
+      showToast('No appointments selected');
+      return;
+    }
+    setIsDeletingBulk(true);
+    try {
+      if (onBulkDeleteAppointments) {
+        await onBulkDeleteAppointments(targetIds);
+      } else {
+        for (const id of targetIds) {
+          if (onDeleteAppointment) await onDeleteAppointment(id);
+        }
+      }
+      showToast(`Deleted ${targetIds.length} appointment(s) successfully`);
+      setSelectedRows([]);
+      setShowBulkDeleteModal(false);
+    } catch (err) {
+      console.error('Bulk delete appointments failed:', err);
+      showToast('Failed to delete selected appointments');
+    } finally {
+      setIsDeletingBulk(false);
+    }
+  };
 
   // Calculate dynamic metrics for scheduled appointments
   const metrics = useMemo(() => {
@@ -1198,6 +1304,50 @@ export default function WorkflowStep3Appointments({
                 )}
               </div>
 
+              {/* Bulk Actions Menu */}
+              <div className="relative" data-bulk-actions>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkActions(!showBulkActions)}
+                  className={`px-2.5 py-2 border text-[11px] font-semibold rounded-xl flex items-center space-x-1.5 transition whitespace-nowrap cursor-pointer ${
+                    selectedRows.length > 0
+                      ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>{selectedRows.length > 0 ? `${selectedRows.length} Selected` : 'Bulk Actions'}</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+                {showBulkActions && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-xl z-30 p-1.5 space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAction('Export')}
+                      className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Export Selected</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAction('Delete')}
+                      className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2 border-t border-slate-100 cursor-pointer font-medium"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                      <span>Delete Selected</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAction('Clear')}
+                      className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:bg-slate-50 rounded-lg flex items-center space-x-2 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Clear Selection</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* New Appointment Trigger */}
               <div className="relative">
                 <button
@@ -1397,6 +1547,43 @@ export default function WorkflowStep3Appointments({
             </div>
           </div>
 
+          {/* ─── Selection Bar ──────────────────────────────────────────────── */}
+          {selectedRows.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 px-4 flex items-center justify-between text-xs animate-in fade-in duration-150">
+              <div className="flex items-center space-x-3">
+                <span className="font-semibold text-blue-900">
+                  {selectedRows.length} appointment{selectedRows.length === 1 ? '' : 's'} selected
+                </span>
+                {selectedRows.length < filteredAppointments.length && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRows(filteredAppointments.map(a => a.id || a._id || a.apptId))}
+                    className="text-blue-700 underline font-medium hover:text-blue-900 cursor-pointer"
+                  >
+                    Select all {filteredAppointments.length} appointments
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedRows([])}
+                  className="text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold flex items-center space-x-1.5 shadow-xs transition cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Selected ({selectedRows.length})</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* MAIN VIEW CONTENT: List View or Calendar View */}
           {activeTab === 'List View' ? (
             <div className={`bg-white rounded-2xl border border-slate-200 shadow-xs ${actionMenuApptId ? 'overflow-visible' : 'overflow-hidden'}`}>
@@ -1404,6 +1591,15 @@ export default function WorkflowStep3Appointments({
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
+                      <th className="p-4 w-10">
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300 accent-blue-600 cursor-pointer"
+                          checked={allPageSelected}
+                          ref={el => { if (el) el.indeterminate = isIndeterminate; }}
+                          onChange={handleSelectAll}
+                        />
+                      </th>
                       <th className="p-4">Appointment</th>
                       <th className="p-4">Student</th>
                       <th className="p-4">Company & Position</th>
@@ -1417,10 +1613,12 @@ export default function WorkflowStep3Appointments({
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {filteredAppointments.map((appt, i) => {
                       const badgeStyle = getStatusBadgeStyle(appt.status);
+                      const apptKey = appt.id || appt._id || appt.apptId || i;
+                      const isRowSelected = selectedRows.includes(appt.id) || selectedRows.includes(appt._id) || selectedRows.includes(appt.apptId);
                       const isSelected = selectedAppointment && (selectedAppointment.id === appt.id || selectedAppointment._id === appt.id);
                       return (
                         <tr
-                          key={appt.id || appt._id || i}
+                          key={apptKey}
                           onClick={() => {
                             setSelectedAppointment(appt);
                             setShowDrawer(true);
@@ -1428,8 +1626,16 @@ export default function WorkflowStep3Appointments({
                             setIsEditingNotes(false);
                             setIsEditingDetails(false);
                           }}
-                          className={`cursor-pointer hover:bg-slate-50 transition ${isSelected ? 'bg-blue-50/50' : ''}`}
+                          className={`cursor-pointer hover:bg-slate-50 transition ${isRowSelected ? 'bg-blue-50/40' : isSelected ? 'bg-blue-50/50' : ''}`}
                         >
+                          <td className="p-4 w-10" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="rounded border-slate-300 accent-blue-600 cursor-pointer"
+                              checked={isRowSelected}
+                              onChange={() => handleSelectRow(appt.id || appt._id || appt.apptId)}
+                            />
+                          </td>
                           <td className="p-4 font-bold text-slate-900">
                             {appt.apptId || appt.id || `APPT-${i + 1}`}
                           </td>
@@ -1538,7 +1744,7 @@ export default function WorkflowStep3Appointments({
                     })}
                     {filteredAppointments.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-slate-400">
+                        <td colSpan={9} className="p-8 text-center text-slate-400">
                           No appointments match the selected filters or search query.
                         </td>
                       </tr>
@@ -2805,6 +3011,69 @@ export default function WorkflowStep3Appointments({
               >
                 {isDeletingAppt ? 'Deleting...' : 'Delete Appointment'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Bulk Delete Confirmation Modal ────────────────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto mb-4 text-rose-600">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 text-center mb-2">
+                Delete Selected Appointments
+              </h3>
+              <p className="text-xs text-slate-500 text-center mb-4">
+                Are you sure you want to delete <span className="font-bold text-slate-800">{selectedRows.length}</span> selected appointment{selectedRows.length === 1 ? '' : 's'}? This action cannot be undone.
+              </p>
+
+              {/* Preview of selected items */}
+              <div className="max-h-40 overflow-y-auto bg-slate-50 rounded-xl p-3 border border-slate-200 divide-y divide-slate-100 text-xs text-slate-700 mb-6">
+                {getSelectedAppointmentItems().slice(0, 10).map((item, idx) => (
+                  <div key={idx} className="py-1.5 flex justify-between items-center first:pt-0 last:pb-0">
+                    <span className="font-medium text-slate-800 truncate mr-2">{item.student}</span>
+                    <span className="text-[11px] text-slate-500 shrink-0">{item.company}</span>
+                  </div>
+                ))}
+                {selectedRows.length > 10 && (
+                  <div className="pt-2 text-center text-[11px] text-slate-400 font-medium">
+                    + {selectedRows.length - 10} more appointment{selectedRows.length - 10 === 1 ? '' : 's'}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteModal(false)}
+                  disabled={isDeletingBulk}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBulkDelete}
+                  disabled={isDeletingBulk}
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center space-x-1.5 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isDeletingBulk ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete ({selectedRows.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

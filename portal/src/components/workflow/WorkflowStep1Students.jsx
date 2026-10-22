@@ -1,27 +1,27 @@
 // src/components/workflow/WorkflowStep1Students.jsx
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { 
-  Search, Filter, Download, Plus, MoreVertical, 
-  ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
+import {
+  Search, Filter, Download, Plus, MoreVertical,
+  ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X,
   Calendar, Globe, MapPin, GraduationCap, Building2, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, PauseCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { deleteStudent, snoozeStudent } from '../../api/studentsApi';
+import { deleteStudent, snoozeStudent, bulkUpdateStudentStatus, bulkDeleteStudents } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 import AssignRtoModal from './AssignRtoModal';
 
 const STEP1_DRAWER_DOCS = [
-  { field: 'policeCheckDoc',     label: 'Police Check' },
-  { field: 'covidCheckDoc',      label: 'COVID-19 Check' },
-  { field: 'ndisDoc',            label: 'NDIS' },
-  { field: 'resumeDoc',          label: 'CB / Resume' },
-  { field: 'wwccDoc',            label: 'WWCC' },
-  { field: 'passportDoc',        label: 'Passport' },
-  { field: 'drivingLicenceDoc',  label: 'Driving Licence' },
-  { field: 'infectionControlDoc',label: 'Infection Control' },
-  { field: 'handHygieneDoc',     label: 'Hand Hygiene' },
-  { field: 'cbrDoc',             label: 'CPR' },
+  { field: 'policeCheckDoc', label: 'Police Check' },
+  { field: 'covidCheckDoc', label: 'COVID-19 Check' },
+  { field: 'ndisDoc', label: 'NDIS' },
+  { field: 'resumeDoc', label: 'CB / Resume' },
+  { field: 'wwccDoc', label: 'WWCC' },
+  { field: 'passportDoc', label: 'Passport' },
+  { field: 'drivingLicenceDoc', label: 'Driving Licence' },
+  { field: 'infectionControlDoc', label: 'Infection Control' },
+  { field: 'handHygieneDoc', label: 'Hand Hygiene' },
+  { field: 'cbrDoc', label: 'CPR' },
 ];
 
 // Statuses for which a student's placement request should be REGENERATED
@@ -31,10 +31,10 @@ const REGENERATE_STATUSES = ['Student Withdraw', 'Student Missed Appointment', '
 
 const norm = (val) => (val === undefined || val === null ? '' : String(val).trim().toLowerCase());
 
-export default function WorkflowStep1Students({ 
-  students = [], 
-  initialSelectedStudentIds = [], 
-  onToggleStudent, 
+export default function WorkflowStep1Students({
+  students = [],
+  initialSelectedStudentIds = [],
+  onToggleStudent,
   onNext,
   internshipRequestMap = {},
   onGoToStep,
@@ -52,6 +52,12 @@ export default function WorkflowStep1Students({
   const [viewMode, setViewMode] = useState('grid');
   const [selectedRows, setSelectedRows] = useState([]);
   const [assignRtoTarget, setAssignRtoTarget] = useState(null);
+  const [showBulkStatusModal, setShowBulkStatusModal] = useState(false);
+  const [bulkStatusForm, setBulkStatusForm] = useState({ status: 'Active', placementStatus: 'In Progress' });
+  const [isUpdatingBulkStatus, setIsUpdatingBulkStatus] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+  const bulkActionsRef = React.useRef(null);
 
   const [showFilters, setShowFilters] = useState(false);
   const [showSavedFilters, setShowSavedFilters] = useState(false);
@@ -108,14 +114,26 @@ export default function WorkflowStep1Students({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showRowMenu]);
 
+  // Close the bulk actions dropdown when clicking anywhere outside
+  React.useEffect(() => {
+    if (!showBulkActions) return;
+    const handleOutside = (e) => {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(e.target)) {
+        setShowBulkActions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [showBulkActions]);
+
   const studentList = students;
 
   // ─── Dynamic Top Metric Counts from Database Students ─────────────────────
   const totalStudentsCount = studentList.length;
-  const readyStudentsCount = studentList.filter(s => 
+  const readyStudentsCount = studentList.filter(s =>
     (s.placementStatus || 'Awaiting').toLowerCase() === 'awaiting'
   ).length;
-  const pendingInfoCount = studentList.filter(s => 
+  const pendingInfoCount = studentList.filter(s =>
     (s.placementStatus || '').toLowerCase().includes('pending') ||
     (s.status || '').toLowerCase() === 'pending' ||
     !s.rto || s.rto === 'N/A' ||
@@ -141,7 +159,7 @@ export default function WorkflowStep1Students({
   };
 
   const handleSelectRow = (id) => {
-    setSelectedRows(prev => 
+    setSelectedRows(prev =>
       prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
     );
   };
@@ -293,14 +311,14 @@ export default function WorkflowStep1Students({
         const result = await onCreateAppointment(payload);
         console.log('✅ Appointment created from Step 1:', result);
         showToast('Appointment created successfully!');
-        
+
         // Close the appointment form
         setShowAppointmentForm(false);
         setIsCreatingAppointment(false);
-        
+
         // Navigate to Step 3 to see the appointment
         navigate('/workflow?step=3');
-        
+
       } catch (err) {
         console.error('Failed to create appointment:', err);
         showToast(err.message || 'Failed to create appointment');
@@ -514,16 +532,33 @@ export default function WorkflowStep1Students({
     }
   };
 
+  const getSelectedStudents = () => {
+    return studentList.filter(s =>
+      selectedRows.some(rowId =>
+        String(rowId) === String(s.id) ||
+        (s._id && String(rowId) === String(s._id)) ||
+        (s.studentId && String(rowId) === String(s.studentId))
+      )
+    );
+  };
+
   const handleBulkAction = (action) => {
     setShowBulkActions(false);
-    if (selectedRows.length === 0) {
+    if (action === 'Clear') {
+      setSelectedRows([]);
+      showToast('Selection cleared');
+      return;
+    }
+
+    const targets = getSelectedStudents();
+    if (targets.length === 0) {
       showToast('Please select students first');
       return;
     }
+
     if (action === 'Export') {
-      const selectedStudents = studentList.filter(s => selectedRows.includes(s.id));
       const headers = 'Name,Email,Student ID,RTO,Status,Placement Status,Added On';
-      const rows = selectedStudents.map(s => 
+      const rows = targets.map(s =>
         `"${(s.name || '').replace(/"/g, '""')}","${(s.email || '').replace(/"/g, '""')}","${(s.studentId || s.id || '').replace(/"/g, '""')}","${(s.rto || '').replace(/"/g, '""')}","${(s.status || '').replace(/"/g, '""')}","${(s.placementStatus || '').replace(/"/g, '""')}","${(s.addedOn || '').replace(/"/g, '""')}"`
       );
       const csvData = [headers, ...rows].join('\n');
@@ -531,27 +566,73 @@ export default function WorkflowStep1Students({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `selected_students_${selectedRows.length}.csv`;
+      a.download = `selected_students_${targets.length}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast(`Exported ${selectedRows.length} selected students to CSV`);
+      showToast(`Exported ${targets.length} selected students to CSV`);
       return;
     }
+
     if (action === 'Assign RTO') {
-      const selectedStudents = studentList.filter(s => selectedRows.includes(s.id));
-      if (selectedStudents.length === 0) {
-        showToast('Please select students first');
-        return;
-      }
-      setAssignRtoTarget(selectedStudents);
+      setAssignRtoTarget(targets);
       return;
     }
-    if (action === 'Clear') {
+
+    if (action === 'Status update') {
+      setBulkStatusForm({ status: 'Active', placementStatus: 'In Progress' });
+      setShowBulkStatusModal(true);
+      return;
+    }
+
+    if (action === 'Delete') {
+      setShowBulkDeleteModal(true);
+      return;
+    }
+  };
+
+  const handleConfirmBulkStatus = async () => {
+    const targets = getSelectedStudents();
+    const studentIds = targets.map(s => s.id || s._id || s.studentId).filter(Boolean);
+    if (!studentIds.length) {
+      showToast('No students selected');
+      return;
+    }
+    setIsUpdatingBulkStatus(true);
+    try {
+      const payload = {};
+      if (bulkStatusForm.status) payload.status = bulkStatusForm.status;
+      if (bulkStatusForm.placementStatus) payload.placementStatus = bulkStatusForm.placementStatus;
+      await bulkUpdateStudentStatus(studentIds, payload);
+      showToast(`Updated status for ${studentIds.length} student(s)`);
+      setShowBulkStatusModal(false);
       setSelectedRows([]);
-      showToast('Selection cleared');
+      if (onRefreshWorkflow) onRefreshWorkflow();
+    } catch (err) {
+      showToast(err?.response?.data?.message || err?.message || 'Failed to update status');
+    } finally {
+      setIsUpdatingBulkStatus(false);
+    }
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    const targets = getSelectedStudents();
+    const studentIds = targets.map(s => s.id || s._id || s.studentId).filter(Boolean);
+    if (!studentIds.length) {
+      showToast('No students selected');
       return;
     }
-    showToast(`${action} applied to ${selectedRows.length} students`);
+    setIsDeletingBulk(true);
+    try {
+      await bulkDeleteStudents(studentIds);
+      showToast(`Deleted ${studentIds.length} student(s)`);
+      setShowBulkDeleteModal(false);
+      setSelectedRows([]);
+      if (onRefreshWorkflow) onRefreshWorkflow();
+    } catch (err) {
+      showToast(err?.response?.data?.message || err?.message || 'Failed to delete students');
+    } finally {
+      setIsDeletingBulk(false);
+    }
   };
 
   // Reset to page 1 whenever the tab or the advanced filters change
@@ -602,7 +683,7 @@ export default function WorkflowStep1Students({
         if (email && active[email.toLowerCase().trim()]) return true;
         if (id && active[id]) return true;
       }
-    } catch (e) {}
+    } catch (e) { }
     return false;
   };
 
@@ -736,7 +817,7 @@ export default function WorkflowStep1Students({
         // we can't access reqId here directly, so we ask WorkflowPage to search by studentId.
         // Pass a sentinel object so WorkflowPage can find the right record.
         onUpdateRequest('__by_student__', { studentId: stuId, studentName: genTargetStudent.name, priority: genPriority })
-          .catch(() => {});
+          .catch(() => { });
       }
       showToast(`Placement priority updated to ${genPriority} for ${genTargetStudent.name}`);
     } else {
@@ -816,24 +897,23 @@ export default function WorkflowStep1Students({
         {/* ─── Student Tabs: All / Inactive / Snooze ───────────────────────── */}
         <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
           {[
-            { key: 'all',      label: 'All',               count: studentList.length },
-            { key: 'inactive', label: 'Inactive Students',  count: inactiveStudentsCount },
-            { key: 'snooze',   label: 'Snooze',             count: snoozedCount },
+            { key: 'all', label: 'All', count: studentList.length },
+            { key: 'inactive', label: 'Inactive Students', count: inactiveStudentsCount },
+            { key: 'snooze', label: 'Snooze', count: snoozedCount },
           ].map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveMainTab(tab.key)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                activeMainTab === tab.key
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${activeMainTab === tab.key
                   ? 'bg-[#0147A6] text-white shadow-xs'
                   : 'text-slate-500 hover:bg-slate-50'
-              }`}
+                }`}
             >
               {tab.label} <span className="opacity-80">({tab.count})</span>
             </button>
           ))}
         </div>
-        
+
         {/* Metric Cards - Fully Dynamic */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
@@ -887,12 +967,12 @@ export default function WorkflowStep1Students({
           {/* Search */}
           <div className="relative flex-1 min-w-[180px] max-w-[280px]">
             <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search students..." 
+            <input
+              type="text"
+              placeholder="Search students..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+              className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600">
@@ -905,7 +985,7 @@ export default function WorkflowStep1Students({
 
           {/* Filter Buttons */}
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowFilters(!showFilters); setShowSavedFilters(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -998,13 +1078,13 @@ export default function WorkflowStep1Students({
                 </div>
 
                 <div className="flex gap-2 pt-1">
-                  <button 
+                  <button
                     onClick={() => setFilters({ rto: '', dateFrom: '', dateTo: '', priorities: [], coordinatorId: '', industry: '' })}
                     className="flex-1 py-1.5 border border-slate-200 text-slate-600 text-[11px] font-semibold rounded-lg hover:bg-slate-50"
                   >
                     Reset
                   </button>
-                  <button 
+                  <button
                     onClick={() => { setShowFilters(false); showToast('Filters applied'); }}
                     className="flex-1 py-1.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-[11px] font-semibold rounded-lg transition-all duration-500 cursor-pointer"
                   >
@@ -1016,7 +1096,7 @@ export default function WorkflowStep1Students({
           </div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowSavedFilters(!showSavedFilters); setShowFilters(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -1027,7 +1107,7 @@ export default function WorkflowStep1Students({
               <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-3 space-y-1.5">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Saved Filters</p>
                 {['Active - Ready', 'Pending Info', 'Melbourne Students'].map((f, i) => (
-                  <button 
+                  <button
                     key={i}
                     onClick={() => { setShowSavedFilters(false); showToast(`Loaded: ${f}`); }}
                     className="w-full text-left px-2 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 rounded-lg"
@@ -1048,7 +1128,7 @@ export default function WorkflowStep1Students({
           <div className="w-px h-6 bg-slate-200 shrink-0"></div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -1084,10 +1164,10 @@ export default function WorkflowStep1Students({
         <div className="flex justify-between items-center px-1">
           <p className="text-xs text-slate-500 font-medium">{filteredStudents.length} students found</p>
           <div className="flex items-center space-x-3">
-            <div className="relative">
-              <button 
+            <div className="relative" ref={bulkActionsRef}>
+              <button
                 onClick={() => setShowBulkActions(!showBulkActions)}
-                className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-xs hover:bg-slate-50"
+                className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-xs hover:bg-slate-50 cursor-pointer"
               >
                 <span className="text-xs text-slate-700 font-medium mr-2">
                   {selectedRows.length > 0 ? `${selectedRows.length} Selected` : 'Bulk Actions'}
@@ -1121,7 +1201,7 @@ export default function WorkflowStep1Students({
             </div>
             <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-xs space-x-1">
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setShowColumns(!showColumns)}
                   className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 flex items-center space-x-1 text-xs px-2 font-medium"
                 >
@@ -1141,13 +1221,13 @@ export default function WorkflowStep1Students({
                 )}
               </div>
               <div className="w-[1px] h-4 bg-slate-200"></div>
-              <button 
+              <button
                 onClick={() => { setViewMode('grid'); showToast('Grid view enabled'); }}
                 className={`p-1.5 rounded-lg ${viewMode === 'grid' ? 'bg-slate-100 text-slate-900' : 'hover:bg-slate-100 text-slate-400'}`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
-              <button 
+              <button
                 onClick={() => { setViewMode('list'); showToast('List view enabled'); }}
                 className={`p-1.5 rounded-lg ${viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'hover:bg-slate-100 text-slate-400'}`}
               >
@@ -1195,8 +1275,8 @@ export default function WorkflowStep1Students({
             <thead>
               <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
                 <th className="p-4 w-10">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     className="rounded border-slate-300 accent-blue-600 cursor-pointer"
                     checked={allPageSelected}
                     ref={(el) => { if (el) el.indeterminate = isIndeterminate; }}
@@ -1230,13 +1310,13 @@ export default function WorkflowStep1Students({
                 // Open menu upward for the last 3 rows to avoid viewport clipping
                 const openUpward = rowIdx >= paginatedStudents.length - 3;
                 return (
-                  <tr 
-                    key={rowIdx} 
+                  <tr
+                    key={rowIdx}
                     className={`transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
                   >
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         className="rounded border-slate-300 accent-blue-600"
                         checked={isRowSelected}
                         onChange={() => handleSelectRow(stu.id)}
@@ -1248,8 +1328,8 @@ export default function WorkflowStep1Students({
                           {stu.name ? stu.name[0] : '?'}
                         </div>
                         {isStudentOnline(stu.id, stu.email, stu.name) && (
-                          <span 
-                            title="Student is Online" 
+                          <span
+                            title="Student is Online"
                             className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse"
                           />
                         )}
@@ -1283,20 +1363,20 @@ export default function WorkflowStep1Students({
                       {(() => {
                         const statusVal = stu.placementStatus || 'None';
                         const statusConfig = {
-                          'Awaiting':                   { bg: 'bg-slate-100',    text: 'text-slate-500',    border: 'border-slate-300'   },
-                          'In Progress':                { bg: 'bg-blue-50',      text: 'text-blue-700',     border: 'border-blue-200'    },
-                          'Appointment Scheduled':      { bg: 'bg-purple-50',    text: 'text-purple-700',   border: 'border-purple-200'  },
-                          'Appointment Successful':     { bg: 'bg-teal-50',      text: 'text-teal-700',     border: 'border-teal-200'    },
-                          'Student Withdraw':           { bg: 'bg-amber-50',     text: 'text-amber-700',    border: 'border-amber-300'   },
-                          'Student Missed Appointment': { bg: 'bg-orange-50',    text: 'text-orange-700',   border: 'border-orange-300'  },
-                          'Industry Rejected':          { bg: 'bg-rose-50',      text: 'text-rose-700',     border: 'border-rose-200'    },
-                          'Placement Started':          { bg: 'bg-emerald-50',   text: 'text-emerald-700',  border: 'border-emerald-300' },
-                          'Placement Completed':        { bg: 'bg-emerald-100',  text: 'text-emerald-800',  border: 'border-emerald-300' },
+                          'Awaiting': { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-300' },
+                          'In Progress': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+                          'Appointment Scheduled': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+                          'Appointment Successful': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+                          'Student Withdraw': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300' },
+                          'Student Missed Appointment': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-300' },
+                          'Industry Rejected': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+                          'Placement Started': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300' },
+                          'Placement Completed': { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300' },
                           // Legacy / fallback values
-                          'Ready':                      { bg: 'bg-blue-50',      text: 'text-blue-700',     border: 'border-blue-200'    },
-                          'Industry Contacted':         { bg: 'bg-cyan-50',      text: 'text-cyan-700',     border: 'border-cyan-200'    },
-                          'Not Suitable Site':          { bg: 'bg-amber-50',     text: 'text-amber-800',    border: 'border-amber-400'   },
-                          'None':                       { bg: 'bg-slate-50',     text: 'text-slate-400',    border: 'border-slate-200'   },
+                          'Ready': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+                          'Industry Contacted': { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+                          'Not Suitable Site': { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-400' },
+                          'None': { bg: 'bg-slate-50', text: 'text-slate-400', border: 'border-slate-200' },
                         };
                         const cfg = statusConfig[statusVal] || statusConfig['None'];
                         return (
@@ -1317,13 +1397,12 @@ export default function WorkflowStep1Students({
                           <span>Snoozed ({snoozedStudentIds[stu.id].durationLabel || (snoozedStudentIds[stu.id].snoozeUntil ? `Until ${new Date(snoozedStudentIds[stu.id].snoozeUntil).toLocaleDateString()}` : 'Indefinite')})</span>
                         </button>
                       ) : reqValue ? (
-                        <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                          reqValue === 'Urgent'
+                        <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${reqValue === 'Urgent'
                             ? 'bg-rose-50 text-rose-600 border border-rose-200'
                             : reqValue === 'Inactive'
-                            ? 'bg-slate-100 text-slate-500 border border-slate-300'
-                            : 'bg-blue-50 text-blue-600 border border-blue-200'
-                        }`}>
+                              ? 'bg-slate-100 text-slate-500 border border-slate-300'
+                              : 'bg-blue-50 text-blue-600 border border-blue-200'
+                          }`}>
                           {reqValue === 'Urgent' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>}
                           {reqValue === 'Inactive' && <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>}
                           <span>{reqValue === 'Inactive' ? 'Inactive' : `${reqValue} Priority`}</span>
@@ -1348,7 +1427,7 @@ export default function WorkflowStep1Students({
                     </td>
                     <td className="p-4 text-slate-500">{stu.addedOn}</td>
                     <td className="p-4 text-right relative" data-row-menu onClick={(e) => e.stopPropagation()}>
-                      <button 
+                      <button
                         onClick={() => setShowRowMenu(showRowMenu === stu.id ? null : stu.id)}
                         className="p-1 hover:bg-slate-100 rounded-lg inline-flex cursor-pointer"
                       >
@@ -1364,9 +1443,8 @@ export default function WorkflowStep1Students({
                           ) : (
                             <button
                               onClick={() => { setShowRowMenu(null); handleOpenGenRequest(stu, false); }}
-                              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-lg flex items-center space-x-2 ${
-                                actionInfo.isRegenerable ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'
-                              }`}
+                              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-lg flex items-center space-x-2 ${actionInfo.isRegenerable ? 'text-amber-700 hover:bg-amber-50' : 'text-blue-600 hover:bg-blue-50'
+                                }`}
                             >
                               <Plus className={`w-3.5 h-3.5 ${actionInfo.isRegenerable ? 'text-amber-600' : 'text-blue-600'}`} />
                               <span>{actionInfo.label}</span>
@@ -1425,7 +1503,7 @@ export default function WorkflowStep1Students({
           <div className="p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
             <p>Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredStudents.length)} of {filteredStudents.length} results</p>
             <div className="flex items-center space-x-2">
-              <button 
+              <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1444,12 +1522,11 @@ export default function WorkflowStep1Students({
                   pageNum = currentPage - 2 + i;
                 }
                 return (
-                  <button 
+                  <button
                     key={i}
                     onClick={() => handlePageChange(pageNum)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-medium ${
-                      currentPage === pageNum ? 'bg-blue-600 text-white font-bold' : 'border border-slate-200 hover:bg-slate-50 text-slate-700'
-                    }`}
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-medium ${currentPage === pageNum ? 'bg-blue-600 text-white font-bold' : 'border border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
                   >
                     {pageNum}
                   </button>
@@ -1463,7 +1540,7 @@ export default function WorkflowStep1Students({
                   </button>
                 </>
               )}
-              <button 
+              <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
                 className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1471,7 +1548,7 @@ export default function WorkflowStep1Students({
                 <ChevronRight className="w-4 h-4" />
               </button>
               <div className="ml-4 relative">
-                <button 
+                <button
                   onClick={() => setShowBulkActions(false)}
                   className="flex items-center border border-slate-200 rounded-xl px-2 py-1 bg-white hover:bg-slate-50"
                 >
@@ -1480,7 +1557,7 @@ export default function WorkflowStep1Students({
                 </button>
                 <div className="absolute right-0 mt-1 w-28 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5 hidden">
                   {[10, 25, 50, 100].map(size => (
-                    <button 
+                    <button
                       key={size}
                       onClick={() => handlePageSizeChange(size)}
                       className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-lg"
@@ -1511,7 +1588,7 @@ export default function WorkflowStep1Students({
       {/* ─── RIGHT DRAWER ────────────────────────────────────────────────── */}
       {showDrawer && selectedStudent && (
         <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
-          
+
           {/* ─── If Appointment Form is open, show form instead of profile ─── */}
           {showAppointmentForm ? (
             // ─── APPOINTMENT FORM IN DRAWER ──────────────────────────────
@@ -1638,14 +1715,14 @@ export default function WorkflowStep1Students({
               <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-5">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
                 <div className="absolute bottom-0 left-0 w-16 h-16 bg-emerald-400/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
-                
+
                 <div className="relative flex items-start justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="relative">
                       <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-700 shrink-0 border-2 border-white/20 ring-2 ring-white/10">
-                        <img 
-                          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" 
-                          alt={selectedStudent.name} 
+                        <img
+                          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+                          alt={selectedStudent.name}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -1692,9 +1769,8 @@ export default function WorkflowStep1Students({
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`py-3 relative transition whitespace-nowrap ${
-                      activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
-                    }`}
+                    className={`py-3 relative transition whitespace-nowrap ${activeTab === tab ? 'text-blue-600 font-bold' : 'hover:text-slate-800'
+                      }`}
                   >
                     {tab}
                     {activeTab === tab && (
@@ -1728,17 +1804,16 @@ export default function WorkflowStep1Students({
                       const isUploaded = Boolean(docVal);
 
                       return (
-                        <div 
+                        <div
                           key={field}
-                          className={`p-2.5 rounded-xl border flex items-center justify-between transition ${
-                            isUploaded ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/40 border-rose-200/80'
-                          }`}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between transition ${isUploaded ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/40 border-rose-200/80'
+                            }`}
                         >
                           <div className="min-w-0 pr-2">
                             <p className="font-semibold text-slate-800 text-[11px] truncate">{label}</p>
                             <p className={`text-[10px] truncate ${isUploaded ? 'text-slate-500' : 'text-rose-600 font-medium'}`}>
-                              {isUploaded 
-                                ? (typeof docVal === 'string' ? docVal : 'File attached') 
+                              {isUploaded
+                                ? (typeof docVal === 'string' ? docVal : 'File attached')
                                 : 'Student has not uploaded'}
                             </p>
                           </div>
@@ -1794,13 +1869,12 @@ export default function WorkflowStep1Students({
                               <p className="font-bold text-slate-900 text-xs">{rec.organizationName}</p>
                               <p className="text-[10px] text-slate-500">{rec.contactPerson} {rec.phone ? `(${rec.phone})` : ''}</p>
                             </div>
-                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${
-                              rec.response?.toLowerCase().includes('approved') || rec.response?.toLowerCase().includes('positive')
+                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${rec.response?.toLowerCase().includes('approved') || rec.response?.toLowerCase().includes('positive')
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : rec.response?.toLowerCase().includes('reject') || rec.response?.toLowerCase().includes('declined')
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                : 'bg-blue-50 text-blue-700 border border-blue-200'
-                            }`}>
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+                              }`}>
                               {rec.response || 'In Discussion'}
                             </span>
                           </div>
@@ -1822,7 +1896,7 @@ export default function WorkflowStep1Students({
                             </div>
                           )}
                           {(rec.contactedDate || rec.date) && <p className="text-[9px] text-slate-400">Date: {rec.contactedDate || rec.date}</p>}
-                          
+
                           {/* ─── Schedule Appointment button for each industry ─── */}
                           <button
                             onClick={() => handleOpenAppointmentForm(selectedStudent, rec)}
@@ -1856,11 +1930,10 @@ export default function WorkflowStep1Students({
                         <div key={appt.id || idx} className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
                           <div className="flex items-center justify-between">
                             <p className="font-bold text-slate-900 text-xs">{appt.company}</p>
-                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border ${
-                              appt.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : appt.status === 'Cancelled' || appt.status === 'Withdrawn' ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : 'bg-blue-50 text-blue-700 border-blue-200'
-                            }`}>
+                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border ${appt.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : appt.status === 'Cancelled' || appt.status === 'Withdrawn' ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                  : 'bg-blue-50 text-blue-700 border-blue-200'
+                              }`}>
                               {appt.status}
                             </span>
                           </div>
@@ -1948,11 +2021,10 @@ export default function WorkflowStep1Students({
                           .map((h, i) => (
                             <div key={i} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px]">
                               <div className="flex items-center justify-between">
-                                <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${
-                                  h.action === 'Assigned' ? 'bg-blue-50 text-blue-700'
-                                  : h.action === 'Removed' ? 'bg-rose-50 text-rose-700'
-                                  : 'bg-amber-50 text-amber-700'
-                                }`}>{h.action}</span>
+                                <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${h.action === 'Assigned' ? 'bg-blue-50 text-blue-700'
+                                    : h.action === 'Removed' ? 'bg-rose-50 text-rose-700'
+                                      : 'bg-amber-50 text-amber-700'
+                                  }`}>{h.action}</span>
                                 <span className="text-slate-400">
                                   {h.date ? (() => { try { return new Date(h.date).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ''; } })() : ''}
                                 </span>
@@ -2184,14 +2256,14 @@ export default function WorkflowStep1Students({
                       <span>Quick Actions</span>
                     </h5>
                     <div className="grid grid-cols-2 gap-2">
-                      <button 
+                      <button
                         onClick={() => navigate(`/students/${selectedStudent.id}`)}
                         className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
                       >
                         <User className="w-3.5 h-3.5 text-slate-500" />
                         <span>Profile</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => navigate(`/students/${selectedStudent.id}/edit`)}
                         className="py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl flex items-center justify-center space-x-1.5 transition text-[11px] cursor-pointer"
                       >
@@ -2199,7 +2271,7 @@ export default function WorkflowStep1Students({
                         <span>Edit</span>
                       </button>
                     </div>
-                    <button 
+                    <button
                       onClick={handleCreateRequest}
                       className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-500 cursor-pointer shadow-xs text-[11px]"
                     >
@@ -2214,9 +2286,9 @@ export default function WorkflowStep1Students({
                       </span>
                       <ArrowUpRight className="w-3 h-3 text-blue-200" />
                     </button>
-                    
+
                     {/* ─── Schedule Appointment button in drawer ─── */}
-                    <button 
+                    <button
                       onClick={() => handleOpenAppointmentForm(selectedStudent)}
                       className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl flex items-center justify-center space-x-2 transition shadow-xs text-[11px]"
                     >
@@ -2254,8 +2326,8 @@ export default function WorkflowStep1Students({
                   {isChangingPlacement
                     ? 'Change Placement Request'
                     : (REGENERATE_STATUSES.includes(genTargetStudent.placementStatus)
-                        ? 'Regenerate Placement Request'
-                        : 'Generate Placement Request')}
+                      ? 'Regenerate Placement Request'
+                      : 'Generate Placement Request')}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {isChangingPlacement
@@ -2289,15 +2361,14 @@ export default function WorkflowStep1Students({
                   <button
                     type="button"
                     onClick={() => setGenPriority('Normal')}
-                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
-                      genPriority === 'Normal'
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${genPriority === 'Normal'
                         ? 'bg-blue-50 border-blue-600 text-blue-700 font-bold shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full">
                       <span className="text-xs">Normal</span>
-                      <input type="radio" name="priority" checked={genPriority === 'Normal'} onChange={() => {}} className="accent-blue-600" />
+                      <input type="radio" name="priority" checked={genPriority === 'Normal'} onChange={() => { }} className="accent-blue-600" />
                     </div>
                     <span className="text-[10px] text-slate-500 font-normal mt-1">Normal Priority</span>
                   </button>
@@ -2305,15 +2376,14 @@ export default function WorkflowStep1Students({
                   <button
                     type="button"
                     onClick={() => setGenPriority('Urgent')}
-                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
-                      genPriority === 'Urgent'
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${genPriority === 'Urgent'
                         ? 'bg-rose-50 border-rose-600 text-rose-700 font-bold shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full">
                       <span className="text-xs">Urgent</span>
-                      <input type="radio" name="priority" checked={genPriority === 'Urgent'} onChange={() => {}} className="accent-rose-600" />
+                      <input type="radio" name="priority" checked={genPriority === 'Urgent'} onChange={() => { }} className="accent-rose-600" />
                     </div>
                     <span className="text-[10px] text-slate-500 font-normal mt-1">Urgent Priority</span>
                   </button>
@@ -2321,15 +2391,14 @@ export default function WorkflowStep1Students({
                   <button
                     type="button"
                     onClick={() => setGenPriority('Inactive')}
-                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
-                      genPriority === 'Inactive'
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${genPriority === 'Inactive'
                         ? 'bg-violet-50 border-violet-600 text-violet-700 font-bold shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full">
                       <span className="text-xs">Inactive</span>
-                      <input type="radio" name="priority" checked={genPriority === 'Inactive'} onChange={() => {}} className="accent-violet-600" />
+                      <input type="radio" name="priority" checked={genPriority === 'Inactive'} onChange={() => { }} className="accent-violet-600" />
                     </div>
                     <span className="text-[10px] text-slate-500 font-normal mt-1">Inactive Student</span>
                   </button>
@@ -2337,18 +2406,17 @@ export default function WorkflowStep1Students({
                   <button
                     type="button"
                     onClick={() => setGenPriority('Snooze')}
-                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${
-                      genPriority === 'Snooze'
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col justify-between transition text-left cursor-pointer ${genPriority === 'Snooze'
                         ? 'bg-amber-50 border-amber-600 text-amber-900 font-bold shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full">
                       <span className="text-xs flex items-center space-x-1">
                         <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
                         <span>Snooze</span>
                       </span>
-                      <input type="radio" name="priority" checked={genPriority === 'Snooze'} onChange={() => {}} className="accent-amber-600" />
+                      <input type="radio" name="priority" checked={genPriority === 'Snooze'} onChange={() => { }} className="accent-amber-600" />
                     </div>
                     <span className="text-[10px] text-slate-500 font-normal mt-1">Snooze Student</span>
                   </button>
@@ -2395,11 +2463,10 @@ export default function WorkflowStep1Students({
               <button
                 type="button"
                 onClick={handleGenerateRequestSubmit}
-                className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center space-x-1.5 ${
-                  genPriority === 'Snooze'
+                className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center space-x-1.5 ${genPriority === 'Snooze'
                     ? 'bg-amber-600 hover:bg-amber-700'
                     : 'bg-[#0147A6] hover:bg-blue-700'
-                }`}
+                  }`}
               >
                 {genPriority === 'Snooze' ? (
                   <>
@@ -2433,7 +2500,7 @@ export default function WorkflowStep1Students({
                   <p className="text-xs text-slate-400 mt-0.5">Students temporarily deferred from placement requests</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowSnoozedModal(false)}
                 className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
               >
@@ -2455,7 +2522,7 @@ export default function WorkflowStep1Students({
 
             {/* List */}
             <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-              {Object.values(snoozedStudentIds).filter(item => 
+              {Object.values(snoozedStudentIds).filter(item =>
                 (item.name || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase()) ||
                 (item.studentId || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase())
               ).map((item) => (
@@ -2617,11 +2684,161 @@ export default function WorkflowStep1Students({
           onAssigned={({ rtoName, count }) => {
             showToast(`Assigned ${rtoName} to ${count} student(s)`);
             setAssignRtoTarget(null);
+            setSelectedRows([]);
             if (onRefreshWorkflow) {
               onRefreshWorkflow();
             }
           }}
         />
+      )}
+
+      {/* ─── Bulk Status Update Modal ────────────────────────────── */}
+      {showBulkStatusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                  <CheckSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Update Status</h3>
+                  <p className="text-xs text-slate-500">
+                    Applying changes to {getSelectedStudents().length} selected student(s)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkStatusModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Account Status
+                </label>
+                <select
+                  value={bulkStatusForm.status}
+                  onChange={(e) => setBulkStatusForm(prev => ({ ...prev, status: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                >
+                  <option value="">(Keep current account status)</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="Pending">Pending</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Placement Status
+                </label>
+                <select
+                  value={bulkStatusForm.placementStatus}
+                  onChange={(e) => setBulkStatusForm(prev => ({ ...prev, placementStatus: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                >
+                  <option value="">(Keep current placement status)</option>
+                  <option value="Awaiting">Awaiting</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Industry Contacted">Industry Contacted</option>
+                  <option value="Appointment Scheduled">Appointment Scheduled</option>
+                  <option value="Appointment Successful">Appointment Successful</option>
+                  <option value="Placement Started">Placement Started</option>
+                  <option value="Placement Completed">Placement Completed</option>
+                  <option value="Student Withdraw">Student Withdraw</option>
+                  <option value="Industry Rejected">Industry Rejected</option>
+                  <option value="Not Suitable Site">Not Suitable Site</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowBulkStatusModal(false)}
+                disabled={isUpdatingBulkStatus}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkStatus}
+                disabled={isUpdatingBulkStatus || (!bulkStatusForm.status && !bulkStatusForm.placementStatus)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {isUpdatingBulkStatus ? 'Updating...' : 'Apply Status'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Bulk Delete Confirmation Modal ──────────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Delete Students</h3>
+                  <p className="text-xs text-rose-600 font-medium">
+                    {getSelectedStudents().length} student(s) selected
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Are you sure you want to permanently delete these <span className="font-bold text-slate-900">{getSelectedStudents().length} student(s)</span>? All associated records, requests, and pipeline assignments will be removed. This action cannot be undone.
+              </p>
+              <div className="max-h-32 overflow-y-auto bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1">
+                {getSelectedStudents().map((s, idx) => (
+                  <div key={idx} className="text-[11px] text-slate-700 font-medium flex items-center justify-between">
+                    <span>{s.name}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{s.studentId || s.id}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={isDeletingBulk}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkDelete}
+                disabled={isDeletingBulk}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {isDeletingBulk ? 'Deleting...' : `Delete ${getSelectedStudents().length} Student(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

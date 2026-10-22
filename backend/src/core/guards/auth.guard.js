@@ -21,8 +21,12 @@ export const authenticate = async (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await UserModel.findById(decoded.id);
 
-    if (!user || user.status !== 'Active') {
-      return res.status(401).json({ success: false, message: 'User account is inactive or no longer exists.' });
+    if (!user || user.isDeleted || user.status !== 'Active' || user.approved === false) {
+      return res.status(401).json({
+        success: false,
+        message: 'User account is inactive, pending approval, disabled, or no longer exists.',
+        code: user?.status === 'Pending' ? 'ACCOUNT_PENDING_APPROVAL' : 'ACCOUNT_UNAVAILABLE',
+      });
     }
 
     req.user = user;
@@ -30,6 +34,45 @@ export const authenticate = async (req, res, next) => {
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Invalid or expired session token.' });
   }
+};
+
+/**
+ * Account approval check middleware.
+ */
+export const requireApprovedAccount = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required.' });
+  }
+
+  if (req.user.isDeleted) {
+    return res.status(401).json({ success: false, message: 'Account has been deleted.' });
+  }
+
+  if (req.user.status === 'Pending' || req.user.approved === false) {
+    return res.status(403).json({
+      success: false,
+      message: 'Account is pending administrator approval.',
+      code: 'ACCOUNT_PENDING_APPROVAL',
+    });
+  }
+
+  if (req.user.status === 'Rejected') {
+    return res.status(403).json({
+      success: false,
+      message: 'Account registration was rejected.',
+      code: 'ACCOUNT_REJECTED',
+    });
+  }
+
+  if (req.user.status !== 'Active') {
+    return res.status(403).json({
+      success: false,
+      message: 'Account is not active or has been disabled.',
+      code: 'ACCOUNT_INACTIVE',
+    });
+  }
+
+  next();
 };
 
 /**
@@ -49,7 +92,9 @@ export const softAuth = async (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await UserModel.findById(decoded.id);
 
-    if (user && user.status === 'Active') req.user = user;
+    if (user && !user.isDeleted && user.status === 'Active' && user.approved !== false) {
+      req.user = user;
+    }
     next();
   } catch {
     next();

@@ -77,7 +77,7 @@ export class IndustryService {
 
   static async getAllIndustries(queryFilters, user) {
     const role = user?.role;
-    if (user && (role === 'RTO Manager' || role === 'Student')) {
+    if (user && (role === 'RTO Manager' || role === 'RTO' || role === 'Student')) {
       throw new ForbiddenError(
         'Access denied. Users with RTO or Student role are not authorized to view Industry facility details.'
       );
@@ -88,6 +88,20 @@ export class IndustryService {
     await this.syncIndustriesFromWorkflows();
 
     const query = {};
+
+    if (role === 'Industry' || role === 'Industry/Host') {
+      const userFac = (user.facilityName || '').trim();
+      const userIndId = user.industryId;
+      if (userIndId) {
+        query._id = userIndId;
+      } else if (userFac) {
+        query.name = safeRegex(userFac);
+      } else if (user.email) {
+        query.contactEmail = user.email.toLowerCase().trim();
+      } else {
+        query._id = null;
+      }
+    }
 
     if (search) {
       query.$or = [

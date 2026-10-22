@@ -71,10 +71,10 @@ export const resolveRtoCoursePrice = (rtoDoc, student = {}) => {
         originalPrice = Number(matchedPricing.pricing);
       }
     }
-    if (!originalPrice && Number(rtoDoc.payoutRate) > 0) {
+    if (!studentCourse && !originalPrice && Number(rtoDoc.payoutRate) > 0) {
       originalPrice = Number(rtoDoc.payoutRate);
     }
-    if (!originalPrice && coursePricingList.length === 1 && Number(coursePricingList[0].pricing) > 0) {
+    if (!studentCourse && !originalPrice && coursePricingList.length === 1 && Number(coursePricingList[0].pricing) > 0) {
       originalPrice = Number(coursePricingList[0].pricing);
     }
     if (!originalPrice) {

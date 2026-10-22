@@ -79,8 +79,14 @@ export class StudentService {
     const role = user?.role;
     const userEmail = user?.email?.toLowerCase()?.trim();
 
-    if (user && role !== 'Administrator') {
-      if (role === 'Coordinator') {
+    const isAdmin = role === 'Administrator' || role === 'Admin';
+    const isCoordinator = role === 'Coordinator' || role === 'Placement Coordinator';
+    const isRto = role === 'RTO Manager' || role === 'RTO';
+    const isIndustry = role === 'Industry' || role === 'Industry/Host';
+    const isStudent = role === 'Student';
+
+    if (user && !isAdmin) {
+      if (isCoordinator) {
         const coordMatches = [
           { assignedCoordinator: user._id },
           { assignedCoordinator: String(user._id) },
@@ -95,7 +101,7 @@ export class StudentService {
           coordMatches.push({ assignedCoordinatorEmail: user.email.toLowerCase().trim() });
         }
         filter = { $or: coordMatches };
-      } else if (role === 'RTO Manager') {
+      } else if (isRto) {
         let userRtoName = user.rtoName;
         if (!userRtoName && userEmail) {
           const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
@@ -106,11 +112,11 @@ export class StudentService {
         } else {
           filter = { _id: null };
         }
-      } else if (role === 'Student') {
+      } else if (isStudent) {
         filter = {
           $or: [{ emailAddress: userEmail }, { _id: user.studentIdRef || user._id }],
         };
-      } else if (role === 'Industry') {
+      } else if (isIndustry) {
         let facilityName = user.facilityName;
         if (!facilityName && userEmail) {
           const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
@@ -151,7 +157,7 @@ export class StudentService {
       } else {
         filter = { assignedCoordinator: user._id };
       }
-    } else if (user && role === 'Administrator') {
+    } else if (user && isAdmin) {
       if (coordinatorIdQuery === 'unassigned') {
         filter = { $or: [{ assignedCoordinator: null }, { assignedCoordinator: { $exists: false } }] };
       } else if (coordinatorIdQuery) {
@@ -169,7 +175,9 @@ export class StudentService {
   }
 
   static async getAllStudentsUnfiltered(user) {
-    if (user && user.role !== 'Administrator') {
+    const role = user?.role;
+    const isAdmin = role === 'Administrator' || role === 'Admin';
+    if (user && !isAdmin) {
       return await this.getAllStudents(user);
     }
     return await StudentModel.find({}).sort({ createdAt: -1 });
@@ -191,36 +199,69 @@ export class StudentService {
     const role = user?.role;
     const userEmail = user?.email?.toLowerCase()?.trim();
 
-    if (user && role !== 'Administrator') {
+    if (user && role !== 'Administrator' && role !== 'Admin') {
       if (role === 'Student') {
         const isOwnRecord =
-          (student.emailAddress && student.emailAddress.toLowerCase() === userEmail) ||
+          (student.emailAddress && student.emailAddress.toLowerCase().trim() === userEmail) ||
           (user.studentIdRef && user.studentIdRef.toString() === student._id.toString());
         if (!isOwnRecord) {
-          throw new ForbiddenError('Access denied. You can only view your own student profile.');
+          throw new NotFoundError('Student not found');
         }
-      } else if (role === 'Coordinator') {
+      } else if (role === 'Coordinator' || role === 'Placement Coordinator') {
         const assignedId = student.assignedCoordinator ? student.assignedCoordinator.toString() : '';
         const userId = user._id ? user._id.toString() : '';
-        const matchesCoordId = assignedId && userId && (assignedId === userId);
-        const matchesCoordName = user.name && student.assignedCoordinatorName &&
+        const matchesCoordId = assignedId && userId && assignedId === userId;
+        const matchesCoordName =
+          user.name &&
+          student.assignedCoordinatorName &&
           student.assignedCoordinatorName.trim().toLowerCase() === user.name.trim().toLowerCase();
 
         if (!matchesCoordId && !matchesCoordName) {
-          throw new ForbiddenError('Access denied. You can only view students assigned to you.');
+          throw new NotFoundError('Student not found');
         }
-      } else if (role === 'RTO Manager') {
+      } else if (role === 'RTO Manager' || role === 'RTO') {
         let userRtoName = user.rtoName;
         if (!userRtoName && userEmail) {
           const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
           if (matchedRto) userRtoName = matchedRto.name;
         }
-        const matchesRto =
+        const matchesRtoName =
           userRtoName &&
           student.assignedRto &&
           student.assignedRto.trim().toLowerCase() === userRtoName.trim().toLowerCase();
-        if (!matchesRto) {
-          throw new ForbiddenError('Access denied. You can only view students belonging to your RTO.');
+        const matchesRtoId =
+          user.rtoId &&
+          student.rtoId &&
+          student.rtoId.toString() === user.rtoId.toString();
+
+        if (!matchesRtoName && !matchesRtoId) {
+          throw new NotFoundError('Student not found');
+        }
+      } else if (role === 'Industry' || role === 'Industry/Host') {
+        let facilityName = user.facilityName;
+        if (!facilityName && userEmail) {
+          const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
+          if (matchedInd) facilityName = matchedInd.name;
+        }
+
+        let isAssigned = false;
+        if (facilityName) {
+          const facLower = facilityName.trim().toLowerCase();
+          if (student.placementSite && String(student.placementSite).toLowerCase().includes(facLower)) {
+            isAssigned = true;
+          } else {
+            const hasAppointment = await WorkflowModel.findOne({
+              $or: [
+                { appointments: { $elemMatch: { studentId: student.studentId, company: { $regex: `^${facilityName.trim()}$`, $options: 'i' } } } },
+                { internships: { $elemMatch: { studentId: student.studentId, company: { $regex: `^${facilityName.trim()}$`, $options: 'i' } } } },
+              ],
+            }).lean();
+            if (hasAppointment) isAssigned = true;
+          }
+        }
+
+        if (!isAssigned) {
+          throw new NotFoundError('Student not found');
         }
       }
     }
@@ -229,9 +270,67 @@ export class StudentService {
   }
 
   static async updateStudent(id, studentData, actingUser) {
-    if (actingUser && actingUser.role === 'Coordinator') {
-      // Coordinator can only update their assigned student
+    const role = actingUser?.role;
+    const isAdmin = role === 'Administrator' || role === 'Admin';
+
+    if (actingUser && !isAdmin) {
+      // Validates resource ownership for non-admin actors (Coord, RTO, Industry, Student)
+      // Throws 404 NotFound if resource is not owned/assigned, preventing cross-tenant enumeration!
       await this.getStudentById(id, actingUser);
+
+      // Student can ONLY update their own permitted personal contact fields!
+      if (role === 'Student') {
+        const allowedStudentFields = [
+          'preferredName',
+          'phoneNumber',
+          'phoneCode',
+          'alternatePhone',
+          'altPhoneCode',
+          'whatsappNumber',
+          'waPhoneCode',
+          'address',
+          'suburb',
+          'state',
+          'postCode',
+          'emergencyContactName',
+          'emergencyContactRelationship',
+          'emergencyContactPhone',
+          'language',
+        ];
+        const sanitizedUpdate = {};
+        for (const key of allowedStudentFields) {
+          if (studentData[key] !== undefined) {
+            sanitizedUpdate[key] = studentData[key];
+          }
+        }
+        studentData = sanitizedUpdate;
+      } else if (role === 'Industry' || role === 'Industry/Host') {
+        // Industry users can only update permitted placement lifecycle fields
+        const allowedIndustryFields = [
+          'placementStatus',
+          'appointmentDate',
+          'appointmentTime',
+          'commencementDate',
+          'completionDate',
+          'notes',
+        ];
+        const sanitizedUpdate = {};
+        for (const key of allowedIndustryFields) {
+          if (studentData[key] !== undefined) {
+            sanitizedUpdate[key] = studentData[key];
+          }
+        }
+        studentData = sanitizedUpdate;
+      }
+
+      // Chronology validation if dates are being updated
+      if (studentData.commencementDate && studentData.completionDate) {
+        const startT = new Date(studentData.commencementDate).getTime();
+        const endT = new Date(studentData.completionDate).getTime();
+        if (!isNaN(startT) && !isNaN(endT) && endT < startT) {
+          throw new BadRequestError('Completion date cannot be before commencement date.');
+        }
+      }
     }
 
     // If assignedRto is provided without rtoId, auto-resolve rtoId
@@ -275,17 +374,36 @@ export class StudentService {
     }
 
     // Immediately sync payment record so RTO/fee changes reflect in payments page
-    import('../payment/payment.service.js').then(({ syncSingleStudentPayment }) => {
-      syncSingleStudentPayment(student.toObject ? student.toObject() : student).catch((err) =>
-        console.error('[StudentService] Payment sync after update failed:', err.message)
-      );
-    }).catch(() => {});
+    import('../payment/payment.service.js')
+      .then(({ syncSingleStudentPayment }) => {
+        syncSingleStudentPayment(student.toObject ? student.toObject() : student).catch((err) =>
+          console.error('[StudentService] Payment sync after update failed:', err.message)
+        );
+      })
+      .catch(() => {});
+
+    // Sync placement dates / status into workflow internships if present
+    if (student && (studentData.commencementDate || studentData.completionDate || studentData.placementStatus)) {
+      try {
+        const updateFields = {};
+        if (studentData.commencementDate) updateFields['internships.$.start'] = studentData.commencementDate;
+        if (studentData.completionDate) updateFields['internships.$.end'] = studentData.completionDate;
+        if (studentData.placementStatus) updateFields['internships.$.status'] = studentData.placementStatus;
+
+        await WorkflowModel.updateMany(
+          { 'internships.studentId': student.studentId },
+          { $set: updateFields }
+        );
+      } catch (_) {}
+    }
 
     return student;
   }
 
   static async deleteStudent(id, actingUser) {
-    if (actingUser && actingUser.role !== 'Administrator') {
+    const role = actingUser?.role;
+    const isAdmin = role === 'Administrator' || role === 'Admin';
+    if (actingUser && !isAdmin) {
       throw new ForbiddenError('Only Administrators can delete students.');
     }
     let student = null;

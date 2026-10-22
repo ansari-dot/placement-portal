@@ -1,3 +1,4 @@
+import React, { useState, useRef } from 'react';
 import { MoreVertical } from 'lucide-react';
 import StudentActionsMenu from './StudentActionsMenu';
 import { allColumns } from './studentData';
@@ -185,6 +186,24 @@ export default function StudentTableRow({
   allowCreateAppointment = true,
 }) {
   const extras = { hasPlacementRequest, workflowPriority, isSnoozed };
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef(null);
+
+  const handleToggle = (e) => {
+    e.stopPropagation();
+    if (!isActionsOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuHeight = 330;
+      const menuWidth = 224;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
+      setMenuPos({
+        top: openUpward ? Math.max(10, rect.top - menuHeight - 6) : rect.bottom + 6,
+        left: Math.max(16, rect.right - menuWidth),
+      });
+    }
+    onToggleActions();
+  };
 
   return (
     <tr className="hover:bg-slate-50/80 transition cursor-pointer">
@@ -219,8 +238,9 @@ export default function StudentTableRow({
       {/* Actions */}
       <td className="p-4 text-center relative" onClick={(e) => e.stopPropagation()}>
         <button
+          ref={buttonRef}
           className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 mx-auto transition cursor-pointer"
-          onClick={onToggleActions}
+          onClick={handleToggle}
         >
           <MoreVertical size={16} />
         </button>
@@ -235,6 +255,7 @@ export default function StudentTableRow({
             isAdmin={isAdmin}
             allowGenerate={allowGenerate}
             allowCreateAppointment={allowCreateAppointment}
+            menuPos={menuPos}
           />
         )}
       </td>

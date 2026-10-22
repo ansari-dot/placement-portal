@@ -28,6 +28,22 @@ const attendanceSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    placement: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    placementId: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
+    breakMinutes: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     date: {
       type: String,
       required: [true, 'Attendance date is required'],
@@ -51,7 +67,7 @@ const attendanceSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Present', 'Absent', 'Late', 'Half Day', 'Completed'],
+      enum: ['Present', 'Absent', 'Late', 'Half Day', 'Completed', 'Excused', 'Sick Leave'],
       default: 'Present',
     },
     notes: {
@@ -69,11 +85,34 @@ const attendanceSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+// Prevent duplicate attendance for the same student on the same date (excluding soft-deleted records)
+attendanceSchema.index(
+  { student: 1, date: 1, isDeleted: 1 },
+  { unique: true, partialFilterExpression: { isDeleted: false } }
+);
+attendanceSchema.index({ industry: 1, date: 1 });
+attendanceSchema.index({ facilityName: 1, date: 1 });
+attendanceSchema.index({ date: -1, createdAt: -1 });
 
 attendanceSchema.set('toJSON', {
   virtuals: true,

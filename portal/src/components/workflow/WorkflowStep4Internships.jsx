@@ -2,18 +2,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { calculatePlacementEndDate, getDailyWorkingHours } from '../../utils/dateCalculation';
-import { 
-  Search, Filter, Download, Plus, MoreVertical, 
-  ChevronDown, LayoutGrid, List, ChevronLeft, ChevronRight, X, 
+import {
+  Search, Filter, Download, Plus, MoreVertical,
+  ChevronDown, LayoutGrid, List, ChevronLeft, ChevronRight, X,
   Calendar, MapPin, Building2, Clock, Briefcase, User, Edit, CheckCircle2, Award,
-  ShieldCheck, Trash2, Eye, CheckSquare, FileText, Layers, 
+  ShieldCheck, Trash2, Eye, CheckSquare, FileText, Layers,
   AlertCircle, ThumbsUp, ThumbsDown, UserX, Calendar as CalendarIcon,
   Info, ExternalLink, MessageCircle
 } from 'lucide-react';
 import PlacementRequestStudentDetails from './PlacementRequestStudentDetails';
 
-export default function WorkflowStep4Internships({ 
-  internships = [], 
+export default function WorkflowStep4Internships({
+  internships = [],
   appointments = [],
   requests = [],
   onBack,
@@ -21,6 +21,7 @@ export default function WorkflowStep4Internships({
   onCreateInternship,
   onUpdateInternship,
   onDeleteInternship,
+  onBulkDeleteInternships,
   onDeleteAppointment,
   students = []
 }) {
@@ -41,7 +42,10 @@ export default function WorkflowStep4Internships({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showAddInternship, setShowAddInternship] = useState(false);
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const [showRowMenu, setShowRowMenu] = useState(null);
+  const [rowMenuPos, setRowMenuPos] = useState({ top: 0, left: 0 });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [showDrawer, setShowDrawer] = useState(false);
@@ -69,15 +73,31 @@ export default function WorkflowStep4Internships({
     setTimeout(() => setToast(null), 2500);
   };
 
-  // Close the row action menu when clicking outside
+  // Close the bulk actions menu on outside click
+  useEffect(() => {
+    if (!showBulkActions) return;
+    const handleClickOutside = (e) => {
+      if (e.target.closest('[data-bulk-actions]')) return;
+      setShowBulkActions(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showBulkActions]);
+
+  // Close the row action menu when clicking outside or scrolling
   useEffect(() => {
     if (!showRowMenu) return;
     const handleClickOutside = (e) => {
       if (e.target.closest('[data-row-menu]')) return;
       setShowRowMenu(null);
     };
+    const handleScroll = () => setShowRowMenu(null);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
   }, [showRowMenu]);
 
   // ─── Helper Functions ─────────────────────────────────────────────────────
@@ -103,7 +123,7 @@ export default function WorkflowStep4Internships({
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'Active': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'Placement Started': return 'bg-emerald-50 text-emerald-800 border-emerald-300';
       case 'Joined': return 'bg-blue-50 text-blue-700 border-blue-200';
@@ -125,7 +145,7 @@ export default function WorkflowStep4Internships({
   // ─── ✅ FIX: Use BOTH internships prop AND appointments ────────────────────
   const processedInternships = useMemo(() => {
     console.log('📋 Step4: internships prop:', internships?.length || 0, '| appointments:', appointments?.length || 0);
-    
+
     const result = [];
     const seenIds = new Set();
 
@@ -230,7 +250,7 @@ export default function WorkflowStep4Internships({
       appointments.forEach((appt, index) => {
         // Skip if already represented by internships prop (match by apptId or _id)
         const apptId = appt.id || appt._id;
-        const alreadyExists = result.some(r => 
+        const alreadyExists = result.some(r =>
           (r._appointmentId && apptId && String(r._appointmentId) === String(apptId)) ||
           (r.studentId && appt.studentId && String(r.studentId) === String(appt.studentId) && r.company === appt.company)
         );
@@ -238,7 +258,7 @@ export default function WorkflowStep4Internships({
 
         const studentName = appt.student || 'Unknown Student';
         const studentId = appt.studentId || '';
-        
+
         const startDate = appt.commencementDate || '';
 
         // Look up student record so we can use their hours + availability for the end-date calc
@@ -259,7 +279,7 @@ export default function WorkflowStep4Internships({
         let status = 'Waiting to Join';
         let cancellationReason = '';
         let cancellationType = '';
-        
+
         if (appt.status === 'Completed' || appt.status === 'Confirmed') {
           // Use recomputeStatus to derive display status based on actual dates
           status = recomputeStatus(appt.status, startDate, appt.expectedCompletionDate || endDateCalc);
@@ -361,7 +381,7 @@ export default function WorkflowStep4Internships({
         if (studentId && active[studentId]) return true;
         if (studentName && active[studentName.toLowerCase().trim()]) return true;
       }
-    } catch (e) {}
+    } catch (e) { }
     return false;
   };
 
@@ -456,36 +476,39 @@ export default function WorkflowStep4Internships({
   // ─── Filtering ────────────────────────────────────────────────────────────
 
   const filteredInternships = processedInternships.filter(item => {
-    const matchesSearch = 
+    const matchesSearch =
       (item.student || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.company || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.intId || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
     const matchesCompany = companyFilter === 'All' || item.company === companyFilter;
-    const matchesStatusTab = 
-      activeStatusTab === 'All' || 
-      activeStatusTab === 'All Placements' || 
-      activeStatusTab === 'All Internships' || 
+    const matchesStatusTab =
+      activeStatusTab === 'All' ||
+      activeStatusTab === 'All Placements' ||
+      activeStatusTab === 'All Internships' ||
       (activeStatusTab === 'Ending Soon' ? getEndingStatus(item)?.type === 'ending_soon' :
-       activeStatusTab === 'Appointment Successful' ? (item.status === 'Confirmed' || item.status === 'Waiting to Join' || item.status === 'Appointment Successful') :
-       activeStatusTab === 'Student Withdraw' ? (item.status === 'Withdrawn' || item.status === 'Student Withdraw') :
-       activeStatusTab === 'Placement Completed' ? (item.status === 'Completed' || item.status === 'Placement Completed') :
-       item.status === activeStatusTab);
+        activeStatusTab === 'Appointment Successful' ? (item.status === 'Confirmed' || item.status === 'Waiting to Join' || item.status === 'Appointment Successful') :
+          activeStatusTab === 'Student Withdraw' ? (item.status === 'Withdrawn' || item.status === 'Student Withdraw') :
+            activeStatusTab === 'Placement Completed' ? (item.status === 'Completed' || item.status === 'Placement Completed') :
+              item.status === activeStatusTab);
     return matchesSearch && matchesStatus && matchesCompany && matchesStatusTab;
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredInternships.length / pageSize));
   const paginatedInternships = filteredInternships.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const hasActiveFilters = searchQuery !== '' || statusFilter !== 'All' || 
-                          companyFilter !== 'All' || (activeStatusTab !== 'All Placements' && activeStatusTab !== 'All Internships');
+  const allPageSelected = paginatedInternships.length > 0 && paginatedInternships.every(i => selectedRows.includes(i.intId || i.id));
+  const isIndeterminate = !allPageSelected && paginatedInternships.some(i => selectedRows.includes(i.intId || i.id));
+
+  const hasActiveFilters = searchQuery !== '' || statusFilter !== 'All' ||
+    companyFilter !== 'All' || (activeStatusTab !== 'All Placements' && activeStatusTab !== 'All Internships');
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
   const handleExport = (format) => {
     setShowExportMenu(false);
-    const data = filteredInternships.map(s => 
+    const data = filteredInternships.map(s =>
       `${s.intId},${s.student},${s.company},${s.title},${s.status},${s.start},${s.end},${s.progress}%`
     ).join('\n');
     const blob = new Blob([data], { type: 'text/csv' });
@@ -499,26 +522,89 @@ export default function WorkflowStep4Internships({
   };
 
   const handleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedRows(paginatedInternships.map(s => s.intId));
+    const checked = e.target.checked;
+    const pageKeys = paginatedInternships.map(i => i.intId || i.id);
+    if (checked) {
+      setSelectedRows(prev => [...new Set([...prev, ...pageKeys])]);
     } else {
-      setSelectedRows([]);
+      setSelectedRows(prev => prev.filter(k => !pageKeys.includes(k)));
     }
   };
 
   const handleSelectRow = (id) => {
-    setSelectedRows(prev => 
+    setSelectedRows(prev =>
       prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
+    );
+  };
+
+  const getSelectedInternshipItems = () => {
+    return processedInternships.filter(item =>
+      selectedRows.includes(item.intId) ||
+      selectedRows.includes(item.id) ||
+      selectedRows.includes(item._appointmentId)
     );
   };
 
   const handleBulkAction = (action) => {
     setShowBulkActions(false);
-    if (selectedRows.length === 0) {
-      showToast('Please select internships first');
+    if (action === 'Clear') {
+      setSelectedRows([]);
+      showToast('Selection cleared');
       return;
     }
-    showToast(`${action} applied to ${selectedRows.length} internships`);
+    const selectedItems = getSelectedInternshipItems();
+    if (selectedItems.length === 0) {
+      showToast('Please select placements first');
+      return;
+    }
+    if (action === 'Export') {
+      const headers = 'ID,Student,Company,Role,Status,Commencement Date,Expected Completion Date';
+      const rows = selectedItems.map(i =>
+        `"${i.intId || ''}","${(i.student || '').replace(/"/g, '""')}","${(i.company || '').replace(/"/g, '""')}","${(i.title || '').replace(/"/g, '""')}","${(i.status || '').replace(/"/g, '""')}","${i.start || ''}","${i.end || ''}"`
+      );
+      const csvData = [headers, ...rows].join('\n');
+      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `selected_placements_${selectedItems.length}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${selectedItems.length} selected placements to CSV`);
+      return;
+    }
+    if (action === 'Delete') {
+      setShowBulkDeleteModal(true);
+      return;
+    }
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    const selectedItems = getSelectedInternshipItems();
+    const targetIds = selectedItems.map(item => item._appointmentId || item.id || item.intId).filter(Boolean);
+    if (!targetIds.length) {
+      showToast('No placements selected');
+      return;
+    }
+    setIsDeletingBulk(true);
+    try {
+      if (onBulkDeleteInternships) {
+        await onBulkDeleteInternships(targetIds);
+      } else {
+        for (const id of targetIds) {
+          if (onDeleteInternship) await onDeleteInternship(id);
+          else if (onDeleteAppointment) await onDeleteAppointment(id);
+        }
+      }
+      showToast(`Deleted ${targetIds.length} placement(s) successfully`);
+      setSelectedRows([]);
+      setShowBulkDeleteModal(false);
+    } catch (err) {
+      console.error('Bulk delete failed:', err);
+      showToast('Failed to delete selected placements');
+    } finally {
+      setIsDeletingBulk(false);
+    }
   };
 
   const handleDeleteAppointment = (appointmentId, item) => {
@@ -547,7 +633,7 @@ export default function WorkflowStep4Internships({
 
   const handleRowAction = async (action, item) => {
     setShowRowMenu(null);
-    
+
     if (action === 'view') {
       setSelectedInternship(item);
       setViewDetailsStudent(item);
@@ -555,15 +641,15 @@ export default function WorkflowStep4Internships({
       // Open proper edit modal
       const currentStatus = item.status === 'Completed' ? 'Placement Completed'
         : item.status === 'Withdrawn' ? 'Student Withdraw'
-        : item.status === 'Declined' ? 'Industry Rejected'
-        : item.status === 'Confirmed' ? (item.start ? 'Placement Started' : 'Appointment Successful')
-        : ['Active', 'Joined'].includes(item.status) ? 'Placement Started'
-        : item.status;
+          : item.status === 'Declined' ? 'Industry Rejected'
+            : item.status === 'Confirmed' ? (item.start ? 'Placement Started' : 'Appointment Successful')
+              : ['Active', 'Joined'].includes(item.status) ? 'Placement Started'
+                : item.status;
       setEditIntForm({
-        status:  currentStatus || 'Waiting to Join',
+        status: currentStatus || 'Waiting to Join',
         company: item.company || '',
-        title:   item.title || '',
-        notes:   item.notes || '',
+        title: item.title || '',
+        notes: item.notes || '',
       });
       setEditInternship(item);
     } else if (action === 'delete') {
@@ -762,7 +848,7 @@ export default function WorkflowStep4Internships({
       )}
 
       <div className="flex-1 space-y-4 min-w-0">
-        
+
         {/* ─── Metrics Cards ────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-8 gap-2.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
@@ -852,12 +938,12 @@ export default function WorkflowStep4Internships({
         <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2.5 flex-wrap">
           <div className="relative flex-1 min-w-[180px] max-w-[280px]">
             <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search placements..." 
+            <input
+              type="text"
+              placeholder="Search placements..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" 
+              className="w-full pl-8 pr-7 py-2 bg-slate-50/70 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600">
@@ -869,7 +955,7 @@ export default function WorkflowStep4Internships({
           <div className="w-px h-6 bg-slate-200 shrink-0"></div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowStatusFilter(!showStatusFilter); setShowCompanyFilter(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -880,7 +966,7 @@ export default function WorkflowStep4Internships({
             {showStatusFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
                 {['All', 'Active', 'Joined', 'Waiting to Join', 'Completed', 'Industry Rejected', 'Student Withdraw', 'Withdrawn', 'Cancelled', 'Student Missed Appointment'].map((s) => (
-                  <button 
+                  <button
                     key={s}
                     onClick={() => { setStatusFilter(s); setShowStatusFilter(false); setCurrentPage(1); }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] rounded-lg ${statusFilter === s ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
@@ -893,7 +979,7 @@ export default function WorkflowStep4Internships({
           </div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => { setShowCompanyFilter(!showCompanyFilter); setShowStatusFilter(false); }}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -903,7 +989,7 @@ export default function WorkflowStep4Internships({
             {showCompanyFilter && (
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-slate-200 shadow-lg z-20 p-1.5 space-y-0.5">
                 {['All', ...new Set(processedInternships.map(i => i.company))].filter(Boolean).map((c) => (
-                  <button 
+                  <button
                     key={c}
                     onClick={() => { setCompanyFilter(c); setShowCompanyFilter(false); setCurrentPage(1); }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] rounded-lg ${companyFilter === c ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
@@ -924,7 +1010,7 @@ export default function WorkflowStep4Internships({
           <div className="w-px h-6 bg-slate-200 shrink-0"></div>
 
           <div className="relative shrink-0">
-            <button 
+            <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               className="px-2.5 py-2 bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 rounded-xl flex items-center space-x-1.5 hover:bg-slate-50 whitespace-nowrap"
             >
@@ -943,6 +1029,45 @@ export default function WorkflowStep4Internships({
             )}
           </div>
 
+          <div className="relative shrink-0" data-bulk-actions>
+            <button
+              onClick={() => setShowBulkActions(!showBulkActions)}
+              className={`px-2.5 py-2 border text-[11px] font-semibold rounded-xl flex items-center space-x-1.5 transition whitespace-nowrap cursor-pointer ${
+                selectedRows.length > 0
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <span>{selectedRows.length > 0 ? `${selectedRows.length} Selected` : 'Bulk Actions'}</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+            {showBulkActions && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-xl z-30 p-1.5 space-y-0.5">
+                <button
+                  onClick={() => handleBulkAction('Export')}
+                  className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Export Selected</span>
+                </button>
+                <button
+                  onClick={() => handleBulkAction('Delete')}
+                  className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2 border-t border-slate-100 cursor-pointer font-medium"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Delete Selected</span>
+                </button>
+                <button
+                  onClick={() => handleBulkAction('Clear')}
+                  className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:bg-slate-50 rounded-lg flex items-center space-x-2 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Clear Selection</span>
+                </button>
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* ─── Status Tabs ────────────────────────────────────────────────── */}
@@ -951,22 +1076,58 @@ export default function WorkflowStep4Internships({
             <button
               key={tab}
               onClick={() => { setActiveStatusTab(tab); setCurrentPage(1); }}
-              className={`pb-3 relative transition whitespace-nowrap ${
-                activeStatusTab === tab ? 'text-blue-600 font-bold border-b-2 border-blue-600' : 'hover:text-slate-800'
-              }`}
+              className={`pb-3 relative transition whitespace-nowrap ${activeStatusTab === tab ? 'text-blue-600 font-bold border-b-2 border-blue-600' : 'hover:text-slate-800'
+                }`}
             >
               {tab}
               <span className="ml-1.5 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
-                {tab === 'All' ? filteredInternships.length : 
+                {tab === 'All' ? filteredInternships.length :
                   tab === 'Ending Soon' ? filteredInternships.filter(i => getEndingStatus(i)?.type === 'ending_soon').length :
-                  tab === 'Appointment Successful' ? filteredInternships.filter(i => i.status === 'Confirmed' || i.status === 'Waiting to Join' || i.status === 'Appointment Successful').length :
-                  tab === 'Student Withdraw' ? filteredInternships.filter(i => i.status === 'Withdrawn' || i.status === 'Student Withdraw').length :
-                  tab === 'Placement Completed' ? filteredInternships.filter(i => i.status === 'Completed' || i.status === 'Placement Completed').length :
-                  filteredInternships.filter(i => i.status === tab).length}
+                    tab === 'Appointment Successful' ? filteredInternships.filter(i => i.status === 'Confirmed' || i.status === 'Waiting to Join' || i.status === 'Appointment Successful').length :
+                      tab === 'Student Withdraw' ? filteredInternships.filter(i => i.status === 'Withdrawn' || i.status === 'Student Withdraw').length :
+                        tab === 'Placement Completed' ? filteredInternships.filter(i => i.status === 'Completed' || i.status === 'Placement Completed').length :
+                          filteredInternships.filter(i => i.status === tab).length}
               </span>
             </button>
           ))}
         </div>
+
+        {/* ─── Selection Bar ──────────────────────────────────────────────── */}
+        {selectedRows.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 px-4 flex items-center justify-between text-xs animate-in fade-in duration-150">
+            <div className="flex items-center space-x-3">
+              <span className="font-semibold text-blue-900">
+                {selectedRows.length} placement{selectedRows.length === 1 ? '' : 's'} selected
+              </span>
+              {selectedRows.length < filteredInternships.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedRows(filteredInternships.map(i => i.intId || i.id))}
+                  className="text-blue-700 underline font-medium hover:text-blue-900 cursor-pointer"
+                >
+                  Select all {filteredInternships.length} placements
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedRows([])}
+                className="text-slate-500 hover:text-slate-800 underline cursor-pointer"
+              >
+                Clear selection
+              </button>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(true)}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold flex items-center space-x-1.5 shadow-xs transition cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Selected ({selectedRows.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ─── Table ────────────────────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
@@ -975,10 +1136,11 @@ export default function WorkflowStep4Internships({
               <thead>
                 <tr className="bg-slate-50/70 text-slate-400 uppercase tracking-wider border-b border-slate-200 text-[10px] font-semibold">
                   <th className="p-4 w-10">
-                    <input 
-                      type="checkbox" 
-                      className="rounded border-slate-300 accent-blue-600"
-                      checked={selectedRows.length === paginatedInternships.length && paginatedInternships.length > 0}
+                    <input
+                      type="checkbox"
+                      className="rounded border-slate-300 accent-blue-600 cursor-pointer"
+                      checked={allPageSelected}
+                      ref={el => { if (el) el.indeterminate = isIndeterminate; }}
                       onChange={handleSelectAll}
                     />
                   </th>
@@ -995,7 +1157,7 @@ export default function WorkflowStep4Internships({
               <tbody className="divide-y divide-slate-100 text-slate-800">
                 {paginatedInternships.map((item, i) => {
                   const isSelected = selectedInternship ? selectedInternship.id === item.id : false;
-                  const isRowSelected = selectedRows.includes(item.intId);
+                  const isRowSelected = selectedRows.includes(item.intId) || selectedRows.includes(item.id);
 
                   // Derive sub-status under student name as per user specification:
                   // Terminal status takes priority (e.g. Industry Rejected, Student Withdraw, etc.)
@@ -1025,48 +1187,48 @@ export default function WorkflowStep4Internships({
                   const subStatus = getStudentSubStatus();
 
                   return (
-                    <tr 
-                      key={i} 
+                    <tr
+                      key={i}
                       className={`transition ${isSelected ? 'bg-blue-50/40' : isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/80'}`}
                     >
                       <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                        <input 
-                           type="checkbox" 
-                          className="rounded border-slate-300 accent-blue-600"
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300 accent-blue-600 cursor-pointer"
                           checked={isRowSelected}
-                          onChange={() => handleSelectRow(item.intId)}
+                          onChange={() => handleSelectRow(item.intId || item.id)}
                         />
                       </td>
                       <td className="p-4 font-bold text-slate-900">{item.intId}</td>
                       <td className="py-3 px-2">
                         <div className="flex items-center space-x-3">
-                        <div className="relative shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
-                            {item.student ? item.student[0] : '?'}
-                          </div>
-                          {isStudentOnline(item.studentId, item.student) && (
-                            <span 
-                              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse" 
-                              title="Student is online"
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <div className="flex items-center space-x-1.5">
-                            <p className="font-bold text-slate-900">{item.student}</p>
+                          <div className="relative shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-600 text-xs shrink-0">
+                              {item.student ? item.student[0] : '?'}
+                            </div>
                             {isStudentOnline(item.studentId, item.student) && (
-                              <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 inline-flex items-center">
-                                ● Online
-                              </span>
+                              <span
+                                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse"
+                                title="Student is online"
+                              />
                             )}
                           </div>
-                          <div className="flex items-center space-x-1.5 flex-wrap mt-0.5">
-                            <p className="text-[11px] text-slate-400">{item.studentId}</p>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${subStatus.color}`}>
-                              {subStatus.label}
-                            </span>
+                          <div>
+                            <div className="flex items-center space-x-1.5">
+                              <p className="font-bold text-slate-900">{item.student}</p>
+                              {isStudentOnline(item.studentId, item.student) && (
+                                <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 inline-flex items-center">
+                                  ● Online
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-1.5 flex-wrap mt-0.5">
+                              <p className="text-[11px] text-slate-400">{item.studentId}</p>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${subStatus.color}`}>
+                                {subStatus.label}
+                              </span>
+                            </div>
                           </div>
-                        </div>
                         </div>
                       </td>
                       <td className="p-4 text-slate-600 font-medium">
@@ -1118,46 +1280,69 @@ export default function WorkflowStep4Internships({
                         </div>
                       </td>
                       <td className="p-4 text-right relative" data-row-menu onClick={(e) => e.stopPropagation()}>
-                        <button 
-                          onClick={() => setShowRowMenu(showRowMenu === item.intId ? null : item.intId)}
-                          className={`p-1.5 rounded-lg inline-flex items-center justify-center transition-colors cursor-pointer ${
-                            showRowMenu === item.intId ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-100' : 'hover:bg-slate-100 text-slate-500'
-                          }`}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (showRowMenu === item.intId) {
+                              setShowRowMenu(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const menuHeight = 150;
+                              const menuWidth = 224;
+                              const spaceBelow = window.innerHeight - rect.bottom;
+                              const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
+                              setRowMenuPos({
+                                top: openUpward ? Math.max(10, rect.top - menuHeight - 6) : rect.bottom + 6,
+                                left: Math.max(16, rect.right - menuWidth),
+                              });
+                              setShowRowMenu(item.intId);
+                            }
+                          }}
+                          className={`p-1.5 rounded-lg inline-flex items-center justify-center transition-colors cursor-pointer ${showRowMenu === item.intId ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-100' : 'hover:bg-slate-100 text-slate-500'
+                            }`}
                           title="Placement Actions"
                         >
                           <MoreVertical className="w-4 h-4" />
                         </button>
                         {showRowMenu === item.intId && (
-                          <div className={`absolute right-4 ${i >= paginatedInternships.length - 2 ? 'bottom-9' : 'top-10'} w-56 bg-white rounded-xl border border-slate-200 shadow-2xl z-[9999] p-1.5 space-y-1 text-left ring-1 ring-black/10 animate-in fade-in duration-150`}>
-                            <button 
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
+                          <div 
+                            style={{
+                              position: 'fixed',
+                              top: rowMenuPos.top,
+                              left: rowMenuPos.left,
+                              zIndex: 99999,
+                            }}
+                            className="w-56 bg-white rounded-xl border border-slate-200 shadow-2xl p-1.5 space-y-1 text-left ring-1 ring-black/10 animate-in fade-in duration-150"
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setShowRowMenu(null);
                                 handleOpenCommencementModal(item);
-                              }} 
+                              }}
                               className="w-full text-left px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg flex items-center space-x-2 transition-colors cursor-pointer"
                             >
                               <Calendar className="w-3.5 h-3.5 text-blue-500" />
                               <span>{item.start ? 'Change Commencement Date' : 'Add Commencement Date'}</span>
                             </button>
-                            <button 
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setShowRowMenu(null);
-                                handleRowAction('view', item); 
-                              }} 
+                                handleRowAction('view', item);
+                              }}
                               className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2 transition-colors cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-400" />
                               <span>View Details</span>
                             </button>
                             <div className="border-t border-slate-100 my-0.5" />
-                            <button 
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setShowRowMenu(null);
-                                handleRowAction('delete', item); 
-                              }} 
+                                handleRowAction('delete', item);
+                              }}
                               className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2 transition-colors cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5 text-rose-500" />
@@ -1183,7 +1368,7 @@ export default function WorkflowStep4Internships({
           <div className="p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 flex-wrap gap-2">
             <p>Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredInternships.length)} of {filteredInternships.length} results</p>
             <div className="flex items-center space-x-2">
-              <button 
+              <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1202,12 +1387,11 @@ export default function WorkflowStep4Internships({
                   pageNum = currentPage - 2 + i;
                 }
                 return (
-                  <button 
+                  <button
                     key={i}
                     onClick={() => handlePageChange(pageNum)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-medium ${
-                      currentPage === pageNum ? 'bg-blue-600 text-white font-bold' : 'border border-slate-200 hover:bg-slate-50 text-slate-700'
-                    }`}
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-medium ${currentPage === pageNum ? 'bg-blue-600 text-white font-bold' : 'border border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
                   >
                     {pageNum}
                   </button>
@@ -1221,7 +1405,7 @@ export default function WorkflowStep4Internships({
                   </button>
                 </>
               )}
-              <button 
+              <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
                 className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1258,17 +1442,16 @@ export default function WorkflowStep4Internships({
       {/* ─── Right Drawer ────────────────────────────────────────────────── */}
       {showDrawer && selectedInternship && (
         <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
-          <div className={`relative bg-gradient-to-br from-slate-900 via-slate-800 to-${
-            selectedInternship.status === 'Completed' ? 'purple' : 
-            selectedInternship.status === 'Declined' ? 'rose' : 
-            selectedInternship.status === 'Industry Rejected' ? 'rose' :
-            selectedInternship.status === 'Student Missed Appointment' ? 'orange' :
-            selectedInternship.status === 'Not Suitable Site' ? 'amber' :
-            selectedInternship.status === 'Withdrawn' ? 'orange' : 
-            selectedInternship.status === 'Cancelled' ? 'slate' : 'emerald'
-          }-900 p-5`}>
+          <div className={`relative bg-gradient-to-br from-slate-900 via-slate-800 to-${selectedInternship.status === 'Completed' ? 'purple' :
+              selectedInternship.status === 'Declined' ? 'rose' :
+                selectedInternship.status === 'Industry Rejected' ? 'rose' :
+                  selectedInternship.status === 'Student Missed Appointment' ? 'orange' :
+                    selectedInternship.status === 'Not Suitable Site' ? 'amber' :
+                      selectedInternship.status === 'Withdrawn' ? 'orange' :
+                        selectedInternship.status === 'Cancelled' ? 'slate' : 'emerald'
+            }-900 p-5`}>
             <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-            
+
             <div className="relative flex items-start justify-between">
               <div>
                 <div className="flex items-center space-x-2">
@@ -1294,8 +1477,8 @@ export default function WorkflowStep4Internships({
                   {selectedInternship.student ? selectedInternship.student[0] : '?'}
                 </div>
                 {isStudentOnline(selectedInternship.studentId, selectedInternship.student) && (
-                  <span 
-                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-slate-900 animate-pulse" 
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-slate-900 animate-pulse"
                     title="Student is online now"
                   />
                 )}
@@ -1349,7 +1532,7 @@ export default function WorkflowStep4Internships({
             </div>
 
             {/* Show cancellation reason if exists */}
-            {(selectedInternship.status === 'Declined' || selectedInternship.status === 'Industry Rejected' || selectedInternship.status === 'Student Missed Appointment' || selectedInternship.status === 'Not Suitable Site' || selectedInternship.status === 'Withdrawn' || selectedInternship.status === 'Cancelled') && 
+            {(selectedInternship.status === 'Declined' || selectedInternship.status === 'Industry Rejected' || selectedInternship.status === 'Student Missed Appointment' || selectedInternship.status === 'Not Suitable Site' || selectedInternship.status === 'Withdrawn' || selectedInternship.status === 'Cancelled') &&
               selectedInternship.cancellationReason && (
                 <div className="relative mt-3 p-2 bg-white/10 rounded-xl border border-white/10">
                   <div className="flex items-start space-x-2">
@@ -1359,15 +1542,15 @@ export default function WorkflowStep4Internships({
                       <p className="text-[10px] text-slate-200">{selectedInternship.cancellationReason}</p>
                       {selectedInternship.cancellationType && (
                         <p className="text-[8px] text-slate-400 mt-0.5">
-                          Type: {selectedInternship.cancellationType === 'student' ? 'Student Request' : 
-                                  selectedInternship.cancellationType === 'industry' ? 'Industry Rejected' : 
-                                  selectedInternship.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
+                          Type: {selectedInternship.cancellationType === 'student' ? 'Student Request' :
+                            selectedInternship.cancellationType === 'industry' ? 'Industry Rejected' :
+                              selectedInternship.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
                         </p>
                       )}
                     </div>
                   </div>
                 </div>
-            )}
+              )}
           </div>
 
           <div className="flex border-b border-slate-100 px-4 text-[11px] font-semibold text-slate-500 space-x-4 bg-white overflow-x-auto">
@@ -1517,8 +1700,8 @@ export default function WorkflowStep4Internships({
                     <span className="text-slate-400">Cancellation Type</span>
                     <span className="font-semibold text-slate-800">
                       {selectedInternship.cancellationType === 'student' ? 'Student Request' :
-                       selectedInternship.cancellationType === 'industry' ? 'Industry Rejected' :
-                       selectedInternship.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
+                        selectedInternship.cancellationType === 'industry' ? 'Industry Rejected' :
+                          selectedInternship.cancellationType === 'withdrawn' ? 'Student Withdrew' : 'Other'}
                     </span>
                   </div>
                 )}
@@ -1535,7 +1718,7 @@ export default function WorkflowStep4Internships({
           </div>
 
           <div className="p-4 border-t border-slate-100 space-y-2">
-            <button 
+            <button
               onClick={() => {
                 setViewDetailsStudent(selectedInternship);
               }}
@@ -1622,13 +1805,13 @@ export default function WorkflowStep4Internships({
                   try {
                     await onUpdateInternship(dbId, {
                       // Required fields — pass through from the existing record so Zod validation passes
-                      student:   editInternship.student,
+                      student: editInternship.student,
                       studentId: editInternship.studentId,
-                      company:   editIntForm.company || editInternship.company,
-                      title:     editIntForm.title   || editInternship.title,
+                      company: editIntForm.company || editInternship.company,
+                      title: editIntForm.title || editInternship.title,
                       // Editable fields
-                      status:    editIntForm.status,
-                      notes:     editIntForm.notes,
+                      status: editIntForm.status,
+                      notes: editIntForm.notes,
                     });
                     showToast('Placement updated successfully');
                     setEditInternship(null);
@@ -1640,7 +1823,7 @@ export default function WorkflowStep4Internships({
                 }}
                 className="flex-[2] py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 flex items-center justify-center space-x-2"
               >
-                {isSavingInt ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/><span>Saving...</span></> : <span>Save Changes</span>}
+                {isSavingInt ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /><span>Saving...</span></> : <span>Save Changes</span>}
               </button>
             </div>
           </div>
@@ -1661,8 +1844,8 @@ export default function WorkflowStep4Internships({
                   <p className="text-[11px] text-slate-500 mt-0.5">{commencementItem.intId} · {commencementItem.student}</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setCommencementItem(null)} 
+              <button
+                onClick={() => setCommencementItem(null)}
                 className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition"
               >
                 <X className="w-4 h-4" />
@@ -1673,7 +1856,7 @@ export default function WorkflowStep4Internships({
             {commencementItem.resolvedStudent && (
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
-          <span className="text-slate-500 font-medium">Placement Required:</span>
+                  <span className="text-slate-500 font-medium">Placement Required:</span>
                   <span className="font-bold text-slate-800">
                     {commencementItem.resolvedStudent.placementHours
                       ? `${commencementItem.resolvedStudent.placementHours} Hours`
@@ -1684,10 +1867,10 @@ export default function WorkflowStep4Internships({
                   <span className="text-slate-500 font-medium">Daily Availability:</span>
                   <span className="font-semibold text-slate-700">
                     {commencementItem.resolvedStudent.availabilityFrom || '09:00 AM'} – {commencementItem.resolvedStudent.availabilityTo || '05:00 PM'} (
-                      {getDailyWorkingHours(
-                        commencementItem.resolvedStudent.availabilityFrom,
-                        commencementItem.resolvedStudent.availabilityTo
-                      )} hrs/day)
+                    {getDailyWorkingHours(
+                      commencementItem.resolvedStudent.availabilityFrom,
+                      commencementItem.resolvedStudent.availabilityTo
+                    )} hrs/day)
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1773,6 +1956,69 @@ export default function WorkflowStep4Internships({
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Bulk Delete Confirmation Modal ────────────────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto mb-4 text-rose-600">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 text-center mb-2">
+                Delete Selected Placements
+              </h3>
+              <p className="text-xs text-slate-500 text-center mb-4">
+                Are you sure you want to delete <span className="font-bold text-slate-800">{selectedRows.length}</span> selected placement{selectedRows.length === 1 ? '' : 's'}? This action will remove their placement records and cannot be undone.
+              </p>
+
+              {/* Preview of selected items */}
+              <div className="max-h-40 overflow-y-auto bg-slate-50 rounded-xl p-3 border border-slate-200 divide-y divide-slate-100 text-xs text-slate-700 mb-6">
+                {getSelectedInternshipItems().slice(0, 10).map((item, idx) => (
+                  <div key={idx} className="py-1.5 flex justify-between items-center first:pt-0 last:pb-0">
+                    <span className="font-medium text-slate-800 truncate mr-2">{item.student}</span>
+                    <span className="text-[11px] text-slate-500 shrink-0">{item.company}</span>
+                  </div>
+                ))}
+                {selectedRows.length > 10 && (
+                  <div className="pt-2 text-center text-[11px] text-slate-400 font-medium">
+                    + {selectedRows.length - 10} more placement{selectedRows.length - 10 === 1 ? '' : 's'}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteModal(false)}
+                  disabled={isDeletingBulk}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBulkDelete}
+                  disabled={isDeletingBulk}
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center space-x-1.5 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isDeletingBulk ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete ({selectedRows.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

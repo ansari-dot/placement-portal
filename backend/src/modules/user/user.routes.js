@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   getAllUsersController,
+  getUserByIdController,
   getUserStatsController,
   createUserController,
   updateUserController,
@@ -9,6 +10,8 @@ import {
   getPendingUsersController,
   approveUserController,
   rejectUserController,
+  updateUserStatusController,
+  reactivateUserController,
   getOnboardingEligibleUsersController,
 } from './user.controller.js';
 import { authenticate, softAuth } from '../../core/guards/auth.guard.js';
@@ -26,11 +29,17 @@ router.use(authenticate, requireAdmin);
 router.get('/', getAllUsersController);
 router.get('/stats', getUserStatsController);
 router.get('/pending', getPendingUsersController);
+router.get('/signup-requests', getPendingUsersController);
+router.get('/:id', getUserByIdController);
 router.post('/', validateBody(createUserSchema), createUserController);
 router.put('/:id', validateBody(updateUserSchema), updateUserController);
 router.patch('/:id', validateBody(updateUserSchema), updateUserController);
+router.post('/:id/approve', approveUserController);
 router.patch('/:id/approve', approveUserController);
+router.post('/:id/reject', rejectUserController);
 router.patch('/:id/reject', rejectUserController);
+router.patch('/:id/status', updateUserStatusController);
+router.post('/:id/reactivate', reactivateUserController);
 router.delete('/:id', deleteUserController);
 
 export default router;

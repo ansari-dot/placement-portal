@@ -1,3 +1,4 @@
+import React, { useEffect, useRef } from 'react';
 import { Eye, Pencil, Trash2, UserCheck, FileText, Calendar, Building2, Moon, RotateCcw } from 'lucide-react';
 
 export default function StudentActionsMenu({
@@ -10,11 +11,32 @@ export default function StudentActionsMenu({
   isAdmin = false,
   allowGenerate = true,
   allowCreateAppointment = true,
+  menuPos,
 }) {
+  const menuRef = useRef(null);
   const hasCoordinator = !!(student?.assignedCoordinator || student?.assignedCoordinatorName);
 
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        onClose();
+      }
+    };
+    const handleScroll = () => onClose();
+    document.addEventListener('mousedown', handleOutside);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [onClose]);
+
   return (
-    <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-30">
+    <div
+      ref={menuRef}
+      style={menuPos ? { position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 99999 } : undefined}
+      className={`w-56 bg-white border border-slate-200 rounded-xl shadow-2xl py-1 ring-1 ring-black/10 animate-in fade-in duration-150 ${!menuPos ? 'absolute right-0 mt-1 z-30' : ''}`}
+    >
 
       {/* 1. Change Placement Request — coordinators can change type; admin also sees Generate */}
       {hasPlacementRequest ? (

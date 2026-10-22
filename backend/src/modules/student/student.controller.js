@@ -308,3 +308,101 @@ export const assignCoordinatorController = async (req, res, next) => {
     next(error);
   }
 };
+
+export const bulkUpdateStatusController = async (req, res, next) => {
+  try {
+    const { studentIds, status, placementStatus } = req.body;
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide an array of studentIds' });
+    }
+
+    const StudentModel = (await import('./student.model.js')).default;
+    const mongoose = (await import('mongoose')).default;
+    const validObjectIds = studentIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const bizIds = studentIds.filter((id) => typeof id === 'string' && id.trim());
+
+    const updateFields = {};
+    if (status) updateFields.status = status;
+    if (placementStatus) updateFields.placementStatus = placementStatus;
+
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide status or placementStatus to update' });
+    }
+
+    const result = await StudentModel.updateMany(
+      {
+        $or: [
+          { _id: { $in: validObjectIds } },
+          { studentId: { $in: bizIds } },
+        ],
+      },
+      { $set: updateFields }
+    );
+
+    res.json({
+      success: true,
+      message: `Updated status for ${result.modifiedCount} student(s)`,
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkDeleteStudentsController = async (req, res, next) => {
+  try {
+    const { studentIds } = req.body;
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide an array of studentIds' });
+    }
+
+    const StudentModel = (await import('./student.model.js')).default;
+    const WorkflowModel = (await import('../workflow/workflow.model.js')).default;
+    const mongoose = (await import('mongoose')).default;
+
+    const validObjectIds = studentIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const bizIds = studentIds.filter((id) => typeof id === 'string' && id.trim());
+
+    const result = await StudentModel.deleteMany({
+      $or: [
+        { _id: { $in: validObjectIds } },
+        { studentId: { $in: bizIds } },
+      ],
+    });
+
+    try {
+      const allWorkflows = await WorkflowModel.find();
+      const allIdStrings = new Set([
+        ...validObjectIds.map(String),
+        ...bizIds.map(String),
+      ]);
+      for (const wf of allWorkflows) {
+        let modified = false;
+        if (Array.isArray(wf.requests)) {
+          const orig = wf.requests.length;
+          wf.requests = wf.requests.filter(r => !allIdStrings.has(String(r.studentId)));
+          if (wf.requests.length !== orig) modified = true;
+        }
+        if (Array.isArray(wf.appointments)) {
+          const orig = wf.appointments.length;
+          wf.appointments = wf.appointments.filter(a => !allIdStrings.has(String(a.studentId)));
+          if (wf.appointments.length !== orig) modified = true;
+        }
+        if (Array.isArray(wf.internships)) {
+          const orig = wf.internships.length;
+          wf.internships = wf.internships.filter(i => !allIdStrings.has(String(i.studentId)));
+          if (wf.internships.length !== orig) modified = true;
+        }
+        if (modified) await wf.save();
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} student(s)`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

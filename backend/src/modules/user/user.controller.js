@@ -12,6 +12,18 @@ export const getAllUsersController = async (req, res, next) => {
   }
 };
 
+export const getUserByIdController = async (req, res, next) => {
+  try {
+    const user = await UserService.getUserById(req.params.id);
+    res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPendingUsersController = async (req, res, next) => {
   try {
     const pendingUsers = await UserService.getPendingUsers();
@@ -26,7 +38,7 @@ export const getPendingUsersController = async (req, res, next) => {
 
 export const approveUserController = async (req, res, next) => {
   try {
-    const user = await UserService.approveUser(req.params.id);
+    const user = await UserService.approveUser(req.params.id, req.user);
     res.status(200).json({
       success: true,
       message: `${user.name}'s account has been approved`,
@@ -39,10 +51,39 @@ export const approveUserController = async (req, res, next) => {
 
 export const rejectUserController = async (req, res, next) => {
   try {
-    const user = await UserService.rejectUser(req.params.id);
+    const reason = req.body?.reason || '';
+    const user = await UserService.rejectUser(req.params.id, req.user, reason);
     res.status(200).json({
       success: true,
       message: `${user.name}'s registration request has been rejected`,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateUserStatusController = async (req, res, next) => {
+  try {
+    const { status, reason } = req.body;
+    const user = await UserService.updateUserStatus(req.params.id, status, req.user, reason);
+    res.status(200).json({
+      success: true,
+      message: `${user.name}'s status was updated to ${status}`,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reactivateUserController = async (req, res, next) => {
+  try {
+    const user = await UserService.reactivateUser(req.params.id, req.user);
+    res.status(200).json({
+      success: true,
+      message: `${user.name}'s account has been reactivated`,
+      data: user,
     });
   } catch (error) {
     next(error);
@@ -89,10 +130,11 @@ export const updateUserController = async (req, res, next) => {
 
 export const deleteUserController = async (req, res, next) => {
   try {
-    const user = await UserService.deleteUser(req.params.id);
+    const user = await UserService.deleteUser(req.params.id, req.user);
     res.status(200).json({
       success: true,
-      message: `${user.name} was deleted successfully`,
+      message: `${user.name} was removed successfully`,
+      data: user,
     });
   } catch (error) {
     next(error);

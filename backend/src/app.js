@@ -89,21 +89,38 @@ app.use(cookieParser());
 app.use(softAuth);
 app.use(auditMutations);
 
-// Modular Routes
+// Modular Routes (supporting canonical /api/v1 and legacy endpoints)
 app.use('/auth', authRoutes);
+app.use('/api/v1/auth', authRoutes);
+
 app.use('/students', studentRoutes);
+app.use('/api/v1/students', studentRoutes);
+
 // Uploaded student documents (bulk + profile). Auth-protected, not public.
 app.use('/uploads', authenticate, express.static(path.resolve(process.cwd(), 'uploads'), { fallthrough: false }));
+
 app.use('/workflows', workflowRoutes);
+app.use('/api/v1/workflows', workflowRoutes);
+
 app.use('/rtos', rtoRoutes);
+app.use('/api/v1/rtos', rtoRoutes);
+
 app.use('/industries', industryRoutes);
+app.use('/api/v1/industries', industryRoutes);
+
 app.use('/jobs', jobRoutes);
 app.use('/notifications', notificationRoutes);
+
 app.use('/users', userRoutes);
+app.use('/api/v1/admin/users', userRoutes);
+app.use('/api/v1/users', userRoutes);
+
 app.use('/user-logs', auditRoutes);
 app.use('/payments', paymentRoutes);
 app.use('/invoices', invoiceRoutes);
+
 app.use('/attendance', attendanceRoutes);
+app.use('/api/v1/attendance', attendanceRoutes);
 
 app.get('/', (req, res) => {
   return res.status(200).json({ message: 'Server is running' });

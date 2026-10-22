@@ -33,6 +33,7 @@ export default function IndustryAttendanceSection({ assignedStudents = [], prese
   const [startTime, setStartTime] = useState('09:00 AM');
   const [finishTime, setFinishTime] = useState('05:00 PM');
   const [totalHours, setTotalHours] = useState(8);
+  const [breakMinutes, setBreakMinutes] = useState(0);
   const [status, setStatus] = useState('Present');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -69,10 +70,11 @@ export default function IndustryAttendanceSection({ assignedStudents = [], prese
       const startMins = parseTime(startTime);
       const finishMins = parseTime(finishTime);
       if (finishMins > startMins) {
-        setTotalHours(Number(((finishMins - startMins) / 60).toFixed(2)));
+        const netMins = finishMins - startMins - (Number(breakMinutes) || 0);
+        setTotalHours(Math.max(0, Number((netMins / 60).toFixed(2))));
       }
     } catch (_) {}
-  }, [startTime, finishTime]);
+  }, [startTime, finishTime, breakMinutes]);
 
   const loadData = useCallback(async () => {
     try {
@@ -113,31 +115,27 @@ export default function IndustryAttendanceSection({ assignedStudents = [], prese
 
     try {
       setSubmitting(true);
+      const payload = {
+        studentId: selectedStudentId,
+        date,
+        startTime,
+        finishTime,
+        breakMinutes: Number(breakMinutes) || 0,
+        totalHours: Number(totalHours),
+        status,
+        notes,
+      };
+
       if (editingId) {
-        await updateAttendanceRecord(editingId, {
-          studentId: selectedStudentId,
-          date,
-          startTime,
-          finishTime,
-          totalHours: Number(totalHours),
-          status,
-          notes,
-        });
+        await updateAttendanceRecord(editingId, payload);
         toast.success('Attendance entry updated successfully!');
       } else {
-        await createAttendanceRecord({
-          studentId: selectedStudentId,
-          date,
-          startTime,
-          finishTime,
-          totalHours: Number(totalHours),
-          status,
-          notes,
-        });
+        await createAttendanceRecord(payload);
         toast.success('Attendance entry recorded successfully!');
       }
 
       setEditingId(null);
+      setBreakMinutes(0);
       setNotes('');
       loadData();
     } catch (err) {
@@ -154,6 +152,7 @@ export default function IndustryAttendanceSection({ assignedStudents = [], prese
     setDate(rec.date);
     setStartTime(rec.startTime || '09:00 AM');
     setFinishTime(rec.finishTime || '05:00 PM');
+    setBreakMinutes(rec.breakMinutes || 0);
     setTotalHours(rec.totalHours || 8);
     setStatus(rec.status || 'Present');
     setNotes(rec.notes || '');
@@ -289,7 +288,7 @@ export default function IndustryAttendanceSection({ assignedStudents = [], prese
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Start Time */}
             <div>
               <label className="block font-bold text-slate-700 mb-1">Start Time</label>
@@ -314,17 +313,31 @@ export default function IndustryAttendanceSection({ assignedStudents = [], prese
               />
             </div>
 
+            {/* Break Minutes */}
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Break (Minutes)</label>
+              <input
+                type="number"
+                min="0"
+                step="5"
+                placeholder="0"
+                value={breakMinutes}
+                onChange={(e) => setBreakMinutes(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-blue-600 font-medium text-slate-800"
+              />
+            </div>
+
             {/* Total Hours */}
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Total Hours</label>
+              <label className="block font-bold text-slate-700 mb-1">Total Hours (Net)</label>
               <input
                 type="number"
                 step="0.5"
                 min="0"
                 max="24"
+                readOnly
                 value={totalHours}
-                onChange={(e) => setTotalHours(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-blue-600 font-bold text-slate-900"
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none font-bold text-slate-900 cursor-not-allowed"
               />
             </div>
           </div>

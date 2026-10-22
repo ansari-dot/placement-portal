@@ -120,3 +120,16 @@ export const bulkAssignRto = async (studentIds, rtoId, rtoName) => {
   return response.data;
 };
 
+export const bulkUpdateStudentStatus = async (studentIds, { status, placementStatus }) => {
+  const response = await api.patch("/students/bulk/status", { studentIds, status, placementStatus });
+  notifyPlacementDataChanged();
+  return response.data;
+};
+
+export const bulkDeleteStudents = async (studentIds) => {
+  const response = await api.post("/students/bulk/delete", { studentIds });
+  notifyPlacementDataChanged();
+  return response.data;
+};
+
+

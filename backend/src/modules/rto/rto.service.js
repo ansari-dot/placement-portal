@@ -90,8 +90,32 @@ export class RtoService {
     if (!rto) {
       throw new NotFoundError('RTO not found');
     }
-    if (user && user.role === 'Coordinator' && !checkCoordinatorRtoOwnership(rto, user)) {
-      throw new ForbiddenError('Access denied. You can only view RTOs added by you.');
+
+    const role = user?.role;
+    if (user && role !== 'Administrator' && role !== 'Admin') {
+      if (role === 'Student' || role === 'Industry' || role === 'Industry/Host') {
+        throw new NotFoundError('RTO not found');
+      }
+
+      if (role === 'RTO Manager' || role === 'RTO') {
+        const userEmail = (user.email || '').toLowerCase().trim();
+        const userRtoName = (user.rtoName || '').trim().toLowerCase();
+        const userRtoId = user.rtoId ? String(user.rtoId) : '';
+        const rtoIdStr = String(rto._id);
+
+        const isOwnRto =
+          (userRtoId && userRtoId === rtoIdStr) ||
+          (userRtoName && userRtoName === (rto.name || '').trim().toLowerCase()) ||
+          (userEmail && userEmail === (rto.contactEmail || '').trim().toLowerCase());
+
+        if (!isOwnRto) {
+          throw new NotFoundError('RTO not found');
+        }
+      } else if (role === 'Coordinator' || role === 'Placement Coordinator') {
+        if (!checkCoordinatorRtoOwnership(rto, user)) {
+          throw new ForbiddenError('Access denied. You can only view RTOs added by you.');
+        }
+      }
     }
     try {
       const StudentModel = (await import('../student/student.model.js')).default;

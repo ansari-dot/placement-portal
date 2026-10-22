@@ -63,6 +63,12 @@ export const deleteInternshipRequest = async (workflowId, requestId) => {
   return response.data;
 };
 
+export const bulkDeleteInternshipRequests = async (workflowId, requestIds) => {
+  const response = await api.post(`/workflows/${workflowId}/requests/bulk-delete`, { requestIds });
+  notifyPlacementDataChanged();
+  return response.data;
+};
+
 // ===== Appointments (Step 3) =====
 export const createAppointment = async (workflowId, appointmentData) => {
   const response = await api.post(`/workflows/${workflowId}/appointments`, appointmentData);
@@ -82,6 +88,12 @@ export const deleteAppointment = async (workflowId, appointmentId) => {
   return response.data;
 };
 
+export const bulkDeleteAppointments = async (workflowId, appointmentIds) => {
+  const response = await api.post(`/workflows/${workflowId}/appointments/bulk-delete`, { appointmentIds });
+  notifyPlacementDataChanged();
+  return response.data;
+};
+
 // ===== Internships (Step 4) =====
 export const createInternship = async (workflowId, internshipData) => {
   const response = await api.post(`/workflows/${workflowId}/internships`, internshipData);
@@ -97,6 +109,12 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
 
 export const deleteInternship = async (workflowId, internshipId) => {
   const response = await api.delete(`/workflows/${workflowId}/internships/${internshipId}`);
+  notifyPlacementDataChanged();
+  return response.data;
+};
+
+export const bulkDeleteInternships = async (workflowId, internshipIds) => {
+  const response = await api.post(`/workflows/${workflowId}/internships/bulk-delete`, { internshipIds });
   notifyPlacementDataChanged();
   return response.data;
 };
