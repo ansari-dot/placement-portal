@@ -30,6 +30,7 @@ import {
 } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
 import { updateStudent } from '../api/studentsApi';
+import { PLACEMENT_DATA_CHANGED } from '../api/placementEvents';
 
 const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements', 'Payments'];
 
@@ -166,6 +167,15 @@ export default function WorkflowPage() {
     window.addEventListener('focus', refreshStudents);
     return () => window.removeEventListener('focus', refreshStudents);
   }, []);
+
+  // ─── Listen for real-time placement data events (e.g. RTO assignment) ───
+  useEffect(() => {
+    const handlePlacementChanged = () => {
+      refreshWorkflowData();
+    };
+    window.addEventListener(PLACEMENT_DATA_CHANGED, handlePlacementChanged);
+    return () => window.removeEventListener(PLACEMENT_DATA_CHANGED, handlePlacementChanged);
+  }, [refreshWorkflowData]);
 
   useEffect(() => {
     if (stepParam >= 1 && stepParam <= 5) {
@@ -1311,8 +1321,6 @@ export default function WorkflowPage() {
         return (
           <WorkflowStep1Students
             students={mapStudentsForStep1()}
-            initialSelectedStudentIds={getSelectedStudentIds()}
-            onToggleStudent={handleToggleStudent}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}
             onUpdateRequest={handleUpdateRequest}
@@ -1388,8 +1396,6 @@ export default function WorkflowPage() {
         return (
           <WorkflowStep1Students
             students={mapStudentsForStep1()}
-            initialSelectedStudentIds={getSelectedStudentIds()}
-            onToggleStudent={handleToggleStudent}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}
             onUpdateRequest={handleUpdateRequest}
@@ -1397,6 +1403,7 @@ export default function WorkflowPage() {
             appointments={mapAppointmentsForStep3()}
             onCoordinatorAssigned={handleCoordinatorAssigned}
             coordinators={coordinators}
+            onRefreshWorkflow={refreshWorkflowData}
           />
         );
     }

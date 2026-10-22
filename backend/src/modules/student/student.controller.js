@@ -139,13 +139,20 @@ export const repairStudentRtoController = async (req, res, next) => {
     const RtoModel = (await import('../rto/rto.model.js')).default;
     const PaymentModel = (await import('../payment/payment.model.js')).default;
 
-    const broken = await StudentModel.find({
-      rtoId: { $ne: null, $exists: true },
-      $or: [{ assignedRto: '' }, { assignedRto: { $exists: false } }],
-    }).lean();
+    const allRtos = await RtoModel.find({}, { _id: 1, name: 1, code: 1 }).lean();
+    const rtoIdToDoc = new Map(allRtos.map(r => [String(r._id), r]));
+    const rtoNameToDoc = new Map(allRtos.map(r => [r.name.trim().toLowerCase(), r]));
 
-    const allRtos = await RtoModel.find({}, { _id: 1, name: 1 }).lean();
-    const rtoIdToName = new Map(allRtos.map(r => [String(r._id), r.name]));
+    // Find all students with missing or unlinked RTO
+    const broken = await StudentModel.find({
+      $or: [
+        { assignedRto: '' },
+        { assignedRto: { $exists: false } },
+        { rtoId: null },
+        { rtoId: { $exists: false } },
+      ],
+      studentType: { $ne: 'Independent Student' },
+    }).lean();
 
     const payments = await PaymentModel.find(
       { student: { $in: broken.map(s => s._id) } },
@@ -157,17 +164,129 @@ export const repairStudentRtoController = async (req, res, next) => {
 
     const ops = [];
     const repaired = [];
+
+    // Optional default RTO passed in body or single RTO fallback
+    const requestedRto = req.body?.rtoName || req.body?.defaultRto;
+    const fallbackRto = requestedRto
+      ? rtoNameToDoc.get(String(requestedRto).trim().toLowerCase())
+      : (allRtos.length === 1 ? allRtos[0] : null);
+
     for (const s of broken) {
-      const rtoName = rtoIdToName.get(String(s.rtoId)) || payMap.get(String(s._id));
-      if (rtoName) {
-        ops.push({ updateOne: { filter: { _id: s._id }, update: { $set: { assignedRto: rtoName, studentType: 'RTO Student' } } } });
-        repaired.push({ id: s.studentId, name: `${s.firstName} ${s.lastName}`, rto: rtoName });
+      let matchedDoc = null;
+
+      // 1. By existing rtoId
+      if (s.rtoId && rtoIdToDoc.has(String(s.rtoId))) {
+        matchedDoc = rtoIdToDoc.get(String(s.rtoId));
+      }
+      // 2. By existing assignedRto
+      if (!matchedDoc && s.assignedRto && rtoNameToDoc.has(s.assignedRto.trim().toLowerCase())) {
+        matchedDoc = rtoNameToDoc.get(s.assignedRto.trim().toLowerCase());
+      }
+      // 3. By institute
+      if (!matchedDoc && s.institute && rtoNameToDoc.has(s.institute.trim().toLowerCase())) {
+        matchedDoc = rtoNameToDoc.get(s.institute.trim().toLowerCase());
+      }
+      // 4. By payment record
+      const payRtoName = payMap.get(String(s._id));
+      if (!matchedDoc && payRtoName && rtoNameToDoc.has(payRtoName.trim().toLowerCase())) {
+        matchedDoc = rtoNameToDoc.get(payRtoName.trim().toLowerCase());
+      }
+      // 5. Fallback to default/requested RTO if provided
+      if (!matchedDoc && fallbackRto) {
+        matchedDoc = fallbackRto;
+      }
+
+      if (matchedDoc) {
+        ops.push({
+          updateOne: {
+            filter: { _id: s._id },
+            update: {
+              $set: {
+                assignedRto: matchedDoc.name,
+                rtoId: matchedDoc._id,
+                studentType: 'RTO Student',
+              },
+            },
+          },
+        });
+        repaired.push({ id: s.studentId, name: `${s.firstName} ${s.lastName}`, rto: matchedDoc.name });
       }
     }
 
-    if (ops.length > 0) await StudentModel.bulkWrite(ops);
+    if (ops.length > 0) {
+      await StudentModel.bulkWrite(ops);
+      // Re-sync pricing in background
+      try {
+        const { syncChargeableStudents } = await import('../payment/payment.service.js');
+        syncChargeableStudents().catch(() => {});
+      } catch (_) {}
+    }
 
-    res.json({ success: true, message: `Repaired ${ops.length} students`, repaired, skipped: broken.length - ops.length });
+    res.json({
+      success: true,
+      message: `Repaired ${ops.length} student${ops.length === 1 ? '' : 's'}`,
+      repaired,
+      skipped: broken.length - ops.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkAssignRtoController = async (req, res, next) => {
+  try {
+    const { studentIds, rtoId, rtoName } = req.body;
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide an array of studentIds' });
+    }
+
+    const StudentModel = (await import('./student.model.js')).default;
+    const RtoModel = (await import('../rto/rto.model.js')).default;
+
+    let targetRto = null;
+    if (rtoId) {
+      targetRto = await RtoModel.findById(rtoId);
+    }
+    if (!targetRto && rtoName) {
+      targetRto = await RtoModel.findOne({ name: { $regex: `^${String(rtoName).trim()}$`, $options: 'i' } });
+    }
+    if (!targetRto) {
+      return res.status(404).json({ success: false, message: 'Selected RTO not found' });
+    }
+
+    const mongoose = (await import('mongoose')).default;
+    const validObjectIds = studentIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const bizIds = studentIds.filter((id) => typeof id === 'string' && id.trim());
+
+    const result = await StudentModel.updateMany(
+      {
+        $or: [
+          { _id: { $in: validObjectIds } },
+          { studentId: { $in: bizIds } },
+        ],
+      },
+      {
+        $set: {
+          assignedRto: targetRto.name,
+          rtoId: targetRto._id,
+          studentType: 'RTO Student',
+        },
+      }
+    );
+
+    // Re-sync payment pricing so 100% and 30% prices update immediately
+    try {
+      const { syncChargeableStudents } = await import('../payment/payment.service.js');
+      syncChargeableStudents().catch(() => {});
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Assigned ${targetRto.name} to ${result.modifiedCount} student${result.modifiedCount === 1 ? '' : 's'}`,
+      rtoName: targetRto.name,
+      rtoId: targetRto._id,
+      modifiedCount: result.modifiedCount,
+    });
   } catch (error) {
     next(error);
   }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { fetchRtoById } from '../../api/rtoApi';
 import AddRtoStep1 from './AddRtoStep1';
 import AddRtoStep2Pricing from './AddRtoStep2Pricing';
@@ -13,6 +13,8 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto, onUpda
   const authUser = useSelector((state) => state.auth?.user);
   const [currentStep, setCurrentStep] = useState(1);
   const [toast, setToast] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
   const [formData, setFormData] = useState({
     // Step 1: Basic Information & Media
     rtoName: '',
@@ -89,13 +91,14 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto, onUpda
   }, [initialRto]);
   const totalSteps = 6;
 
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 2500);
+  const showToast = (message, isError = false) => {
+    setToast({ message, isError });
+    setTimeout(() => setToast(null), 3500);
   };
 
   const updateFormData = (updates) => {
     setFormData(prev => ({ ...prev, ...updates }));
+    if (submitError) setSubmitError(null);
   };
 
   const nextStep = () => {
@@ -116,21 +119,35 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto, onUpda
   };
 
   const submit = async () => {
-    if (onCreateRto) {
-      try {
-        if (initializedRtoId && onUpdateRto) await onUpdateRto(initializedRtoId, formData);
-        else await onCreateRto(formData);
-      } catch (err) {
-        showToast(initializedRtoId ? 'Failed to update RTO' : 'Failed to create RTO');
-        return;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      if (onCreateRto) {
+        if (initializedRtoId && onUpdateRto) {
+          await onUpdateRto(initializedRtoId, formData);
+        } else {
+          await onCreateRto(formData);
+        }
       }
+      showToast(initializedRtoId ? 'RTO updated successfully!' : 'RTO created successfully!');
+      setTimeout(() => {
+        if (onComplete) {
+          onComplete();
+        }
+      }, 700);
+    } catch (err) {
+      console.error('Failed to submit RTO:', err);
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        (initializedRtoId ? 'Failed to update RTO' : 'Failed to create RTO');
+      setSubmitError(errorMsg);
+      showToast(errorMsg, true);
+    } finally {
+      setIsSubmitting(false);
     }
-    showToast(initializedRtoId ? 'RTO updated successfully!' : 'RTO created successfully!');
-    setTimeout(() => {
-      if (onComplete) {
-        onComplete();
-      }
-    }, 800);
   };
 
   const stepProps = {
@@ -144,16 +161,24 @@ export default function AddRtoWizard({ onCancel, onComplete, onCreateRto, onUpda
     toast,
     step: currentStep,
     totalSteps,
-    isEditing: Boolean(initializedRtoId)
+    isEditing: Boolean(initializedRtoId),
+    isSubmitting,
+    submitError,
   };
 
   return (
     <>
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-pulse">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>{toast}</span>
+        <div className={`fixed top-4 right-4 z-50 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-bounce ${
+          toast.isError ? 'bg-rose-900 border border-rose-700' : 'bg-slate-900 border border-slate-700'
+        }`}>
+          {toast.isError ? (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          )}
+          <span>{toast.message}</span>
         </div>
       )}
 

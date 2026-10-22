@@ -232,11 +232,20 @@ export class StudentService {
     if (actingUser && actingUser.role === 'Coordinator') {
       // Coordinator can only update their assigned student
       await this.getStudentById(id, actingUser);
-      // Coordinators cannot modify RTO fields
-      delete studentData.assignedRto;
-      delete studentData.rtoId;
-      delete studentData.studentType;
-      delete studentData.independentFee;
+    }
+
+    // If assignedRto is provided without rtoId, auto-resolve rtoId
+    if (studentData.assignedRto && !studentData.rtoId && studentData.studentType !== 'Independent Student') {
+      try {
+        const matchedRto = await RtoModel.findOne({
+          name: { $regex: `^${studentData.assignedRto.trim()}$`, $options: 'i' },
+        }).select('_id name');
+        if (matchedRto) {
+          studentData.assignedRto = matchedRto.name;
+          studentData.rtoId = matchedRto._id;
+          studentData.studentType = 'RTO Student';
+        }
+      } catch (_) {}
     }
 
     let student = null;
@@ -251,6 +260,14 @@ export class StudentService {
         returnDocument: 'after',
         runValidators: true,
       });
+    }
+
+    // Refresh payment price if RTO, fee or course changed
+    if (student && (studentData.assignedRto || studentData.courseQualification || studentData.independentFee != null)) {
+      try {
+        const { syncChargeableStudents } = await import('../payment/payment.service.js');
+        syncChargeableStudents().catch(() => {});
+      } catch (_) {}
     }
 
     if (!student) {

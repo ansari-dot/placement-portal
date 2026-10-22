@@ -18,6 +18,7 @@ export class InvoiceService {
    */
   static async bulkGenerateInvoice({ paymentSelections, paymentIds, gstEnabled = false }, currentUser = null) {
     const percentageMap = new Map();
+    const feeOverrideMap = new Map();
     let targetIds = [];
 
     if (Array.isArray(paymentSelections) && paymentSelections.length > 0) {
@@ -27,6 +28,10 @@ export class InvoiceService {
           targetIds.push(String(id));
           if (item.chargePercentage !== undefined) {
             percentageMap.set(String(id), Number(item.chargePercentage));
+          }
+          const overrideVal = item.originalPrice !== undefined ? Number(item.originalPrice) : (item.feeOverride !== undefined ? Number(item.feeOverride) : null);
+          if (overrideVal !== null && !isNaN(overrideVal) && overrideVal > 0) {
+            feeOverrideMap.set(String(id), overrideVal);
           }
         }
       });
@@ -41,6 +46,24 @@ export class InvoiceService {
     const payments = await PaymentModel.find({ _id: { $in: targetIds } });
     if (!payments || payments.length === 0) {
       throw new BadRequestError('No matching payment records found.');
+    }
+
+    // Apply any inline fee overrides from the invoice generation request
+    for (const p of payments) {
+      const pId = String(p._id);
+      if (feeOverrideMap.has(pId)) {
+        const overrideFee = feeOverrideMap.get(pId);
+        p.originalPrice = overrideFee;
+        p.isPriceOverridden = true;
+        p.priceConfigured = true;
+        p.pricingError = '';
+        p.feeOverrideReason = 'Fee override applied during invoice generation';
+        p.feeUpdatedAt = new Date();
+        if (currentUser) p.feeUpdatedBy = currentUser._id;
+        const pct = percentageMap.get(pId) ?? p.chargePercentage ?? 100;
+        p.paymentAmount = Number(((overrideFee * pct) / 100).toFixed(2));
+        await p.save();
+      }
     }
 
     // Pre-validate: Verify that missing/unconfigured pricing cannot silently create finalized invoices

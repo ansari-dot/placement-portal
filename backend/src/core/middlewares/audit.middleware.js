@@ -2,7 +2,10 @@ import UserLogModel from '../../modules/audit/audit.model.js';
 
 const ignoredPaths = new Set(['/auth/login', '/auth/logout', '/auth/heartbeat']);
 const sensitiveKey = /password|token|secret|authorization|cookie/i;
-const base64Value = /^(data:[^;]+;base64,)?[a-z0-9+/]{500,}={0,2}$/i;
+const isBinaryOrBase64 = (str) => {
+  if (typeof str !== 'string') return false;
+  return str.startsWith('data:') || str.startsWith('blob:') || (str.length > 500 && !str.includes(' '));
+};
 
 const safeValue = (value, depth = 0) => {
   if (value == null || typeof value === 'boolean' || typeof value === 'number') return value;
@@ -10,8 +13,8 @@ const safeValue = (value, depth = 0) => {
   if (value?._bsontype === 'ObjectId' || value?._bsontype === 'ObjectID') return value.toString();
   if (typeof value.toObject === 'function') value = value.toObject();
   if (typeof value === 'string') {
-    if (base64Value.test(value)) return '[binary data omitted]';
-    return value.length > 1500 ? `${value.slice(0, 1500)}… [truncated]` : value;
+    if (isBinaryOrBase64(value)) return '[binary data omitted]';
+    return value.length > 500 ? `${value.slice(0, 500)}… [truncated]` : value;
   }
   if (depth >= 5) return '[nested data omitted]';
   if (Array.isArray(value)) return value.slice(0, 50).map(item => safeValue(item, depth + 1));

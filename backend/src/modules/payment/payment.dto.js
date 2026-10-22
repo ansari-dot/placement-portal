@@ -18,9 +18,13 @@ export const updatePaymentStatusSchema = z.object({
 });
 
 export const bulkInvoiceSchema = z.object({
-  paymentIds: z.array(z.string()).min(1, 'At least one payment record must be selected'),
+  paymentSelections: z.array(z.any()).optional(),
+  paymentIds: z.array(z.string()).optional(),
   gstEnabled: z.boolean().optional().default(false),
-});
+}).refine(
+  (data) => (data.paymentSelections && data.paymentSelections.length > 0) || (data.paymentIds && data.paymentIds.length > 0),
+  { message: 'At least one payment record must be selected' }
+);
 
 export const bulkPaymentReceivedSchema = z.object({
   paymentIds: z.array(z.string()).min(1, 'At least one payment record must be selected'),

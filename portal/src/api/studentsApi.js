@@ -109,8 +109,14 @@ export const openStudentDocument = async (url) => {
 
 export const isStoredDocument = (v) => typeof v === "string" && v.startsWith("/uploads/");
 
-export const repairStudentRto = async () => {
-  const response = await api.post("/students/repair/rto");
+export const repairStudentRto = async (payload = {}) => {
+  const response = await api.post("/students/repair/rto", payload);
+  return response.data;
+};
+
+export const bulkAssignRto = async (studentIds, rtoId, rtoName) => {
+  const response = await api.post("/students/bulk/assign-rto", { studentIds, rtoId, rtoName });
+  notifyPlacementDataChanged();
   return response.data;
 };
 

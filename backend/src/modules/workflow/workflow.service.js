@@ -90,28 +90,26 @@ export const updateWorkflowStep = async (id, step) => {
 
 // ===== Students in Workflow =====
 export const addStudentsToWorkflow = async (workflowId, studentIds) => {
-    const workflow = await WorkflowModel.findById(workflowId);
-    if (!workflow) {
-        throw new Error(`Workflow not found while updating placement request ${normalizedId}`);
+    const ids = (Array.isArray(studentIds) ? studentIds : [studentIds]).filter(Boolean);
+    if (ids.length === 0) {
+        return await WorkflowModel.findById(workflowId).populate("students");
     }
 
-    const existingIds = workflow.students.map((s) => s.toString());
-    const newIds = studentIds.filter((id) => !existingIds.includes(id));
-    workflow.students.push(...newIds);
-    await workflow.save({ validateBeforeSave: false });
-    return await WorkflowModel.findById(workflowId).populate("students");
+    return await WorkflowModel.findByIdAndUpdate(
+        workflowId,
+        { $addToSet: { students: { $each: ids } } },
+        { returnDocument: 'after' }
+    ).populate("students");
 };
 
 export const removeStudentFromWorkflow = async (workflowId, studentId) => {
-    const workflow = await WorkflowModel.findById(workflowId);
-    if (!workflow) return null;
-
-    workflow.students = workflow.students.filter(
-        (s) => s.toString() !== studentId
-    );
-    await workflow.save({ validateBeforeSave: false });
-    return await WorkflowModel.findById(workflowId).populate("students");
+    return await WorkflowModel.findByIdAndUpdate(
+        workflowId,
+        { $pull: { students: studentId } },
+        { returnDocument: 'after' }
+    ).populate("students");
 };
+
 
 // ===== Internship Requests (Step 2) =====
 export const createInternshipRequest = async (workflowId, requestData) => {

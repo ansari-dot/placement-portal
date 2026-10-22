@@ -17,9 +17,21 @@ export const updatePaymentStatus = async (id, data) => {
 };
 
 export const bulkGenerateInvoices = async (paymentSelections, gstEnabled = false) => {
-  const payload = Array.isArray(paymentSelections) && typeof paymentSelections[0] === 'object'
-    ? { paymentSelections, gstEnabled }
-    : { paymentIds: paymentSelections, gstEnabled };
+  let paymentIds = [];
+  let selections = undefined;
+  if (Array.isArray(paymentSelections)) {
+    if (typeof paymentSelections[0] === 'object') {
+      selections = paymentSelections;
+      paymentIds = paymentSelections.map((p) => p.paymentId || p._id || p.id).filter(Boolean);
+    } else {
+      paymentIds = paymentSelections.map(String).filter(Boolean);
+    }
+  }
+  const payload = {
+    paymentIds,
+    ...(selections ? { paymentSelections: selections } : {}),
+    gstEnabled,
+  };
   const response = await api.post('/payments/bulk-invoice', payload);
   return response.data;
 };

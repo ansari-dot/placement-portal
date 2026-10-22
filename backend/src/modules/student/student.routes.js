@@ -11,6 +11,7 @@ import {
   bulkImportStudentsController,
   bulkUploadDocumentsController,
   repairStudentRtoController,
+  bulkAssignRtoController,
 } from './student.controller.js';
 import multer from 'multer';
 import { requireRoles } from '../../core/guards/roles.guard.js';
@@ -38,6 +39,7 @@ const docsUpload = multer({
 router.get('/bulk/template', canManage, downloadBulkTemplateController);
 router.post('/bulk/import', canManage, excelUpload.single('file'), bulkImportStudentsController);
 router.post('/bulk/documents', canManage, docsUpload.array('files', 500), bulkUploadDocumentsController);
+router.post('/bulk/assign-rto', canManage, bulkAssignRtoController);
 
 router.post('/', validateBody(studentSchema), createStudentController);
 router.get('/', getAllStudentsController);
@@ -45,7 +47,7 @@ router.get('/all', getAllStudentsUnfilteredController);
 router.get('/:id', getStudentByIdController);
 router.put('/:id', validateBody(studentSchema.partial()), updateStudentController);
 router.patch('/:id/assign-coordinator', assignCoordinatorController);
-router.post('/repair/rto', requireRoles('Administrator'), repairStudentRtoController);
+router.post('/repair/rto', canManage, repairStudentRtoController);
 router.delete('/:id', deleteStudentController);
 
 export default router;

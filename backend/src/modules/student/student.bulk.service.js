@@ -109,9 +109,13 @@ const HEADER_LOOKUP = (() => {
     map.set(norm(c.label), c);
   });
   // A few friendly aliases
-  [['email', 'emailAddress'], ['phone', 'phoneNumber'], ['mobile', 'phoneNumber'], ['dob', 'dateOfBirth'],
-   ['course', 'courseQualification'], ['rto', 'assignedRto'], ['college', 'assignedRto'], ['postcode', 'postCode']]
-    .forEach(([alias, key]) => map.set(alias, BULK_COLUMNS.find((c) => c.key === key)));
+  [
+    ['email', 'emailAddress'], ['phone', 'phoneNumber'], ['mobile', 'phoneNumber'], ['dob', 'dateOfBirth'],
+    ['course', 'courseQualification'], ['rto', 'assignedRto'], ['college', 'assignedRto'], ['postcode', 'postCode'],
+    ['rtoname', 'assignedRto'], ['collegename', 'assignedRto'], ['collegerto', 'assignedRto'],
+    ['rtocollege', 'assignedRto'], ['institutename', 'assignedRto'], ['institution', 'assignedRto'],
+    ['rtoprovider', 'assignedRto'], ['provider', 'assignedRto'], ['educationprovider', 'assignedRto']
+  ].forEach(([alias, key]) => map.set(alias, BULK_COLUMNS.find((c) => c.key === key)));
   return map;
 })();
 
@@ -301,9 +305,18 @@ export const processBulkImport = async (buffer, { commit = false, actingUser } =
       const s = ['Active', 'Pending', 'Inactive', 'Graduated', 'Suspended'].find((x) => norm(x) === norm(d.status));
       if (s) d.status = s;
     }
+    if (!d.assignedRto && d.institute) {
+      d.assignedRto = d.institute;
+    }
     if (d.assignedRto) {
       const rto = rtoByName.get(norm(d.assignedRto));
-      if (rto) { d.assignedRto = rto.name; d.rtoId = String(rto._id); }
+      if (rto) {
+        d.assignedRto = rto.name;
+        d.rtoId = String(rto._id);
+        if (!d.studentType || d.studentType === 'Awaiting RTO Assignment') {
+          d.studentType = 'RTO Student';
+        }
+      }
     }
     if (d.studentType === 'Independent Student' && !d.assignedRto) d.assignedRto = 'Independent Student';
     if (d.studentType === 'Independent Student' && !(d.independentFee > 0)) {
@@ -366,9 +379,11 @@ export const processBulkImport = async (buffer, { commit = false, actingUser } =
           type: 'student',
           link: '/my-students',
         });
-      } catch (nErr) {
-        console.error('Bulk import notification failed:', nErr);
-      }
+      } catch (_) {}
+      try {
+        const { syncChargeableStudents } = await import('../payment/payment.service.js');
+        syncChargeableStudents().catch(() => {});
+      } catch (_) {}
     }
   }
 

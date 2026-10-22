@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   FileText, Check, DollarSign, Calendar, ShieldCheck, Building2, 
-  MapPin, Phone, Mail, Award, CheckCircle2 
+  MapPin, Phone, Mail, Award, CheckCircle2, Loader2, AlertCircle
 } from 'lucide-react';
 
 export default function AddRtoStep5({
@@ -16,6 +16,8 @@ export default function AddRtoStep5({
   toast,
   step,
   totalSteps,
+  isSubmitting,
+  submitError,
 }) {
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto bg-[#F8FAFC] min-h-screen font-sans text-slate-800">
@@ -216,12 +218,24 @@ export default function AddRtoStep5({
             </div>
           </div>
 
+          {/* Submit Error Banner */}
+          {submitError && (
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-3 text-rose-700 text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Failed to save RTO</p>
+                <p className="mt-0.5 text-[11px] text-rose-600">{submitError}</p>
+              </div>
+            </div>
+          )}
+
           {/* Buttons */}
           <div className="pt-6 border-t border-slate-200 flex items-center justify-between">
             <button 
               type="button"
               onClick={onPrev} 
-              className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              disabled={isSubmitting}
+              className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
@@ -229,7 +243,8 @@ export default function AddRtoStep5({
               <button 
                 type="button"
                 onClick={onSaveDraft} 
-                className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
+                disabled={isSubmitting}
+                className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FileText size={14} />
                 <span>Save as Draft</span>
@@ -237,9 +252,17 @@ export default function AddRtoStep5({
               <button 
                 type="button"
                 onClick={onSubmit} 
-                className="px-6 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white rounded-xl text-xs font-semibold shadow-sm transition-all duration-500 cursor-pointer"
+                disabled={isSubmitting}
+                className={`px-6 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white rounded-xl text-xs font-semibold shadow-sm transition-all duration-500 flex items-center space-x-2 ${
+                  isSubmitting ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'
+                }`}
               >
-                {isEditing ? 'Save Changes' : 'Create RTO'}
+                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin text-white" />}
+                <span>
+                  {isSubmitting
+                    ? isEditing ? 'Saving Changes...' : 'Creating RTO...'
+                    : isEditing ? 'Save Changes' : 'Create RTO'}
+                </span>
               </button>
             </div>
           </div>

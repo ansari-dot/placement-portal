@@ -182,14 +182,19 @@ export default function TheRTOPage() {
 
   const handleCreateRto = useCallback(async (formData) => {
     try {
-      const res = await createRto(formData);
+      const payload = {
+        ...formData,
+        onboardedBy: formData.onboardedBy || authUser?._id || authUser?.id || undefined,
+        onboardedByName: formData.onboardedByName || authUser?.name || 'Administrator',
+      };
+      const res = await createRto(payload);
       if (res?.data) setRtos((current) => [res.data, ...current]);
       loadData(); // background refresh
     } catch (err) {
       console.error('Failed to create RTO:', err);
       throw err;
     }
-  }, [loadData]);
+  }, [loadData, authUser]);
 
   const deletingIds = React.useRef(new Set());
   const handleDeleteRto = useCallback(async (id) => {

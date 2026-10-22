@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Printer, CheckCircle2, X, Building2, Send, DollarSign } from 'lucide-react';
+import { FileText, Printer, CheckCircle2, X, Building2, Send, DollarSign, AlertTriangle } from 'lucide-react';
 import logo1 from '../../assets/logo1.png';
 
 export default function PaymentInvoiceModal({
@@ -10,14 +10,17 @@ export default function PaymentInvoiceModal({
 }) {
   const [gstEnabled, setGstEnabled] = useState(false);
   const [customPercentages, setCustomPercentages] = useState({});
+  const [customPrices, setCustomPrices] = useState({});
   const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (isOpen && payments && payments.length > 0) {
       const hasGst = payments.some((p) => Boolean(p.gstEnabled));
       setGstEnabled(hasGst);
+      setCustomPrices({});
     } else if (!isOpen) {
       setGstEnabled(false);
+      setCustomPrices({});
     }
   }, [isOpen, payments]);
 
@@ -40,6 +43,20 @@ export default function PaymentInvoiceModal({
       return dateString;
     }
   };
+
+  const getPaymentBasePrice = (p) => {
+    const pId = p._id || p.id;
+    if (customPrices[pId] !== undefined) {
+      const parsed = parseFloat(customPrices[pId]);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return p.originalPrice || p.paymentAmount || 0;
+  };
+
+  const unconfiguredStudents = payments.filter((p) => {
+    const base = getPaymentBasePrice(p);
+    return base <= 0 && !p.isPriceOverridden;
+  });
 
   // Group payments: RTOs grouped by RTO name; Independent students grouped individually
   const invoiceGroups = payments.reduce((acc, p) => {
@@ -64,9 +81,13 @@ export default function PaymentInvoiceModal({
       const selections = payments.map((p) => {
         const pId = p._id || p.id;
         const chosenPct = customPercentages[pId] !== undefined ? customPercentages[pId] : (p.chargePercentage ?? 100);
+        const enteredPrice = customPrices[pId] !== undefined ? parseFloat(customPrices[pId]) : undefined;
         return {
           paymentId: pId,
           chargePercentage: chosenPct,
+          ...(enteredPrice !== undefined && !isNaN(enteredPrice) && enteredPrice > 0
+            ? { originalPrice: enteredPrice, feeOverride: enteredPrice }
+            : {}),
         };
       });
       await onConfirmStatusUpdate(selections, gstEnabled);
@@ -178,6 +199,21 @@ export default function PaymentInvoiceModal({
           </div>
         )}
 
+        {/* Unconfigured pricing warning banner */}
+        {unconfiguredStudents.length > 0 && (
+          <div className="mx-8 mt-4 p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-start space-x-2.5 text-xs text-amber-900 print:hidden">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold">Missing Placement Pricing Configured</p>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                The following student(s) have no RTO course pricing configured ($0.00):{' '}
+                <span className="font-bold">{unconfiguredStudents.map((s) => s.studentName).join(', ')}</span>.
+                Please type an authorized placement fee directly in the table below to generate an invoice.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Printable Invoices (Grouped by RTO / Independent Student) */}
         <div className="p-8 space-y-12 bg-white text-slate-800 text-xs print:p-6 print:space-y-8">
           {Object.entries(invoiceGroups).map(([groupKey, groupPayments], groupIdx) => {
@@ -196,14 +232,19 @@ export default function PaymentInvoiceModal({
             const itemCalculations = groupPayments.map((p) => {
               const pId = p._id || p.id;
               const chosenPct = customPercentages[pId] !== undefined ? customPercentages[pId] : (p.chargePercentage ?? 100);
-              const orig = p.originalPrice || p.paymentAmount || 0;
+              const orig = getPaymentBasePrice(p);
               const amt = Number(((orig * chosenPct) / 100).toFixed(2));
               groupSubtotal += amt;
+              const isUnconfigured = orig <= 0 && !p.isPriceOverridden;
               return {
+                payment: p,
+                pId,
                 studentName: p.studentName,
                 service: p.service || (isIndependentGroup ? 'Independent Placement Fee' : 'RTO Student Placement Fee'),
                 amount: amt,
+                orig,
                 pct: chosenPct,
+                isUnconfigured,
               };
             });
 
@@ -270,15 +311,44 @@ export default function PaymentInvoiceModal({
                     {itemCalculations.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/60">
                         <td className="py-3 px-4 font-bold text-slate-900">
-                          {item.studentName}
-                          {item.pct < 100 && (
-                            <span className="ml-2 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-                              ({item.pct}% charge)
-                            </span>
-                          )}
+                          <div className="flex items-center space-x-2">
+                            <span>{item.studentName}</span>
+                            {item.isUnconfigured && (
+                              <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded print:hidden">
+                                Missing Pricing
+                              </span>
+                            )}
+                            {customPrices[item.pId] !== undefined && Number(customPrices[item.pId]) > 0 && (
+                              <span className="text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded print:hidden">
+                                Custom Fee
+                              </span>
+                            )}
+                            {item.pct < 100 && (
+                              <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+                                ({item.pct}% charge)
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-center text-slate-600">{item.service}</td>
-                        <td className="py-3 px-4 text-right font-bold text-slate-900 font-mono">{item.amount.toFixed(2)}$</td>
+                        <td className="py-3 px-4 text-right font-bold text-slate-900 font-mono">
+                          {item.isUnconfigured ? (
+                            <div className="flex items-center space-x-1.5 justify-end print:hidden">
+                              <span className="text-slate-400 font-semibold">$</span>
+                              <input
+                                type="number"
+                                min="1"
+                                step="any"
+                                placeholder="Enter Fee"
+                                value={customPrices[item.pId] !== undefined ? customPrices[item.pId] : ''}
+                                onChange={(e) => setCustomPrices(prev => ({ ...prev, [item.pId]: e.target.value }))}
+                                className="w-24 px-2 py-1 text-right text-xs font-bold border border-amber-400 rounded-lg bg-amber-50 text-slate-900 focus:outline-none focus:border-blue-600"
+                              />
+                            </div>
+                          ) : (
+                            <span>{item.amount.toFixed(2)}$</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -338,8 +408,9 @@ export default function PaymentInvoiceModal({
             </button>
             <button
               onClick={handleSendOrGenerate}
-              disabled={isSending}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              disabled={isSending || unconfiguredStudents.length > 0}
+              title={unconfiguredStudents.length > 0 ? 'Please enter a placement fee for unconfigured student(s) before generating invoice' : ''}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FileText className="w-3.5 h-3.5" />
               <span>{isSending ? 'Generating...' : 'Confirm & Generate Invoices'}</span>

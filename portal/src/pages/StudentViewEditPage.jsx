@@ -81,9 +81,8 @@ export default function StudentViewEditPage() {
   const [isOtherSource, setIsOtherSource]         = useState(false);
   const [selectedDays, setSelectedDays]           = useState({});
 
-  // Fetch RTO list for College/RTO dropdown (skip for coordinators who cannot view or configure RTOs)
+  // Fetch RTO list for College/RTO dropdown
   useEffect(() => {
-    if (isCoordinator) return;
     fetchRtos()
       .then(res => {
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
@@ -92,7 +91,7 @@ export default function StudentViewEditPage() {
         setActiveRtos(Array.from(new Set(names)).sort((a, b) => a.localeCompare(b)));
       })
       .catch(() => {});
-  }, [isCoordinator]);
+  }, []);
 
   const loadStudent = useCallback(async () => {
     setLoading(true);
@@ -282,13 +281,6 @@ export default function StudentViewEditPage() {
     setSaving(true);
     try {
       const payload = { ...formData };
-      if (isCoordinator) {
-        delete payload.assignedRto;
-        delete payload.rto;
-        delete payload.rtoId;
-        delete payload.studentType;
-        delete payload.independentFee;
-      }
       Object.keys(payload).forEach(key => { if (payload[key] === '') payload[key] = undefined; });
       const dbId = student?.id || student?._id || id;
       const docFields = ['policeCheckDoc','covidCheckDoc','ndisDoc','resumeDoc','wwccDoc','passportDoc','drivingLicenceDoc','infectionControlDoc','handHygieneDoc','cbrDoc'];
@@ -300,8 +292,10 @@ export default function StudentViewEditPage() {
         }));
       }
       // If RTO Student but no RTO assigned, mark as Awaiting RTO Assignment
-      if (!isCoordinator && payload.studentType === 'RTO Student' && !payload.assignedRto) {
+      if (payload.studentType === 'RTO Student' && !payload.assignedRto) {
         payload.studentType = 'Awaiting RTO Assignment';
+      } else if (payload.assignedRto && (!payload.studentType || payload.studentType === 'Awaiting RTO Assignment')) {
+        payload.studentType = 'RTO Student';
       }
       const response = await updateStudent(dbId, payload);
       toast.success(response?.message || 'Student updated successfully!');

@@ -39,14 +39,17 @@ export const checkCoordinatorRtoOwnership = (rto, user) => {
 };
 
 export class RtoService {
-  static async getAllRtos({ search, status, loc }, user) {
+  static async getAllRtos({ search, status, loc, my }, user) {
     const filters = [];
     const role = user?.role;
     const userEmail = user?.email?.toLowerCase()?.trim();
 
     if (user && role !== 'Administrator') {
       if (role === 'Coordinator') {
-        filters.push(buildCoordinatorRtoFilter(user));
+        if (my === 'true') {
+          filters.push(buildCoordinatorRtoFilter(user));
+        }
+        // By default, Coordinators can view all RTOs for directory and student assignments
       } else if (role === 'RTO Manager') {
         let userRtoName = user.rtoName;
         if (!userRtoName && userEmail) {
@@ -129,34 +132,33 @@ export class RtoService {
       onboardedBy,
     } = data;
 
-    if (!rtoName || !rtoName.trim()) {
+    const resolvedName = String(rtoName || data.name || '').trim();
+    if (!resolvedName) {
       throw new BadRequestError('RTO Name is required');
     }
 
     let linkedUser = null;
-    if (onboardedBy) {
-      linkedUser = await UserModel.findById(onboardedBy).select('_id name role status');
-      if (!linkedUser) {
-        throw new BadRequestError('Selected Portal User ID was not found');
+    if (onboardedBy && mongoose.Types.ObjectId.isValid(onboardedBy)) {
+      try {
+        linkedUser = await UserModel.findById(onboardedBy).select('_id name role status');
+      } catch (_) {
+        linkedUser = null;
       }
-      if (!['Administrator', 'Coordinator', 'Staff'].includes(linkedUser.role) || linkedUser.status !== 'Active') {
-        throw new BadRequestError('Selected onboardedBy user must be an active Administrator, Coordinator, or Staff member');
-      }
-    } else if (actingUser && (actingUser.role === 'Coordinator' || actingUser.role === 'Staff')) {
+    }
+    if (!linkedUser && actingUser) {
       linkedUser = actingUser;
     }
 
-    const resolvedOnboardedByName = String(onboardedByName || actingUser?.name || linkedUser?.name || '').trim();
-    if (!resolvedOnboardedByName) {
-      throw new BadRequestError('Onboarded By is required');
-    }
+    const resolvedOnboardedByName = String(
+      onboardedByName || actingUser?.name || linkedUser?.name || 'Portal Administrator'
+    ).trim();
 
-    const generatedCode = rtoCode && rtoCode.trim()
-      ? rtoCode.trim()
+    const generatedCode = (rtoCode || data.code) && String(rtoCode || data.code).trim()
+      ? String(rtoCode || data.code).trim()
       : `RTO-${Math.floor(10000 + Math.random() * 90000)}`;
 
     const rto = new RtoModel({
-      name: rtoName.trim(),
+      name: resolvedName,
       code: generatedCode,
       abn: abn || '',
       acn: acn || '',
@@ -178,7 +180,7 @@ export class RtoService {
       contactWhatsapp: contactWhatsapp || '',
       contactMobile: contactMobile || '',
       contactFax: contactFax || '',
-      address: addressLine1 || '',
+      address: addressLine1 || data.address || '',
       addressLine2: addressLine2 || '',
       suburb: suburb || '',
       state: state || '',
@@ -193,10 +195,41 @@ export class RtoService {
       students: 0,
       createdBy: actingUser?._id || null,
       onboardedByName: resolvedOnboardedByName,
-      onboardedBy: linkedUser?._id || (actingUser?.role === 'Coordinator' ? actingUser._id : null),
+      onboardedBy: linkedUser?._id || (actingUser?._id ? actingUser._id : null),
     });
 
     await rto.save();
+
+    // Auto-link any existing students who were uploaded with this RTO name
+    try {
+      const StudentModel = (await import('../student/student.model.js')).default;
+      const cleanName = rto.name.trim();
+      const matchRegex = new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      await StudentModel.updateMany(
+        {
+          $or: [
+            { assignedRto: matchRegex },
+            { institute: matchRegex, assignedRto: '' },
+            { institute: matchRegex, assignedRto: { $exists: false } },
+            { institute: matchRegex, assignedRto: null },
+          ],
+        },
+        {
+          $set: {
+            assignedRto: rto.name,
+            rtoId: rto._id,
+            studentType: 'RTO Student',
+          },
+        }
+      );
+
+      // Trigger payment sync in background so pricing schedule is applied
+      const { syncChargeableStudents } = await import('../payment/payment.service.js');
+      syncChargeableStudents().catch(() => {});
+    } catch (linkErr) {
+      console.warn('[RtoService] Auto-linking students to new RTO skipped:', linkErr.message);
+    }
+
     return rto;
   }
 
@@ -216,12 +249,14 @@ export class RtoService {
       else rtoUpdates.onboardedByName = String(rtoUpdates.onboardedByName).trim();
     }
     if (Object.prototype.hasOwnProperty.call(rtoUpdates, 'onboardedBy') && rtoUpdates.onboardedBy) {
-      const linkedUser = await UserModel.findById(rtoUpdates.onboardedBy).select('_id name role status');
-      if (!linkedUser) throw new BadRequestError('Selected Portal User ID was not found');
-      if (!['Administrator', 'Coordinator', 'Staff'].includes(linkedUser.role) || linkedUser.status !== 'Active') {
-        throw new BadRequestError('Selected onboardedBy user must be an active Administrator, Coordinator, or Staff member');
+      if (mongoose.Types.ObjectId.isValid(rtoUpdates.onboardedBy)) {
+        try {
+          const linkedUser = await UserModel.findById(rtoUpdates.onboardedBy).select('_id name role status');
+          if (linkedUser) rtoUpdates.onboardedBy = linkedUser._id;
+        } catch (_) {}
+      } else {
+        delete rtoUpdates.onboardedBy;
       }
-      rtoUpdates.onboardedBy = linkedUser._id;
     } else if (Object.prototype.hasOwnProperty.call(rtoUpdates, 'onboardedBy')) {
       rtoUpdates.onboardedBy = null;
     }
@@ -247,10 +282,19 @@ export class RtoService {
       rtoUpdates.loc = [suburb, state].filter(Boolean).join(', ');
     }
 
-    const rto = await RtoModel.findByIdAndUpdate(id, rtoUpdates, { new: true });
+    const rto = await RtoModel.findByIdAndUpdate(id, rtoUpdates, { returnDocument: 'after' });
     if (!rto) {
       throw new NotFoundError('RTO not found');
     }
+
+    // Refresh payment pricing if coursePricing or name was updated
+    if (rtoUpdates.coursePricing || rtoUpdates.name) {
+      try {
+        const { syncChargeableStudents } = await import('../payment/payment.service.js');
+        syncChargeableStudents().catch(() => {});
+      } catch (_) {}
+    }
+
     return rto;
   }
 

@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { deleteStudent, snoozeStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
+import AssignRtoModal from './AssignRtoModal';
 
 const STEP1_DRAWER_DOCS = [
   { field: 'policeCheckDoc',     label: 'Police Check' },
@@ -42,17 +43,15 @@ export default function WorkflowStep1Students({
   onUpdateRequest, // Used when changing priority of an existing placement request
   onCoordinatorAssigned, // Called after coordinator is assigned/changed — updates parent state
   coordinators = [], // Full list of active coordinators — used for the "User" filter
+  onRefreshWorkflow,
 }) {
   const navigate = useNavigate();
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
-  const [selectedRows, setSelectedRows] = useState(initialSelectedStudentIds);
-
-  React.useEffect(() => {
-    setSelectedRows(initialSelectedStudentIds);
-  }, [initialSelectedStudentIds]);
+  const [selectedRows, setSelectedRows] = useState([]);
+  const [assignRtoTarget, setAssignRtoTarget] = useState(null);
 
   const [showFilters, setShowFilters] = useState(false);
   const [showSavedFilters, setShowSavedFilters] = useState(false);
@@ -141,44 +140,10 @@ export default function WorkflowStep1Students({
     showToast('Add Student form opened');
   };
 
-  const handleSelectAll = (e) => {
-    const checked = e.target.checked;
-    const pageIds = paginatedStudents.map(s => s.id);
-    if (checked) {
-      const newSelected = [...selectedRows, ...pageIds.filter(id => !selectedRows.includes(id))];
-      setSelectedRows(newSelected);
-      pageIds.forEach(id => {
-        if (!selectedRows.includes(id) && onToggleStudent) {
-          onToggleStudent(id, true);
-        }
-      });
-    } else {
-      setSelectedRows(selectedRows.filter(id => !pageIds.includes(id)));
-      pageIds.forEach(id => {
-        if (selectedRows.includes(id) && onToggleStudent) {
-          onToggleStudent(id, false);
-        }
-      });
-    }
-  };
-
   const handleSelectRow = (id) => {
-    const isSelected = selectedRows.includes(id);
     setSelectedRows(prev => 
-      isSelected ? prev.filter(r => r !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
     );
-    if (onToggleStudent) {
-      onToggleStudent(id, !isSelected);
-    }
-  };
-
-  const handleBulkAction = (action) => {
-    setShowBulkActions(false);
-    if (selectedRows.length === 0) {
-      showToast('Please select students first');
-      return;
-    }
-    showToast(`${action} applied to ${selectedRows.length} students`);
   };
 
   const handleRowAction = (action, stu) => {
@@ -229,6 +194,8 @@ export default function WorkflowStep1Students({
       navigate(`/students/${stu.id}/edit`);
     } else if (action === 'assignCoordinator') {
       setAssignCoordinatorTarget(stu);
+    } else if (action === 'assignRto') {
+      setAssignRtoTarget(stu);
     } else if (action === 'delete') {
       // Open confirmation modal — do NOT delete yet
       setDeleteConfirm(stu);
@@ -533,6 +500,59 @@ export default function WorkflowStep1Students({
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
   const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const allPageSelected = paginatedStudents.length > 0 && paginatedStudents.every(s => selectedRows.includes(s.id));
+  const isIndeterminate = !allPageSelected && paginatedStudents.some(s => selectedRows.includes(s.id));
+
+  const handleSelectAll = (e) => {
+    const checked = e.target.checked;
+    const currentPageIds = paginatedStudents.map(s => s.id);
+    if (checked) {
+      setSelectedRows(prev => [...new Set([...prev, ...currentPageIds])]);
+    } else {
+      setSelectedRows(prev => prev.filter(id => !currentPageIds.includes(id)));
+    }
+  };
+
+  const handleBulkAction = (action) => {
+    setShowBulkActions(false);
+    if (selectedRows.length === 0) {
+      showToast('Please select students first');
+      return;
+    }
+    if (action === 'Export') {
+      const selectedStudents = studentList.filter(s => selectedRows.includes(s.id));
+      const headers = 'Name,Email,Student ID,RTO,Status,Placement Status,Added On';
+      const rows = selectedStudents.map(s => 
+        `"${(s.name || '').replace(/"/g, '""')}","${(s.email || '').replace(/"/g, '""')}","${(s.studentId || s.id || '').replace(/"/g, '""')}","${(s.rto || '').replace(/"/g, '""')}","${(s.status || '').replace(/"/g, '""')}","${(s.placementStatus || '').replace(/"/g, '""')}","${(s.addedOn || '').replace(/"/g, '""')}"`
+      );
+      const csvData = [headers, ...rows].join('\n');
+      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `selected_students_${selectedRows.length}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${selectedRows.length} selected students to CSV`);
+      return;
+    }
+    if (action === 'Assign RTO') {
+      const selectedStudents = studentList.filter(s => selectedRows.includes(s.id));
+      if (selectedStudents.length === 0) {
+        showToast('Please select students first');
+        return;
+      }
+      setAssignRtoTarget(selectedStudents);
+      return;
+    }
+    if (action === 'Clear') {
+      setSelectedRows([]);
+      showToast('Selection cleared');
+      return;
+    }
+    showToast(`${action} applied to ${selectedRows.length} students`);
+  };
 
   // Reset to page 1 whenever the tab or the advanced filters change
   React.useEffect(() => {
@@ -1080,9 +1100,17 @@ export default function WorkflowStep1Students({
                     <Download className="w-3.5 h-3.5 text-slate-400" />
                     <span>Export Selected</span>
                   </button>
+                  <button onClick={() => handleBulkAction('Assign RTO')} className="w-full text-left px-3 py-2 text-xs text-indigo-700 font-semibold hover:bg-indigo-50 rounded-lg flex items-center space-x-2">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Assign RTO to Selected</span>
+                  </button>
                   <button onClick={() => handleBulkAction('Status update')} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
                     <CheckSquare className="w-3.5 h-3.5 text-slate-400" />
                     <span>Update Status</span>
+                  </button>
+                  <button onClick={() => handleBulkAction('Clear')} className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg flex items-center space-x-2">
+                    <X className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Clear Selection</span>
                   </button>
                   <button onClick={() => handleBulkAction('Delete')} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1129,6 +1157,38 @@ export default function WorkflowStep1Students({
           </div>
         </div>
 
+        {/* Selection summary banner */}
+        {selectedRows.length > 0 && (
+          <div className="bg-blue-50/80 border border-blue-200 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900 font-medium">
+            <div className="flex items-center space-x-2">
+              <CheckSquare className="w-4 h-4 text-blue-600" />
+              <span>
+                {selectedRows.length === filteredStudents.length
+                  ? `All ${filteredStudents.length} students selected`
+                  : `${selectedRows.length} student${selectedRows.length > 1 ? 's' : ''} selected`}
+              </span>
+            </div>
+            <div className="flex items-center space-x-3">
+              {filteredStudents.length > paginatedStudents.length && selectedRows.length < filteredStudents.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedRows(filteredStudents.map(s => s.id))}
+                  className="text-blue-700 hover:text-blue-900 font-bold underline cursor-pointer"
+                >
+                  Select all {filteredStudents.length} students
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedRows([])}
+                className="text-slate-600 hover:text-slate-900 font-semibold underline cursor-pointer"
+              >
+                Deselect all
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-visible">
           <table className="w-full text-left border-collapse text-xs">
@@ -1137,9 +1197,11 @@ export default function WorkflowStep1Students({
                 <th className="p-4 w-10">
                   <input 
                     type="checkbox" 
-                    className="rounded border-slate-300 accent-blue-600"
-                    checked={selectedRows.length === paginatedStudents.length && paginatedStudents.length > 0}
+                    className="rounded border-slate-300 accent-blue-600 cursor-pointer"
+                    checked={allPageSelected}
+                    ref={(el) => { if (el) el.indeterminate = isIndeterminate; }}
                     onChange={handleSelectAll}
+                    title={allPageSelected ? 'Deselect all on this page' : 'Select all on this page'}
                   />
                 </th>
                 <th className="py-4 px-2">Student</th>
@@ -1333,6 +1395,10 @@ export default function WorkflowStep1Students({
                           <button onClick={() => handleRowAction('assignCoordinator', stu)} className="w-full text-left px-3 py-2 text-xs text-blue-600 font-semibold hover:bg-blue-50 rounded-lg flex items-center space-x-2">
                             <UserCheck className="w-3.5 h-3.5 text-blue-500" />
                             <span>{stu.assignedCoordinator ? 'Change Coordinator' : 'Assign Coordinator'}</span>
+                          </button>
+                          <button onClick={() => handleRowAction('assignRto', stu)} className="w-full text-left px-3 py-2 text-xs text-indigo-600 font-semibold hover:bg-indigo-50 rounded-lg flex items-center space-x-2">
+                            <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>{stu.rto && stu.rto !== 'N/A' ? 'Change RTO' : 'Assign RTO'}</span>
                           </button>
                           <div className="my-0.5 border-t border-slate-100" />
                           <button onClick={() => handleRowAction('delete', stu)} className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg flex items-center space-x-2">
@@ -2010,11 +2076,21 @@ export default function WorkflowStep1Students({
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400 flex items-center space-x-2">
                           <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Institute</span>
+                          <span>Institute / RTO</span>
                         </span>
-                        <span className="font-semibold text-blue-600 text-right max-w-[150px] truncate">
-                          {selectedStudent.assignedRto || selectedStudent.rto || selectedStudent.institute || '—'}
-                        </span>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-semibold text-blue-600 text-right max-w-[130px] truncate">
+                            {selectedStudent.assignedRto || selectedStudent.rto || selectedStudent.institute || '—'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setAssignRtoTarget(selectedStudent)}
+                            className="px-2 py-0.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors cursor-pointer"
+                            title="Assign or Change RTO"
+                          >
+                            Assign
+                          </button>
+                        </div>
                       </div>
                       {selectedStudent.campus && (
                         <div className="flex items-center justify-between">
@@ -2530,6 +2606,20 @@ export default function WorkflowStep1Students({
               });
             }
             setAssignCoordinatorTarget(null);
+          }}
+        />
+      )}
+      {/* ─── Assign RTO Modal ───────────────────────────────────── */}
+      {assignRtoTarget && (
+        <AssignRtoModal
+          students={assignRtoTarget}
+          onClose={() => setAssignRtoTarget(null)}
+          onAssigned={({ rtoName, count }) => {
+            showToast(`Assigned ${rtoName} to ${count} student(s)`);
+            setAssignRtoTarget(null);
+            if (onRefreshWorkflow) {
+              onRefreshWorkflow();
+            }
           }}
         />
       )}
