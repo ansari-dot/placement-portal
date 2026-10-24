@@ -32,7 +32,8 @@ import {
   internshipSchema,
 } from './workflow.dto.js';
 
-import { filterWorkflowForUser } from '../../core/utils/rbacScope.js';
+import { filterWorkflowForUser, getStudentQueryScope } from '../../core/utils/rbacScope.js';
+import { sanitizeStudentDataForRole } from '../../core/utils/rbacSanitizer.js';
 
 export const createWorkflowController = async (req, res, next) => {
   try {
@@ -56,9 +57,19 @@ export const createWorkflowController = async (req, res, next) => {
 export const getAllWorkflowsController = async (req, res, next) => {
   try {
     const workflows = await getAllWorkflows();
-    const filteredWorkflows = await Promise.all(
+    let filteredWorkflows = await Promise.all(
       workflows.map((wf) => filterWorkflowForUser(wf, req.user))
     );
+    const role = req.user?.role;
+    if (role === 'RTO Manager' || role === 'RTO') {
+      filteredWorkflows = filteredWorkflows.filter((wf) => {
+        const hasStudents = (wf.students || []).length > 0;
+        const hasRequests = (wf.requests || []).length > 0;
+        const hasAppointments = (wf.appointments || []).length > 0;
+        const hasInternships = (wf.internships || []).length > 0;
+        return hasStudents || hasRequests || hasAppointments || hasInternships;
+      });
+    }
     res.status(200).json({
       message: 'Workflows fetched successfully',
       success: true,
@@ -82,6 +93,25 @@ export const getWorkflowByIdController = async (req, res, next) => {
     }
 
     const filteredWorkflow = await filterWorkflowForUser(workflow, req.user);
+    const role = req.user?.role;
+    if (role === 'RTO Manager' || role === 'RTO') {
+      const origHasItems =
+        (workflow.students || []).length > 0 ||
+        (workflow.requests || []).length > 0 ||
+        (workflow.appointments || []).length > 0 ||
+        (workflow.internships || []).length > 0;
+      const filteredHasItems =
+        (filteredWorkflow.students || []).length > 0 ||
+        (filteredWorkflow.requests || []).length > 0 ||
+        (filteredWorkflow.appointments || []).length > 0 ||
+        (filteredWorkflow.internships || []).length > 0;
+      if (origHasItems && !filteredHasItems) {
+        return res.status(403).json({
+          message: 'Access denied to workflow belonging to another organization',
+          success: false,
+        });
+      }
+    }
 
     res.status(200).json({
       message: 'Workflow fetched successfully',
@@ -539,7 +569,7 @@ export const deleteInternshipController = async (req, res, next) => {
 
 export const getWorkflowDashboardDataController = async (req, res, next) => {
   try {
-    const data = await getWorkflowDashboardData();
+    const data = await getWorkflowDashboardData(req.user);
     res.status(200).json({
       message: 'Workflow dashboard data fetched successfully',
       success: true,
@@ -553,8 +583,10 @@ export const getWorkflowDashboardDataController = async (req, res, next) => {
 export const getWorkflowStudentsController = async (req, res, next) => {
   try {
     let filter = {};
-    if (req.user && req.user.role !== 'Administrator') {
-      filter = { assignedCoordinator: req.user._id };
+    const role = req.user?.role;
+    const isAdmin = role === 'Administrator' || role === 'Admin';
+    if (req.user && !isAdmin) {
+      filter = await getStudentQueryScope(req.user);
     } else if (req.query.coordinatorId) {
       if (req.query.coordinatorId === 'unassigned') {
         filter = { $or: [{ assignedCoordinator: null }, { assignedCoordinator: { $exists: false } }] };
@@ -563,10 +595,11 @@ export const getWorkflowStudentsController = async (req, res, next) => {
       }
     }
     const students = await getWorkflowStudents(filter);
+    const sanitizedStudents = students.map((s) => sanitizeStudentDataForRole(s, role));
     res.status(200).json({
       message: 'Workflow students fetched successfully',
       success: true,
-      data: students,
+      data: sanitizedStudents,
     });
   } catch (error) {
     next(error);

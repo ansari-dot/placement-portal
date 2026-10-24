@@ -541,7 +541,14 @@ export class IndustryService {
     return industry;
   }
 
-  static async getIndustryStats() {
+  static async getIndustryStats(user) {
+    const role = user?.role;
+    if (user && (role === 'RTO Manager' || role === 'RTO' || role === 'Student')) {
+      throw new ForbiddenError(
+        'Access denied. RTO and Student users are not authorized to view Industry statistics.'
+      );
+    }
+
     await this.syncIndustriesFromWorkflows();
 
     const [totalIndustries, activeIndustries, inactiveIndustries, totalJobs, allWorkflows] = await Promise.all([
@@ -577,6 +584,13 @@ export class IndustryService {
 
   static async getMyIndustries(user) {
     if (!user) return [];
+
+    const role = user.role;
+    if (role === 'RTO Manager' || role === 'RTO' || role === 'Student') {
+      throw new ForbiddenError(
+        'Access denied. RTO and Student users are not authorized to view Industry facilities.'
+      );
+    }
 
     await this.syncIndustriesFromWorkflows();
 
@@ -768,4 +782,87 @@ export class IndustryService {
 
     return industry;
   }
+
+  /**
+   * Safe, privacy-preserving autocomplete for Industry / Host Facility registration.
+   * Enforces:
+   * 1. Minimum 3 characters before suggestions are calculated.
+   * 2. 50% name rule:
+   *    - Query length >= Math.ceil(candidateName.length * 0.5) OR
+   *    - Query length >= Math.ceil(candidateDistinctiveToken.length * 0.5) OR
+   *    - Query length >= Math.ceil(candidateCode.length * 0.5).
+   * 3. Case-insensitive and trimmed.
+   * 4. Limits results to maximum 8 items.
+   * 5. Returns strictly non-confidential public fields: { _id, name, code, sector, location }.
+   */
+  static async autocompleteIndustries(queryStr) {
+    if (!queryStr || typeof queryStr !== 'string') {
+      return [];
+    }
+    const cleanQuery = queryStr.trim();
+    if (cleanQuery.length < 3) {
+      return [];
+    }
+
+    const lowerQuery = cleanQuery.toLowerCase();
+
+    // Query active industries, projecting strictly non-confidential public fields
+    const industries = await IndustryModel.find(
+      { status: { $ne: 'Inactive' } },
+      { _id: 1, name: 1, code: 1, sector: 1, location: 1 }
+    ).lean();
+
+    const matches = [];
+
+    for (const ind of industries) {
+      const name = (ind.name || '').trim();
+      const code = (ind.code || '').trim();
+      const lowerName = name.toLowerCase();
+      const lowerCode = code.toLowerCase();
+
+      let isMatch = false;
+
+      // 1. Code match: query >= 50% of code length
+      if (lowerCode && lowerCode.includes(lowerQuery)) {
+        if (cleanQuery.length >= Math.ceil(code.length * 0.5)) {
+          isMatch = true;
+        }
+      }
+
+      // 2. Full name match: query >= 50% of name length
+      if (!isMatch && lowerName.includes(lowerQuery)) {
+        if (cleanQuery.length >= Math.ceil(name.length * 0.5)) {
+          isMatch = true;
+        }
+      }
+
+      // 3. Word token match: query >= 50% of distinctive word token (token length >= 3)
+      if (!isMatch) {
+        const tokens = lowerName.split(/[\s\-&/,]+/).filter((t) => t.length >= 3);
+        for (const token of tokens) {
+          if (token.startsWith(lowerQuery) || token.includes(lowerQuery)) {
+            const minTokenLen = Math.max(3, Math.ceil(token.length * 0.5));
+            if (cleanQuery.length >= minTokenLen) {
+              isMatch = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (isMatch) {
+        matches.push({
+          _id: ind._id,
+          name: ind.name,
+          code: ind.code || '',
+          sector: ind.sector || '',
+          location: ind.location || '',
+        });
+        if (matches.length >= 8) break;
+      }
+    }
+
+    return matches;
+  }
 }
+

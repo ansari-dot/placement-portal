@@ -65,7 +65,7 @@ export const updateIndustryController = async (req, res, next) => {
 
 export const getIndustryStatsController = async (req, res, next) => {
   try {
-    const stats = await IndustryService.getIndustryStats();
+    const stats = await IndustryService.getIndustryStats(req.user);
     res.status(200).json({
       success: true,
       data: stats,
@@ -98,3 +98,17 @@ export const deleteIndustryController = async (req, res, next) => {
     next(error);
   }
 };
+
+export const industryAutocompleteController = async (req, res, next) => {
+  try {
+    const q = String(req.query.q || req.query.query || req.query.search || '');
+    const results = await IndustryService.autocompleteIndustries(q);
+    res.status(200).json({
+      success: true,
+      data: results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

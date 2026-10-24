@@ -2,6 +2,9 @@ import jwt from 'jsonwebtoken';
 import UserModel from '../user/user.model.js';
 import StudentModel from '../student/student.model.js';
 import RtoModel from '../rto/rto.model.js';
+import { RtoService } from '../rto/rto.service.js';
+import IndustryModel from '../industry/industry.model.js';
+import { IndustryService } from '../industry/industry.service.js';
 import NotificationModel from '../notification/notification.model.js';
 import {
   BadRequestError,
@@ -113,6 +116,38 @@ export class AuthService {
       throw new ConflictError('A user with this email address already exists');
     }
 
+    // Auto-resolve RTO for RTO Manager signup if matching RTO is in system
+    let boundRtoId = null;
+    let boundRtoName = null;
+    if (canonicalRole === 'RTO Manager' && rtoName) {
+      try {
+        const cleanRto = rtoName.trim();
+        const matched = await RtoModel.findOne({
+          name: { $regex: `^${cleanRto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        });
+        if (matched) {
+          boundRtoId = matched._id;
+          boundRtoName = matched.name;
+        }
+      } catch (_) {}
+    }
+
+    // Auto-resolve Industry facility for Industry signup if matching Industry is in system
+    let boundIndustryId = null;
+    let boundFacilityName = null;
+    if (canonicalRole === 'Industry' && facilityName) {
+      try {
+        const cleanFac = facilityName.trim();
+        const matched = await IndustryModel.findOne({
+          name: { $regex: `^${cleanFac.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        });
+        if (matched) {
+          boundIndustryId = matched._id;
+          boundFacilityName = matched.name;
+        }
+      } catch (_) {}
+    }
+
     let user;
     try {
       user = await UserModel.create({
@@ -127,10 +162,15 @@ export class AuthService {
         department: canonicalRole === 'Industry' ? 'Industry Partner' : canonicalRole === 'RTO Manager' ? 'RTO Relations' : 'Placement Operations',
         registrationNotes: (notes || '').trim(),
         requestedOrgName: (rtoName || '').trim(),
+        rtoId: boundRtoId,
+        rtoName: boundRtoName || (rtoName ? rtoName.trim() : undefined),
         requestedFacilityName: (facilityName || '').trim(),
+        industryId: boundIndustryId,
+        facilityName: boundFacilityName || (facilityName ? facilityName.trim() : undefined),
         requestedCourse: (course || '').trim(),
         requestedStudentId: (studentId || '').trim(),
       });
+
     } catch (err) {
       if (err.code === 11000) {
         throw new ConflictError('A user with this email address already exists');
@@ -160,14 +200,20 @@ export class AuthService {
     }
 
     return {
+      _id: user._id,
       id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
       status: user.status,
       approved: user.approved,
+      industryId: user.industryId,
+      facilityName: user.facilityName,
+      rtoId: user.rtoId,
+      rtoName: user.rtoName,
     };
   }
+
 
   static async logout(user) {
     if (user?._id) {
@@ -332,4 +378,13 @@ export class AuthService {
       rtos: mappedRtos,
     };
   }
+
+  static async autocompleteRtos(queryStr) {
+    return await RtoService.autocompleteRtos(queryStr);
+  }
+
+  static async autocompleteIndustries(queryStr) {
+    return await IndustryService.autocompleteIndustries(queryStr);
+  }
 }
+

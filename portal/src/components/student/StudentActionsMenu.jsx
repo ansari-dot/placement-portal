@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useSelector } from 'react-redux';
 import { Eye, Pencil, Trash2, UserCheck, FileText, Calendar, Building2, Moon, RotateCcw } from 'lucide-react';
 
 export default function StudentActionsMenu({
@@ -14,6 +15,8 @@ export default function StudentActionsMenu({
   menuPos,
 }) {
   const menuRef = useRef(null);
+  const authUser = useSelector((state) => state.auth?.user);
+  const isRtoManager = authUser?.role === 'RTO Manager' || authUser?.role === 'RTO';
   const hasCoordinator = !!(student?.assignedCoordinator || student?.assignedCoordinatorName);
 
   useEffect(() => {
@@ -38,25 +41,26 @@ export default function StudentActionsMenu({
       className={`w-56 bg-white border border-slate-200 rounded-xl shadow-2xl py-1 ring-1 ring-black/10 animate-in fade-in duration-150 ${!menuPos ? 'absolute right-0 mt-1 z-30' : ''}`}
     >
 
-      {/* 1. Change Placement Request — coordinators can change type; admin also sees Generate */}
-      {hasPlacementRequest ? (
-        <button
-          onClick={() => { onClose(); onAction('changePlacement', student); }}
-          className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
-        >
-          <FileText size={14} className="text-teal-500" />
-          <span>Change Placement Request</span>
-        </button>
-      ) : (
-        /* Generate Placement Request — admin only; coordinators do not see this */
-        isAdmin && allowGenerate && (
+      {/* 1. Change Placement Request — coordinators can change type; admin also sees Generate; hidden for RTO */}
+      {!isRtoManager && (
+        hasPlacementRequest ? (
           <button
-            onClick={() => { onClose(); onAction('generateRequest', student); }}
+            onClick={() => { onClose(); onAction('changePlacement', student); }}
             className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
           >
             <FileText size={14} className="text-teal-500" />
-            <span>Generate Placement Request</span>
+            <span>Change Placement Request</span>
           </button>
+        ) : (
+          isAdmin && allowGenerate && (
+            <button
+              onClick={() => { onClose(); onAction('generateRequest', student); }}
+              className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
+            >
+              <FileText size={14} className="text-teal-500" />
+              <span>Generate Placement Request</span>
+            </button>
+          )
         )
       )}
 
@@ -99,33 +103,37 @@ export default function StudentActionsMenu({
         <span>Edit Details</span>
       </button>
 
-      {/* 4. Add Industry — takes coordinator to Placement Request (Step 2) */}
-      <button
-        onClick={() => { onClose(); onAction('contactIndustry', student); }}
-        className="w-full px-3 py-2 text-left text-xs font-semibold text-sky-700 hover:bg-sky-50 flex items-center space-x-2 transition cursor-pointer"
-      >
-        <Building2 size={14} className="text-sky-500" />
-        <span>Add Industry</span>
-      </button>
+      {!isRtoManager && (
+        <>
+          {/* 4. Add Industry — takes coordinator to Placement Request (Step 2) */}
+          <button
+            onClick={() => { onClose(); onAction('contactIndustry', student); }}
+            className="w-full px-3 py-2 text-left text-xs font-semibold text-sky-700 hover:bg-sky-50 flex items-center space-x-2 transition cursor-pointer"
+          >
+            <Building2 size={14} className="text-sky-500" />
+            <span>Add Industry</span>
+          </button>
 
-      {allowCreateAppointment && (
-        <button
-          onClick={() => { onClose(); onAction('createAppointment', student); }}
-          className="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50 flex items-center space-x-2 transition cursor-pointer"
-        >
-          <Calendar size={14} className="text-indigo-500" />
-          <span>Create Appointment</span>
-        </button>
-      )}
+          {allowCreateAppointment && (
+            <button
+              onClick={() => { onClose(); onAction('createAppointment', student); }}
+              className="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50 flex items-center space-x-2 transition cursor-pointer"
+            >
+              <Calendar size={14} className="text-indigo-500" />
+              <span>Create Appointment</span>
+            </button>
+          )}
 
-      {canAssign && (
-        <button
-          onClick={() => { onClose(); onAction('assignCoordinator', student); }}
-          className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center space-x-2 transition cursor-pointer"
-        >
-          <UserCheck size={14} className="text-blue-500" />
-          <span>{hasCoordinator ? 'Change Coordinator' : 'Assign Coordinator'}</span>
-        </button>
+          {canAssign && (
+            <button
+              onClick={() => { onClose(); onAction('assignCoordinator', student); }}
+              className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center space-x-2 transition cursor-pointer"
+            >
+              <UserCheck size={14} className="text-blue-500" />
+              <span>{hasCoordinator ? 'Change Coordinator' : 'Assign Coordinator'}</span>
+            </button>
+          )}
+        </>
       )}
 
       {/* Delete — admin only */}

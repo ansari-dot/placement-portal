@@ -172,7 +172,38 @@ export class UserService {
     user.rejectedBy = null;
     user.rejectionReason = '';
 
+    if ((user.role === 'RTO Manager' || user.role === 'RTO') && !user.rtoId && (user.requestedOrgName || user.rtoName)) {
+      try {
+        const orgSearch = (user.requestedOrgName || user.rtoName).trim();
+        const matchedRto = await RTOModel.findOne({
+          name: { $regex: `^${orgSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        });
+        if (matchedRto) {
+          user.rtoId = matchedRto._id;
+          user.rtoName = matchedRto.name;
+        } else if (!user.rtoName) {
+          user.rtoName = orgSearch;
+        }
+      } catch (_) {}
+    }
+
+    if ((user.role === 'Industry' || user.role === 'Industry/Host') && !user.industryId && (user.requestedFacilityName || user.facilityName)) {
+      try {
+        const facSearch = (user.requestedFacilityName || user.facilityName).trim();
+        const matchedIndustry = await IndustryModel.findOne({
+          name: { $regex: `^${facSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        });
+        if (matchedIndustry) {
+          user.industryId = matchedIndustry._id;
+          user.facilityName = matchedIndustry.name;
+        } else if (!user.facilityName) {
+          user.facilityName = facSearch;
+        }
+      } catch (_) {}
+    }
+
     await user.save();
+
 
     try {
       await NotificationModel.create({

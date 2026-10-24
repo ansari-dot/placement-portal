@@ -62,6 +62,13 @@ export const authRateLimiter = createRateLimiter({
   message: 'Too many authentication attempts. Please wait 15 minutes before trying again.',
 });
 
+// Autocomplete typeahead limiter: 120 queries per 1 minute per IP
+export const autocompleteRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 120,
+  message: 'Too many search requests. Please throttle your queries.',
+});
+
 // General API burst limiter: 300 requests per 1 minute per IP
 export const apiRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,

@@ -119,12 +119,24 @@ export class AttendanceService {
       if (user.facilityName) finalFacilityName = user.facilityName;
       if (user.industryId) {
         industryDoc = await IndustryModel.findById(user.industryId);
+        if (industryDoc && !finalFacilityName) finalFacilityName = industryDoc.name;
       }
       if (!finalFacilityName && userEmail) {
         const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
         if (matchedInd) {
           industryDoc = matchedInd;
           finalFacilityName = matchedInd.name;
+        }
+      }
+      if (!finalFacilityName && user.requestedFacilityName) {
+        const matchedInd = await IndustryModel.findOne({
+          name: { $regex: `^${user.requestedFacilityName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        });
+        if (matchedInd) {
+          industryDoc = matchedInd;
+          finalFacilityName = matchedInd.name;
+        } else {
+          finalFacilityName = user.requestedFacilityName;
         }
       }
 
@@ -264,8 +276,19 @@ export class AttendanceService {
     const role = user?.role;
     // Industry can only update attendance for their facility
     if (role === 'Industry' || role === 'Industry/Host') {
-      const facName = (user.facilityName || '').trim().toLowerCase();
-      if (facName && (record.facilityName || '').trim().toLowerCase() !== facName) {
+      let facName = (user.facilityName || '').trim().toLowerCase();
+      if (!facName && user.industryId) {
+        const matchedInd = await IndustryModel.findById(user.industryId);
+        if (matchedInd) facName = (matchedInd.name || '').trim().toLowerCase();
+      }
+      if (!facName && user?.email) {
+        const matchedInd = await IndustryModel.findOne({ contactEmail: user.email.toLowerCase().trim() });
+        if (matchedInd) facName = (matchedInd.name || '').trim().toLowerCase();
+      }
+      if (!facName && user?.requestedFacilityName) {
+        facName = user.requestedFacilityName.trim().toLowerCase();
+      }
+      if (!facName || (record.facilityName || '').trim().toLowerCase() !== facName) {
         throw new NotFoundError('Attendance record not found');
       }
     }
@@ -294,8 +317,19 @@ export class AttendanceService {
 
     const role = user?.role;
     if (role === 'Industry' || role === 'Industry/Host') {
-      const facName = (user.facilityName || '').trim().toLowerCase();
-      if (facName && (record.facilityName || '').trim().toLowerCase() !== facName) {
+      let facName = (user.facilityName || '').trim().toLowerCase();
+      if (!facName && user.industryId) {
+        const matchedInd = await IndustryModel.findById(user.industryId);
+        if (matchedInd) facName = (matchedInd.name || '').trim().toLowerCase();
+      }
+      if (!facName && user?.email) {
+        const matchedInd = await IndustryModel.findOne({ contactEmail: user.email.toLowerCase().trim() });
+        if (matchedInd) facName = (matchedInd.name || '').trim().toLowerCase();
+      }
+      if (!facName && user?.requestedFacilityName) {
+        facName = user.requestedFacilityName.trim().toLowerCase();
+      }
+      if (!facName || (record.facilityName || '').trim().toLowerCase() !== facName) {
         throw new NotFoundError('Attendance record not found');
       }
     }

@@ -73,7 +73,7 @@ const selectClass = (hasError) =>
       : 'border-slate-200 text-slate-800'
   }`;
 
-export default function EducationDetailsForm({ formData, updateField, errors }) {
+export default function EducationDetailsForm({ formData, updateField, errors, isRtoManager = false, userRtoName = '' }) {
   const [activeRtos, setActiveRtos] = useState([]);
   const [allRtos, setAllRtos] = useState([]);
   const [loadingRtos, setLoadingRtos] = useState(true);
@@ -308,22 +308,24 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                 >
                   RTO Student
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    updateField('studentType', 'Independent Student');
-                    updateField('assignedRto', 'Independent Student');
-                    updateField('institute', 'Independent Student');
-                    updateField('rtoId', undefined);
-                  }}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
-                    formData.studentType === 'Independent Student'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Independent Student
-                </button>
+                {!isRtoManager && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateField('studentType', 'Independent Student');
+                      updateField('assignedRto', 'Independent Student');
+                      updateField('institute', 'Independent Student');
+                      updateField('rtoId', undefined);
+                    }}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
+                      formData.studentType === 'Independent Student'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Independent Student
+                  </button>
+                )}
               </div>
             </div>
 
@@ -433,6 +435,17 @@ export default function EducationDetailsForm({ formData, updateField, errors }) 
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 font-semibold cursor-not-allowed"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">Billed directly to student; not assigned to an RTO partner.</p>
+              </div>
+            ) : isRtoManager ? (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO</label>
+                <input
+                  type="text"
+                  value={userRtoName || formData.assignedRto || 'Your Registered Training Organisation'}
+                  disabled
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold cursor-not-allowed"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Student will be automatically registered under your RTO.</p>
               </div>
             ) : (
               <div>

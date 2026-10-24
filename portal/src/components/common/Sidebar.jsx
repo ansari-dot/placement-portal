@@ -19,7 +19,10 @@ import {
   ChevronRight,
   CreditCard,
   FileSpreadsheet,
+  Star,
 } from 'lucide-react';
+import ReviewSubmitModal from '../review/ReviewSubmitModal';
+import { fetchAdminReviews } from '../../api/reviewApi';
 
 export default function Sidebar() {
   const location = useLocation();
@@ -32,14 +35,22 @@ export default function Sidebar() {
   const isStudent = userRole === 'Student';
   const isIndustry = userRole === 'Industry';
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingReviewsCount, setPendingReviewsCount] = useState(0);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
       const checkPending = async () => {
         try {
-          const res = await fetchPendingUsers();
+          const [res, revRes] = await Promise.all([
+            fetchPendingUsers(),
+            fetchAdminReviews({ status: 'Pending' }),
+          ]);
           if (res.success && Array.isArray(res.data)) {
             setPendingCount(res.data.length);
+          }
+          if (revRes?.stats?.pending !== undefined) {
+            setPendingReviewsCount(revRes.stats.pending);
           }
         } catch (err) {
           // ignore silently
@@ -49,10 +60,12 @@ export default function Sidebar() {
       const interval = setInterval(checkPending, 10000);
       window.addEventListener('focus', checkPending);
       window.addEventListener('user-approval-changed', checkPending);
+      window.addEventListener('reviews-changed', checkPending);
       return () => {
         clearInterval(interval);
         window.removeEventListener('focus', checkPending);
         window.removeEventListener('user-approval-changed', checkPending);
+        window.removeEventListener('reviews-changed', checkPending);
       };
     }
   }, [isAdmin]);
@@ -289,8 +302,8 @@ export default function Sidebar() {
             </Link>
 
 
-            {/* Add Student — Admin only */}
-            {isAdmin && (
+            {/* Add Student — Admin, Coordinator & RTO Manager */}
+            {(isAdmin || isCoordinator || isRtoManager) && (
             <Link
               to="/add-student"
               className={navLinkClass('/add-student')}
@@ -406,18 +419,57 @@ export default function Sidebar() {
                 )}
               </Link>
               {isAdmin && (
-                <Link to="/user-log" className={`${navLinkClass('/user-log')} justify-between`}>
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <ClipboardList className={iconClass('/user-log')} />
-                    <span className="truncate">User Log</span>
-                  </div>
-                  <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
-                </Link>
+                <>
+                  <Link to="/reviews" className={`${navLinkClass('/reviews')} justify-between`}>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Star className={iconClass('/reviews')} />
+                      <span className="truncate">Reviews</span>
+                    </div>
+                    {pendingReviewsCount > 0 ? (
+                      <span
+                        className="px-1.5 py-0.5 bg-[#f59e0b] text-slate-950 font-black text-[9px] rounded-full animate-pulse shadow-sm border border-amber-300 shrink-0"
+                        title={`${pendingReviewsCount} Pending review(s) awaiting approval`}
+                      >
+                        {pendingReviewsCount}
+                      </span>
+                    ) : (
+                      <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                    )}
+                  </Link>
+
+                  <Link to="/user-log" className={`${navLinkClass('/user-log')} justify-between`}>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <ClipboardList className={iconClass('/user-log')} />
+                      <span className="truncate">User Log</span>
+                    </div>
+                    <ChevronRight className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                  </Link>
+                </>
               )}
             </div>
           </>
         )}
       </div>
+
+      {/* =====================================================
+          REVIEW BUTTON FOR STUDENTS, RTOs, AND INDUSTRY
+      ====================================================== */}
+      {(isStudent || isRtoManager || isIndustry) && (
+        <div className="px-3 py-2 border-t border-white/10">
+          <button
+            onClick={() => setIsReviewModalOpen(true)}
+            className="w-full py-1.5 px-2 bg-gradient-to-r from-amber-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-teal-500/30 border border-amber-400/30 rounded-lg text-amber-300 font-bold text-[10px] flex items-center justify-center space-x-1.5 transition cursor-pointer"
+          >
+            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            <span>Rate & Review Portal</span>
+          </button>
+        </div>
+      )}
+
+      <ReviewSubmitModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+      />
 
 
       {/* =====================================================

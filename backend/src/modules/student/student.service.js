@@ -6,6 +6,7 @@ import WorkflowModel from '../workflow/workflow.model.js';
 import NotificationModel from '../notification/notification.model.js';
 import { purgeStudentFromWorkflows } from '../workflow/workflow.service.js';
 import { sanitizeStudentDataForRole } from '../../core/utils/rbacSanitizer.js';
+import { getStudentQueryScope } from '../../core/utils/rbacScope.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -38,7 +39,55 @@ export class StudentService {
     return `${STUDENT_ID_PREFIX}${maxNum + 1}`;
   }
 
-  static async createStudent(studentData, { silent = false } = {}) {
+  static async createStudent(studentData, { silent = false, actingUser } = {}) {
+    const role = actingUser?.role;
+    const isRto = role === 'RTO Manager' || role === 'RTO';
+
+    if (isRto) {
+      let userRtoName = actingUser.rtoName;
+      let userRtoId = actingUser.rtoId;
+      const userEmail = actingUser.email?.toLowerCase()?.trim();
+
+      if (!userRtoName && userEmail) {
+        const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
+        if (matchedRto) {
+          userRtoName = matchedRto.name;
+          userRtoId = matchedRto._id;
+        }
+      }
+      if (!userRtoName && actingUser.requestedOrgName) {
+        const matchedRto = await RtoModel.findOne({
+          name: { $regex: `^${actingUser.requestedOrgName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        });
+        if (matchedRto) {
+          userRtoName = matchedRto.name;
+          userRtoId = matchedRto._id;
+        } else {
+          userRtoName = actingUser.requestedOrgName;
+        }
+      }
+
+      if (!userRtoName) {
+        throw new ForbiddenError('RTO Manager account is not associated with an approved RTO organisation.');
+      }
+
+      // Automatically bind student to authenticated RTO — never trust client payload for tenant binding!
+      studentData.assignedRto = userRtoName;
+      studentData.institute = userRtoName;
+      studentData.rtoId = userRtoId;
+      studentData.studentType = 'RTO Student';
+
+      // Strip coordinator and industry fields to prevent unauthorized assignment
+      delete studentData.assignedCoordinator;
+      delete studentData.assignedCoordinatorName;
+      delete studentData.assignedCoordinatorAt;
+      delete studentData.assignedCoordinatorEmail;
+      delete studentData.coordinatorHistory;
+      delete studentData.contactedIndustries;
+      delete studentData.placementSite;
+      delete studentData.preferredIndustry;
+    }
+
     const manualId = (studentData.studentId || '').trim();
 
     if (manualId) {
@@ -102,58 +151,13 @@ export class StudentService {
         }
         filter = { $or: coordMatches };
       } else if (isRto) {
-        let userRtoName = user.rtoName;
-        if (!userRtoName && userEmail) {
-          const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
-          if (matchedRto) userRtoName = matchedRto.name;
-        }
-        if (userRtoName) {
-          filter = { assignedRto: { $regex: `^${userRtoName.trim()}$`, $options: 'i' } };
-        } else {
-          filter = { _id: null };
-        }
+        filter = await getStudentQueryScope(user);
       } else if (isStudent) {
         filter = {
           $or: [{ emailAddress: userEmail }, { _id: user.studentIdRef || user._id }],
         };
       } else if (isIndustry) {
-        let facilityName = user.facilityName;
-        if (!facilityName && userEmail) {
-          const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
-          if (matchedInd) facilityName = matchedInd.name;
-        }
-        if (facilityName) {
-          const workflows = await WorkflowModel.find({
-            $or: [
-              { 'appointments.company': { $regex: facilityName.trim(), $options: 'i' } },
-              { 'internships.company': { $regex: facilityName.trim(), $options: 'i' } },
-              { 'requests.contactedIndustries.organizationName': { $regex: facilityName.trim(), $options: 'i' } },
-            ],
-          }).lean();
-
-          const assignedStudentIds = new Set();
-          for (const wf of workflows) {
-            for (const appt of wf.appointments || []) {
-              if (appt.company && new RegExp(facilityName.trim(), 'i').test(appt.company)) {
-                if (appt.studentId) assignedStudentIds.add(appt.studentId);
-              }
-            }
-            for (const intern of wf.internships || []) {
-              if (intern.company && new RegExp(facilityName.trim(), 'i').test(intern.company)) {
-                if (intern.studentId) assignedStudentIds.add(intern.studentId);
-              }
-            }
-          }
-
-          filter = {
-            $or: [
-              { studentId: { $in: Array.from(assignedStudentIds) } },
-              { _id: { $in: Array.from(assignedStudentIds).filter((id) => id.length === 24) } },
-            ],
-          };
-        } else {
-          filter = { _id: null };
-        }
+        filter = await getStudentQueryScope(user);
       } else {
         filter = { assignedCoordinator: user._id };
       }
@@ -221,39 +225,72 @@ export class StudentService {
         }
       } else if (role === 'RTO Manager' || role === 'RTO') {
         let userRtoName = user.rtoName;
+        let userRtoId = user.rtoId;
         if (!userRtoName && userEmail) {
           const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
-          if (matchedRto) userRtoName = matchedRto.name;
+          if (matchedRto) {
+            userRtoName = matchedRto.name;
+            userRtoId = matchedRto._id;
+          }
+        }
+        if (!userRtoName && user.requestedOrgName) {
+          const matchedRto = await RtoModel.findOne({
+            name: { $regex: `^${user.requestedOrgName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+          });
+          if (matchedRto) {
+            userRtoName = matchedRto.name;
+            userRtoId = matchedRto._id;
+          } else {
+            userRtoName = user.requestedOrgName;
+          }
         }
         const matchesRtoName =
           userRtoName &&
           student.assignedRto &&
           student.assignedRto.trim().toLowerCase() === userRtoName.trim().toLowerCase();
+        const matchesInstitute =
+          userRtoName &&
+          student.institute &&
+          student.institute.trim().toLowerCase() === userRtoName.trim().toLowerCase();
         const matchesRtoId =
-          user.rtoId &&
+          userRtoId &&
           student.rtoId &&
-          student.rtoId.toString() === user.rtoId.toString();
+          student.rtoId.toString() === userRtoId.toString();
 
-        if (!matchesRtoName && !matchesRtoId) {
+        if (!matchesRtoName && !matchesInstitute && !matchesRtoId) {
           throw new NotFoundError('Student not found');
         }
       } else if (role === 'Industry' || role === 'Industry/Host') {
         let facilityName = user.facilityName;
+        let industryId = user.industryId;
+
+        if (!facilityName && industryId) {
+          const matchedInd = await IndustryModel.findById(industryId);
+          if (matchedInd) facilityName = matchedInd.name;
+        }
         if (!facilityName && userEmail) {
           const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
           if (matchedInd) facilityName = matchedInd.name;
+        }
+        if (!facilityName && user.requestedFacilityName) {
+          const matchedInd = await IndustryModel.findOne({
+            name: { $regex: `^${user.requestedFacilityName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+          });
+          if (matchedInd) facilityName = matchedInd.name;
+          else facilityName = user.requestedFacilityName;
         }
 
         let isAssigned = false;
         if (facilityName) {
           const facLower = facilityName.trim().toLowerCase();
+          const escaped = facilityName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           if (student.placementSite && String(student.placementSite).toLowerCase().includes(facLower)) {
             isAssigned = true;
           } else {
             const hasAppointment = await WorkflowModel.findOne({
               $or: [
-                { appointments: { $elemMatch: { studentId: student.studentId, company: { $regex: `^${facilityName.trim()}$`, $options: 'i' } } } },
-                { internships: { $elemMatch: { studentId: student.studentId, company: { $regex: `^${facilityName.trim()}$`, $options: 'i' } } } },
+                { appointments: { $elemMatch: { studentId: student.studentId, company: { $regex: `^${escaped}$`, $options: 'i' } } } },
+                { internships: { $elemMatch: { studentId: student.studentId, company: { $regex: `^${escaped}$`, $options: 'i' } } } },
               ],
             }).lean();
             if (hasAppointment) isAssigned = true;
@@ -321,6 +358,20 @@ export class StudentService {
           }
         }
         studentData = sanitizedUpdate;
+      } else if (role === 'RTO Manager' || role === 'RTO') {
+        // RTO Managers cannot reassign student to another RTO or assign coordinators/industries
+        delete studentData.assignedRto;
+        delete studentData.institute;
+        delete studentData.rtoId;
+        delete studentData.studentType;
+        delete studentData.assignedCoordinator;
+        delete studentData.assignedCoordinatorName;
+        delete studentData.assignedCoordinatorAt;
+        delete studentData.assignedCoordinatorEmail;
+        delete studentData.coordinatorHistory;
+        delete studentData.contactedIndustries;
+        delete studentData.placementSite;
+        delete studentData.preferredIndustry;
       }
 
       // Chronology validation if dates are being updated
@@ -397,7 +448,7 @@ export class StudentService {
       } catch (_) {}
     }
 
-    return student;
+    return sanitizeStudentDataForRole(student, role);
   }
 
   static async deleteStudent(id, actingUser) {

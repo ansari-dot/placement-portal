@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import { ChevronRight, Check } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
@@ -114,6 +115,23 @@ export default function AddNewStudentPage() {
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const totalSteps = 4;
+
+  const authUser = useSelector((state) => state.auth?.user);
+  const isRtoManager = authUser?.role === 'RTO Manager' || authUser?.role === 'RTO';
+  const userRtoName = authUser?.rtoName || authUser?.requestedOrgName || '';
+  const userRtoId = authUser?.rtoId || '';
+
+  useEffect(() => {
+    if (isRtoManager && userRtoName) {
+      setFormData(prev => ({
+        ...prev,
+        assignedRto: userRtoName,
+        institute: userRtoName,
+        rtoId: userRtoId,
+        studentType: 'RTO Student',
+      }));
+    }
+  }, [isRtoManager, userRtoName, userRtoId]);
 
   const steps = [
     { number: 1, title: 'Personal Information', subtitle: 'Basic details of the student' },
@@ -261,7 +279,15 @@ export default function AddNewStudentPage() {
       case 1:
         return <PersonalInformationForm formData={formData} updateField={updateField} errors={errors} />;
       case 2:
-        return <EducationDetailsForm formData={formData} updateField={updateField} errors={errors} />;
+        return (
+          <EducationDetailsForm
+            formData={formData}
+            updateField={updateField}
+            errors={errors}
+            isRtoManager={isRtoManager}
+            userRtoName={userRtoName}
+          />
+        );
       case 3:
         return <RtoSourceForm formData={formData} updateField={updateField} updateFields={updateFields} errors={errors} />;
       case 4:

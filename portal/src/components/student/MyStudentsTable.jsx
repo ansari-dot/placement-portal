@@ -95,6 +95,7 @@ export default function MyStudentsTable() {
   const authUser = useSelector((state) => state.auth.user);
   const isAdmin = authUser?.role === 'Administrator';
   const isCoordinator = authUser?.role === 'Coordinator';
+  const isRtoManager = authUser?.role === 'RTO Manager' || authUser?.role === 'RTO';
 
   const [rowsPerPage, setRowsPerPage] = useState('10 per page');
   const [currentPage, setCurrentPage] = useState(1);
@@ -425,7 +426,9 @@ export default function MyStudentsTable() {
 
     return students.filter(s => {
       // ── Role-based and Coordinator filter ──
-      if (!isAdmin) {
+      if (isRtoManager) {
+        // RTO Managers see all students scoped to their RTO (already scoped by backend)
+      } else if (!isAdmin) {
         const isAssignedToMe =
           (s.assignedCoordinator && currentUserId && norm(s.assignedCoordinator) === norm(currentUserId)) ||
           (s.assignedCoordinatorName && currentUserName && norm(s.assignedCoordinatorName) === norm(currentUserName));
@@ -476,7 +479,7 @@ export default function MyStudentsTable() {
       }
       return true;
     });
-  }, [students, filters, isAdmin, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
+  }, [students, filters, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
 
   const sortedStudents = useMemo(() => {
     if (!sortField) return filteredStudents;
@@ -730,6 +733,18 @@ export default function MyStudentsTable() {
                   <option value="unassigned">Unassigned Students ({students.filter(s => !s.assignedCoordinator && !s.assignedCoordinatorName).length})</option>
                 </select>
               </div>
+            </div>
+          ) : isRtoManager ? (
+            <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 px-4 flex items-center justify-between shadow-2xs">
+              <div className="flex items-center space-x-2.5">
+                <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                <p className="text-xs text-blue-900 font-semibold">
+                  Showing students registered under <span className="font-bold">{authUser?.rtoName || authUser?.requestedOrgName || 'your RTO'}</span> ({filteredStudents.length} students)
+                </p>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                RTO View
+              </span>
             </div>
           ) : (
             <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 px-4 flex items-center justify-between shadow-2xs">

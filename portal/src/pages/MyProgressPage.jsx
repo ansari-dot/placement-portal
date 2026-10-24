@@ -21,6 +21,14 @@ export default function MyProgressPage() {
   const [activeTab, setActiveTab] = useState('students');
   const authUser = useSelector((s) => s.auth?.user);
   const isAdmin  = authUser?.role === 'Administrator';
+  const isRtoManager = authUser?.role === 'RTO Manager' || authUser?.role === 'RTO';
+
+  const visibleTabs = TABS.filter(tab => {
+    if (isRtoManager) {
+      return tab.key === 'students' || tab.key === 'rto';
+    }
+    return true;
+  });
 
   if (authUser?.role === 'Industry') {
     return <IndustryPortalPage />;
@@ -42,7 +50,7 @@ export default function MyProgressPage() {
         <div className="bg-white border-b border-slate-200 shrink-0">
           <div className="max-w-[1600px] mx-auto px-6">
             <nav className="flex items-center gap-1" aria-label="Progress tabs">
-              {TABS.map(({ key, label, icon: Icon }) => {
+              {visibleTabs.map(({ key, label, icon: Icon }) => {
                 const active = activeTab === key;
                 return (
                   <button

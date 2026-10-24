@@ -19,6 +19,7 @@ import IndustryPage from "./pages/IndustryPage";
 import JobPage from "./pages/JobPage";
 import UsersPage from "./pages/UsersPage";
 import UserLogPage from "./pages/UserLogPage";
+import AdminReviewsPage from "./pages/AdminReviewsPage";
 
 import { useHeartbeat } from "./hooks/useHeartbeat";
 
@@ -62,7 +63,7 @@ const AppRoutes = () => {
       <Route
         path="/add-student"
         element={
-          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff']}>
+          <ProtectedRoute allowedRoles={['Administrator', 'Coordinator', 'Staff', 'RTO Manager', 'RTO']}>
             <AddNewStudentPage />
           </ProtectedRoute>
         }
@@ -136,6 +137,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute allowedRoles={['Administrator']}>
             <UserLogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reviews"
+        element={
+          <ProtectedRoute allowedRoles={['Administrator']}>
+            <AdminReviewsPage />
           </ProtectedRoute>
         }
       />

@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import { fetchStudents } from '../api/studentsApi';
-import { User, BookOpen, Calendar, Clock, CheckCircle2, ShieldCheck, Mail, Phone, MapPin } from 'lucide-react';
+import ReviewSubmitModal from '../components/review/ReviewSubmitModal';
+import { User, BookOpen, Calendar, Clock, CheckCircle2, ShieldCheck, Mail, Phone, MapPin, Star } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 export default function StudentPortalPage() {
   const [studentProfile, setStudentProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   useEffect(() => {
     loadMyProfile();
@@ -47,9 +49,18 @@ export default function StudentPortalPage() {
                 <p className="text-xs text-white/80 font-medium">Student ID: {studentProfile?.studentId || studentProfile?.id || 'N/A'}</p>
               </div>
             </div>
-            <span className="px-4 py-1.5 bg-white/20 text-white rounded-xl text-xs font-bold backdrop-blur-md border border-white/20">
-              {studentProfile?.placementStatus || 'Active Student'}
-            </span>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setIsReviewModalOpen(true)}
+                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl text-xs font-bold transition shadow-sm flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Star className="w-4 h-4 fill-slate-900 text-slate-900" />
+                <span>Rate Your Placement</span>
+              </button>
+              <span className="px-4 py-2 bg-white/20 text-white rounded-xl text-xs font-bold backdrop-blur-md border border-white/20">
+                {studentProfile?.placementStatus || 'Active Student'}
+              </span>
+            </div>
           </div>
 
           {loading ? (
@@ -169,10 +180,37 @@ export default function StudentPortalPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Rate & Review Experience Callout Card */}
+              <div className="md:col-span-2 bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-teal-500/10 border border-amber-300/40 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-400/20 text-amber-600 flex items-center justify-center shrink-0">
+                    <Star className="w-6 h-6 fill-amber-500 text-amber-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">How has your placement experience been?</h3>
+                    <p className="text-xs text-slate-600">
+                      Submit a star rating and verified review for your placement journey. Once approved by the administrator, your feedback is featured publicly with privacy protection.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsReviewModalOpen(true)}
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold transition shadow-sm shrink-0 flex items-center space-x-2 cursor-pointer"
+                >
+                  <Star className="w-4 h-4 fill-white" />
+                  <span>Write Review & Rating</span>
+                </button>
+              </div>
             </div>
           )}
         </main>
       </div>
+
+      <ReviewSubmitModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+      />
     </div>
   );
 }

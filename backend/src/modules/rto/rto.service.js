@@ -63,15 +63,29 @@ export class RtoService {
       if (role === 'Coordinator' || role === 'Placement Coordinator') {
         filters.push(buildCoordinatorRtoFilter(user));
       } else if (role === 'RTO Manager' || role === 'RTO') {
+        let userRtoId = user.rtoId;
         let userRtoName = user.rtoName;
-        if (!userRtoName && userEmail) {
+        if (!userRtoName && !userRtoId && userEmail) {
           const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
-          if (matchedRto) userRtoName = matchedRto.name;
+          if (matchedRto) {
+            userRtoName = matchedRto.name;
+            userRtoId = matchedRto._id;
+          }
+        }
+        const rtoMatches = [];
+        if (userRtoId && mongoose.Types.ObjectId.isValid(userRtoId)) {
+          rtoMatches.push({ _id: new mongoose.Types.ObjectId(userRtoId) });
+        } else if (userRtoId) {
+          rtoMatches.push({ _id: userRtoId });
         }
         if (userRtoName) {
-          filters.push({ name: { $regex: `^${userRtoName.trim()}$`, $options: 'i' } });
-        } else if (userEmail) {
-          filters.push({ contactEmail: userEmail });
+          rtoMatches.push({ name: { $regex: `^${userRtoName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } });
+        }
+        if (!userRtoId && !userRtoName && userEmail) {
+          rtoMatches.push({ contactEmail: userEmail });
+        }
+        if (rtoMatches.length > 0) {
+          filters.push(rtoMatches.length === 1 ? rtoMatches[0] : { $or: rtoMatches });
         } else {
           filters.push({ _id: null });
         }
@@ -286,6 +300,19 @@ export class RtoService {
     if (actingUser && isCoordinator && !checkCoordinatorRtoOwnership(existing, actingUser)) {
       throw new ForbiddenError('Access denied. You can only edit RTOs added by you.');
     }
+    if (actingUser && (actingUser.role === 'RTO Manager' || actingUser.role === 'RTO')) {
+      const userEmail = (actingUser.email || '').toLowerCase().trim();
+      const userRtoName = (actingUser.rtoName || '').trim().toLowerCase();
+      const userRtoId = actingUser.rtoId ? String(actingUser.rtoId) : '';
+      const rtoIdStr = String(existing._id);
+      const isOwnRto =
+        (userRtoId && userRtoId === rtoIdStr) ||
+        (userRtoName && userRtoName === (existing.name || '').trim().toLowerCase()) ||
+        (userEmail && userEmail === (existing.contactEmail || '').trim().toLowerCase());
+      if (!isOwnRto) {
+        throw new ForbiddenError('Access denied. You can only edit your own RTO profile.');
+      }
+    }
 
     const rtoUpdates = { ...updates };
 
@@ -341,6 +368,86 @@ export class RtoService {
     }
 
     return rto;
+  }
+
+  /**
+   * Safe Autocomplete for RTO Registration:
+   * 1. Minimum query length is 3 characters (rejects 1 or 2 letter queries).
+   * 2. Evaluates query against candidate RTOs using the 50% name/token rule:
+   *    - Query length must be >= Math.ceil(candidateName.length * 0.5), OR
+   *    - Query length must be >= Math.ceil(distinctiveToken.length * 0.5) where token length >= 3,
+   *      and cleanQuery >= 3, OR
+   *    - Query length >= Math.ceil(candidateCode.length * 0.5).
+   * 3. Case-insensitive and trimmed.
+   * 4. Limits results to maximum 8 items.
+   * 5. Returns strictly non-confidential public fields: { _id, name, code }.
+   */
+  static async autocompleteRtos(queryStr) {
+    if (!queryStr || typeof queryStr !== 'string') {
+      return [];
+    }
+    const cleanQuery = queryStr.trim();
+    if (cleanQuery.length < 3) {
+      return [];
+    }
+
+    const lowerQuery = cleanQuery.toLowerCase();
+
+    // Query active RTOs, projecting only safe fields
+    const rtos = await RtoModel.find(
+      { status: { $ne: 'Inactive' } },
+      { _id: 1, name: 1, code: 1 }
+    ).lean();
+
+    const matches = [];
+
+    for (const rto of rtos) {
+      const name = (rto.name || '').trim();
+      const code = (rto.code || '').trim();
+      const lowerName = name.toLowerCase();
+      const lowerCode = code.toLowerCase();
+
+      let isMatch = false;
+
+      // 1. Code match: query >= 50% of code length
+      if (lowerCode && lowerCode.includes(lowerQuery)) {
+        if (cleanQuery.length >= Math.ceil(code.length * 0.5)) {
+          isMatch = true;
+        }
+      }
+
+      // 2. Full name match: query >= 50% of name length
+      if (!isMatch && lowerName.includes(lowerQuery)) {
+        if (cleanQuery.length >= Math.ceil(name.length * 0.5)) {
+          isMatch = true;
+        }
+      }
+
+      // 3. Word token match: query >= 50% of distinctive word token
+      if (!isMatch) {
+        const tokens = lowerName.split(/[\s\-&/,]+/).filter((t) => t.length >= 3);
+        for (const token of tokens) {
+          if (token.startsWith(lowerQuery) || token.includes(lowerQuery)) {
+            const minTokenLen = Math.max(3, Math.ceil(token.length * 0.5));
+            if (cleanQuery.length >= minTokenLen) {
+              isMatch = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (isMatch) {
+        matches.push({
+          _id: rto._id,
+          name: rto.name,
+          code: rto.code || '',
+        });
+        if (matches.length >= 8) break;
+      }
+    }
+
+    return matches;
   }
 
   static async enrichRtosWithStudentCounts(rtos) {
@@ -464,13 +571,46 @@ export class RtoService {
   static async getMyRtos(user) {
     if (!user) return [];
     const isAdmin = user.role === 'Administrator' || user.role === 'Admin';
-    const rtos = isAdmin
-      ? await RtoModel.find().select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean()
-      : await RtoModel.find(buildCoordinatorRtoFilter(user))
-          .select(LIST_EXCLUDE)
-          .sort({ createdAt: -1 })
-          .lean();
-    return await this.enrichRtosWithStudentCounts(rtos);
+    if (isAdmin) {
+      const rtos = await RtoModel.find().select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean();
+      return await this.enrichRtosWithStudentCounts(rtos);
+    }
+    if (user.role === 'RTO Manager' || user.role === 'RTO') {
+      const userEmail = (user.email || '').toLowerCase().trim();
+      let userRtoId = user.rtoId;
+      let userRtoName = user.rtoName;
+      if (!userRtoName && !userRtoId && userEmail) {
+        const matchedRto = await RtoModel.findOne({ contactEmail: userEmail });
+        if (matchedRto) {
+          userRtoName = matchedRto.name;
+          userRtoId = matchedRto._id;
+        }
+      }
+      const rtoMatches = [];
+      if (userRtoId && mongoose.Types.ObjectId.isValid(userRtoId)) {
+        rtoMatches.push({ _id: new mongoose.Types.ObjectId(userRtoId) });
+      } else if (userRtoId) {
+        rtoMatches.push({ _id: userRtoId });
+      }
+      if (userRtoName) {
+        rtoMatches.push({ name: { $regex: `^${userRtoName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } });
+      }
+      if (!userRtoId && !userRtoName && userEmail) {
+        rtoMatches.push({ contactEmail: userEmail });
+      }
+      if (rtoMatches.length === 0) return [];
+      const query = rtoMatches.length === 1 ? rtoMatches[0] : { $or: rtoMatches };
+      const rtos = await RtoModel.find(query).select(LIST_EXCLUDE).sort({ createdAt: -1 }).lean();
+      return await this.enrichRtosWithStudentCounts(rtos);
+    }
+    if (user.role === 'Coordinator' || user.role === 'Placement Coordinator') {
+      const rtos = await RtoModel.find(buildCoordinatorRtoFilter(user))
+        .select(LIST_EXCLUDE)
+        .sort({ createdAt: -1 })
+        .lean();
+      return await this.enrichRtosWithStudentCounts(rtos);
+    }
+    return [];
   }
 
   static checkCoordinatorRtoOwnership = checkCoordinatorRtoOwnership;

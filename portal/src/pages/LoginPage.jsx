@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginThunk, clearError } from '../redux/authSlice';
-import { signupUser } from '../api/authApi';
+import { signupUser, fetchRtoAutocomplete, fetchIndustryAutocomplete } from '../api/authApi';
 import logo1 from '../assets/logo1.png';
 import {
   Lock, Mail, Eye, EyeOff, ShieldCheck, ArrowRight,
-  AlertCircle, Loader2, LayoutDashboard, Users, User, UserPlus, CheckCircle2
+  AlertCircle, Loader2, LayoutDashboard, Users, User, UserPlus, CheckCircle2, Building2
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -21,6 +21,14 @@ export default function LoginPage() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupRole, setSignupRole] = useState('Coordinator');
+  const [signupRtoName, setSignupRtoName] = useState('');
+  const [rtoSuggestions, setRtoSuggestions] = useState([]);
+  const [isSearchingRto, setIsSearchingRto] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [signupFacilityName, setSignupFacilityName] = useState('');
+  const [industrySuggestions, setIndustrySuggestions] = useState([]);
+  const [isSearchingIndustry, setIsSearchingIndustry] = useState(false);
+  const [showIndustrySuggestions, setShowIndustrySuggestions] = useState(false);
   const [signupPhone, setSignupPhone] = useState('');
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [signupLoading, setSignupLoading] = useState(false);
@@ -40,6 +48,80 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, navigate, from]);
 
+  // Debounced RTO autocomplete for signup (requires >= 3 chars and evaluates 50% name rule)
+  useEffect(() => {
+    if (signupRole !== 'RTO Manager') {
+      setRtoSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const trimmed = signupRtoName.trim();
+    if (trimmed.length < 3) {
+      setRtoSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearchingRto(true);
+        const list = await fetchRtoAutocomplete(trimmed, controller.signal);
+        setRtoSuggestions(list);
+        setShowSuggestions(list.length > 0);
+      } catch (err) {
+        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+          setRtoSuggestions([]);
+        }
+      } finally {
+        setIsSearchingRto(false);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [signupRtoName, signupRole]);
+
+  // Debounced Industry autocomplete for signup (requires >= 3 chars and evaluates 50% name rule)
+  useEffect(() => {
+    if (signupRole !== 'Industry') {
+      setIndustrySuggestions([]);
+      setShowIndustrySuggestions(false);
+      return;
+    }
+
+    const trimmed = signupFacilityName.trim();
+    if (trimmed.length < 3) {
+      setIndustrySuggestions([]);
+      setShowIndustrySuggestions(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearchingIndustry(true);
+        const list = await fetchIndustryAutocomplete(trimmed, controller.signal);
+        setIndustrySuggestions(list);
+        setShowIndustrySuggestions(list.length > 0);
+      } catch (err) {
+        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+          setIndustrySuggestions([]);
+        }
+      } finally {
+        setIsSearchingIndustry(false);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [signupFacilityName, signupRole]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) return;
@@ -53,6 +135,14 @@ export default function LoginPage() {
       setSignupError('All fields are required.');
       return;
     }
+    if (signupRole === 'RTO Manager' && !signupRtoName.trim()) {
+      setSignupError('RTO / College Name is required for RTO Manager registration.');
+      return;
+    }
+    if (signupRole === 'Industry' && !signupFacilityName.trim()) {
+      setSignupError('Industry / Host Facility Name is required for Industry registration.');
+      return;
+    }
     try {
       setSignupLoading(true);
       await signupUser({
@@ -60,6 +150,8 @@ export default function LoginPage() {
         email: signupEmail.trim(),
         password: signupPassword.trim(),
         role: signupRole,
+        rtoName: signupRole === 'RTO Manager' ? signupRtoName.trim() : undefined,
+        facilityName: signupRole === 'Industry' ? signupFacilityName.trim() : undefined,
         phone: signupPhone.trim(),
       });
       setSignupSuccess(true);
@@ -314,6 +406,124 @@ export default function LoginPage() {
                     <option value="Industry">Industry / Host Facility</option>
                   </select>
                 </div>
+
+                {signupRole === 'RTO Manager' && (
+                  <div className="space-y-1 relative">
+                    <label className="block text-xs font-bold text-slate-700">
+                      RTO / College Name *
+                    </label>
+                    <div className="relative">
+                      <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input
+                        type="text"
+                        required
+                        value={signupRtoName}
+                        onChange={(e) => {
+                          setSignupRtoName(e.target.value);
+                          setShowSuggestions(true);
+                        }}
+                        onFocus={() => {
+                          if (rtoSuggestions.length > 0) setShowSuggestions(true);
+                        }}
+                        placeholder="Search or enter RTO name..."
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      />
+                      {isSearchingRto && (
+                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+
+                    {showSuggestions && rtoSuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-48 overflow-y-auto">
+                        <div className="p-1.5 text-[10px] font-bold text-slate-400 bg-slate-50 border-b border-slate-100 uppercase tracking-wider">
+                          Suggested Registered Organizations
+                        </div>
+                        {rtoSuggestions.map((rto) => (
+                          <button
+                            key={rto._id}
+                            type="button"
+                            onClick={() => {
+                              setSignupRtoName(rto.name);
+                              setShowSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between text-slate-800 transition"
+                          >
+                            <span className="font-semibold truncate">{rto.name}</span>
+                            {rto.code && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 font-mono">
+                                {rto.code}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {signupRole === 'Industry' && (
+                  <div className="space-y-1 relative">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Industry / Host Facility Name *
+                    </label>
+                    <div className="relative">
+                      <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input
+                        type="text"
+                        required
+                        value={signupFacilityName}
+                        onChange={(e) => {
+                          setSignupFacilityName(e.target.value);
+                          setShowIndustrySuggestions(true);
+                        }}
+                        onFocus={() => {
+                          if (industrySuggestions.length > 0) setShowIndustrySuggestions(true);
+                        }}
+                        placeholder="Search or enter facility name..."
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      />
+                      {isSearchingIndustry && (
+                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+
+                    {showIndustrySuggestions && industrySuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-48 overflow-y-auto">
+                        <div className="p-1.5 text-[10px] font-bold text-slate-400 bg-slate-50 border-b border-slate-100 uppercase tracking-wider">
+                          Suggested Partner Facilities
+                        </div>
+                        {industrySuggestions.map((ind) => (
+                          <button
+                            key={ind._id}
+                            type="button"
+                            onClick={() => {
+                              setSignupFacilityName(ind.name);
+                              setShowIndustrySuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between text-slate-800 transition cursor-pointer"
+                          >
+                            <div className="truncate">
+                              <span className="font-semibold">{ind.name}</span>
+                              {ind.sector && (
+                                <span className="ml-2 text-[10px] text-slate-400">({ind.sector})</span>
+                              )}
+                            </div>
+                            {ind.code && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 font-mono shrink-0">
+                                {ind.code}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
 
                 <div className="space-y-1">
                   <label className="block text-xs font-bold text-slate-700">Phone Number (Optional)</label>

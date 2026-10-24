@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import { fetchStudents } from '../api/studentsApi';
-import { Users, CheckCircle2, Clock, Calendar, Search, Filter, Building2, UserCheck } from 'lucide-react';
+import ReviewSubmitModal from '../components/review/ReviewSubmitModal';
+import { Users, CheckCircle2, Clock, Calendar, Search, Filter, Building2, UserCheck, UserPlus, Star } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 export default function RTOManagerPortalPage() {
@@ -10,6 +12,7 @@ export default function RTOManagerPortalPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   useEffect(() => {
     loadRTOStudents();
@@ -64,9 +67,25 @@ export default function RTOManagerPortalPage() {
                 <p className="text-xs text-white/80">View and track placement progress for your enrolled students</p>
               </div>
             </div>
-            <span className="px-3 py-1 bg-white/20 text-white rounded-lg text-xs font-semibold backdrop-blur-xs">
-              Strictly Scoped Access
-            </span>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setIsReviewModalOpen(true)}
+                className="flex items-center space-x-2 px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+              >
+                <Star className="w-4 h-4 fill-slate-900 text-slate-900" />
+                <span>Rate & Review Experience</span>
+              </button>
+              <Link
+                to="/add-student"
+                className="flex items-center space-x-2 px-3.5 py-2 bg-white text-emerald-800 rounded-xl text-xs font-bold hover:bg-white/90 shadow-sm transition"
+              >
+                <UserPlus className="w-4 h-4 text-emerald-700" />
+                <span>Add New Student</span>
+              </Link>
+              <span className="px-3 py-2 bg-white/20 text-white rounded-xl text-xs font-semibold backdrop-blur-xs">
+                Strictly Scoped Access
+              </span>
+            </div>
           </div>
 
           {/* Stats Overview */}
@@ -216,6 +235,11 @@ export default function RTOManagerPortalPage() {
           </div>
         </main>
       </div>
+
+      <ReviewSubmitModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+      />
     </div>
   );
 }

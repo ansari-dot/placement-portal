@@ -1,1 +1,1 @@
-export { authRateLimiter, apiRateLimiter } from './rateLimiter.js';
+export { authRateLimiter, apiRateLimiter, autocompleteRateLimiter } from './rateLimiter.js';

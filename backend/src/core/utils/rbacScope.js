@@ -54,10 +54,24 @@ export const getStudentQueryScope = async (user) => {
         rtoId = matchedRto._id;
       }
     }
+    if (!rtoName && user.requestedOrgName) {
+      const matchedRto = await RtoModel.findOne({
+        name: { $regex: `^${user.requestedOrgName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+      });
+      if (matchedRto) {
+        rtoName = matchedRto.name;
+        rtoId = matchedRto._id;
+      } else {
+        rtoName = user.requestedOrgName;
+      }
+    }
 
     const rtoConditions = [];
     if (rtoName) {
-      rtoConditions.push({ assignedRto: { $regex: `^${rtoName.trim()}$`, $options: 'i' } });
+      const cleanName = rtoName.trim();
+      const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      rtoConditions.push({ assignedRto: { $regex: `^${escaped}$`, $options: 'i' } });
+      rtoConditions.push({ institute: { $regex: `^${escaped}$`, $options: 'i' } });
     }
     if (rtoId) {
       rtoConditions.push({ rtoId });
@@ -84,30 +98,53 @@ export const getStudentQueryScope = async (user) => {
   // Industry users only see students assigned to their facility or with orientation appointments
   if (role === 'Industry' || role === 'Industry/Host') {
     let facilityName = user.facilityName;
+    let industryId = user.industryId;
+
+    if (!facilityName && industryId) {
+      const matchedInd = await IndustryModel.findById(industryId);
+      if (matchedInd) facilityName = matchedInd.name;
+    }
     if (!facilityName && userEmail) {
       const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
-      if (matchedInd) facilityName = matchedInd.name;
+      if (matchedInd) {
+        facilityName = matchedInd.name;
+        industryId = matchedInd._id;
+      }
+    }
+    if (!facilityName && user.requestedFacilityName) {
+      const matchedInd = await IndustryModel.findOne({
+        name: { $regex: `^${user.requestedFacilityName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+      });
+      if (matchedInd) {
+        facilityName = matchedInd.name;
+        industryId = matchedInd._id;
+      } else {
+        facilityName = user.requestedFacilityName;
+      }
     }
 
     if (!facilityName) return { _id: null };
 
+    const cleanFac = facilityName.trim();
+    const escapedFac = cleanFac.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     // Find student IDs linked through appointments or internships with this facility
     const workflows = await WorkflowModel.find({
       $or: [
-        { 'appointments.company': { $regex: `^${facilityName.trim()}$`, $options: 'i' } },
-        { 'internships.company': { $regex: `^${facilityName.trim()}$`, $options: 'i' } },
+        { 'appointments.company': { $regex: `^${escapedFac}$`, $options: 'i' } },
+        { 'internships.company': { $regex: `^${escapedFac}$`, $options: 'i' } },
       ],
     }).lean();
 
     const allowedStudentIds = new Set();
     workflows.forEach((wf) => {
       (wf.appointments || []).forEach((appt) => {
-        if (appt.company && appt.company.trim().toLowerCase() === facilityName.trim().toLowerCase()) {
+        if (appt.company && appt.company.trim().toLowerCase() === cleanFac.toLowerCase()) {
           if (appt.studentId) allowedStudentIds.add(appt.studentId.trim());
         }
       });
       (wf.internships || []).forEach((intern) => {
-        if (intern.company && intern.company.trim().toLowerCase() === facilityName.trim().toLowerCase()) {
+        if (intern.company && intern.company.trim().toLowerCase() === cleanFac.toLowerCase()) {
           if (intern.studentId) allowedStudentIds.add(intern.studentId.trim());
         }
       });
@@ -117,7 +154,7 @@ export const getStudentQueryScope = async (user) => {
     return {
       $or: [
         { studentId: { $in: studentIdArray } },
-        { placementSite: { $regex: facilityName.trim(), $options: 'i' } },
+        { placementSite: { $regex: escapedFac, $options: 'i' } },
       ],
     };
   }
@@ -236,20 +273,44 @@ export const getAttendanceQueryScope = async (user) => {
   // Industry users only see attendance for their facility
   if (role === 'Industry' || role === 'Industry/Host') {
     let facilityName = user.facilityName;
-    if (!facilityName && userEmail) {
-      const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
+    let industryId = user.industryId;
+
+    if (!facilityName && industryId) {
+      const matchedInd = await IndustryModel.findById(industryId);
       if (matchedInd) facilityName = matchedInd.name;
     }
+    if (!facilityName && userEmail) {
+      const matchedInd = await IndustryModel.findOne({ contactEmail: userEmail });
+      if (matchedInd) {
+        facilityName = matchedInd.name;
+        industryId = matchedInd._id;
+      }
+    }
+    if (!facilityName && user.requestedFacilityName) {
+      const matchedInd = await IndustryModel.findOne({
+        name: { $regex: `^${user.requestedFacilityName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+      });
+      if (matchedInd) {
+        facilityName = matchedInd.name;
+        industryId = matchedInd._id;
+      } else {
+        facilityName = user.requestedFacilityName;
+      }
+    }
 
-    const conditions = [{ isDeleted: false }];
+    const matchers = [];
     if (facilityName) {
-      conditions.push({ facilityName: { $regex: `^${facilityName.trim()}$`, $options: 'i' } });
+      const escapedFac = facilityName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      matchers.push({ facilityName: { $regex: `^${escapedFac}$`, $options: 'i' } });
     }
-    if (user.industryId) {
-      conditions.push({ industry: user.industryId });
+    if (industryId) {
+      matchers.push({ industry: industryId });
+      if (mongoose.Types.ObjectId.isValid(industryId)) {
+        matchers.push({ industry: new mongoose.Types.ObjectId(industryId) });
+      }
     }
 
-    return conditions.length > 1 ? { $and: [conditions[0], { $or: conditions.slice(1) }] } : { _id: null };
+    return matchers.length > 0 ? { isDeleted: false, $or: matchers } : { _id: null };
   }
 
   // RTO Managers only see attendance for their students

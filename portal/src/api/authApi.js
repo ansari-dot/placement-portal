@@ -30,3 +30,17 @@ export const fetchPresence = async () => {
   return response.data;
 };
 
+export const fetchRtoAutocomplete = async (query, signal) => {
+  if (!query || query.trim().length < 3) return [];
+  const response = await api.get(`/auth/rto-autocomplete?q=${encodeURIComponent(query.trim())}`, { signal });
+  return response.data?.data || [];
+};
+
+export const fetchIndustryAutocomplete = async (query, signal) => {
+  if (!query || query.trim().length < 3) return [];
+  const response = await api.get(`/auth/industry-autocomplete?q=${encodeURIComponent(query.trim())}`, { signal });
+  return response.data?.data || [];
+};
+
+
+

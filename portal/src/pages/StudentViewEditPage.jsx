@@ -66,6 +66,7 @@ export default function StudentViewEditPage() {
   const authUser = useSelector((state) => state.auth.user);
   const isAdmin = authUser?.role === 'Administrator';
   const isCoordinator = authUser?.role === 'Coordinator';
+  const isRtoManager = authUser?.role === 'RTO Manager' || authUser?.role === 'RTO';
 
   const [student, setStudent]                     = useState(null);
   const [formData, setFormData]                   = useState({});
@@ -292,7 +293,15 @@ export default function StudentViewEditPage() {
         }));
       }
       // If RTO Student but no RTO assigned, mark as Awaiting RTO Assignment
-      if (payload.studentType === 'RTO Student' && !payload.assignedRto) {
+      if (isRtoManager) {
+        payload.studentType = 'RTO Student';
+        payload.assignedRto = authUser?.rtoName || formData.assignedRto;
+        payload.institute = authUser?.rtoName || formData.institute;
+        if (authUser?.rtoId) payload.rtoId = authUser.rtoId;
+        delete payload.assignedCoordinator;
+        delete payload.assignedCoordinatorName;
+        delete payload.contactedIndustries;
+      } else if (payload.studentType === 'RTO Student' && !payload.assignedRto) {
         payload.studentType = 'Awaiting RTO Assignment';
       } else if (payload.assignedRto && (!payload.studentType || payload.studentType === 'Awaiting RTO Assignment')) {
         payload.studentType = 'RTO Student';
@@ -368,7 +377,7 @@ export default function StudentViewEditPage() {
     { key: 'personal',   label: 'Personal Information', icon: User },
     { key: 'education',  label: 'Education',            icon: GraduationCap },
     { key: 'additional', label: 'Additional',           icon: Info },
-    { key: 'contacts',   label: 'Industry Contacts',    icon: Building2 },
+    ...(!isRtoManager ? [{ key: 'contacts',   label: 'Industry Contacts',    icon: Building2 }] : []),
   ];
 
   return (
@@ -440,7 +449,7 @@ export default function StudentViewEditPage() {
                     {internshipEndingInfo.type === 'ended'
                       ? 'The scheduled placement period has concluded. Please confirm final hours and logbook submission.'
                       : 'Verify student hours, logbooks, and completion assessments before the end date.'}
-                    {internshipEndingInfo.company ? ` • Placed at ${internshipEndingInfo.company}` : ''}
+                    {!isRtoManager && internshipEndingInfo.company ? ` • Placed at ${internshipEndingInfo.company}` : ''}
                   </p>
                 </div>
               </div>
@@ -448,13 +457,15 @@ export default function StudentViewEditPage() {
                 {internshipEndingInfo.type !== 'ended' && (
                   <span className="px-3 py-1.5 bg-amber-200/90 text-amber-900 rounded-xl text-xs font-bold">⏳ {internshipEndingInfo.label} left</span>
                 )}
-                <Link to="/workflow?step=4" className={`px-3 py-1.5 text-white rounded-xl text-xs font-bold transition ${
-                  internshipEndingInfo.type === 'ended'
-                    ? 'bg-rose-600 hover:bg-rose-700'
-                    : 'bg-amber-600 hover:bg-amber-700'
-                }`}>
-                  View in Placements
-                </Link>
+                {!isRtoManager && (
+                  <Link to="/workflow?step=4" className={`px-3 py-1.5 text-white rounded-xl text-xs font-bold transition ${
+                    internshipEndingInfo.type === 'ended'
+                      ? 'bg-rose-600 hover:bg-rose-700'
+                      : 'bg-amber-600 hover:bg-amber-700'
+                  }`}>
+                    View in Placements
+                  </Link>
+                )}
               </div>
             </div>
           )}
@@ -742,8 +753,8 @@ export default function StudentViewEditPage() {
                   </div>
                 </div>
 
-                {/* Student Classification & Billing — omitted for Coordinator role per company policies */}
-                {!isCoordinator && (
+                {/* Student Classification & Billing — omitted for Coordinator and RTO Manager roles */}
+                {!isCoordinator && !isRtoManager && (
                   <div className="p-3.5 rounded-xl border border-blue-100 bg-blue-50/40 space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
@@ -852,6 +863,21 @@ export default function StudentViewEditPage() {
                         </p>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* RTO Manager locked RTO display */}
+                {isRtoManager && (
+                  <div className="p-3.5 rounded-xl border border-teal-100 bg-teal-50/40">
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      Assigned RTO (Strictly Locked)
+                    </label>
+                    <input
+                      type="text"
+                      value={authUser?.rtoName || formData.assignedRto || formData.institute || 'RTO Student'}
+                      disabled
+                      className={fieldClass(false)}
+                    />
                   </div>
                 )}
 

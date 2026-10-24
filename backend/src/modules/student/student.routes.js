@@ -45,7 +45,9 @@ router.post('/bulk/assign-rto', canManage, bulkAssignRtoController);
 router.patch('/bulk/status', canManage, bulkUpdateStatusController);
 router.post('/bulk/delete', canManage, bulkDeleteStudentsController);
 
-router.post('/', canManage, validateBody(studentSchema), createStudentController);
+const canCreateStudent = requireRoles('Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'RTO Manager', 'RTO');
+
+router.post('/', canCreateStudent, validateBody(studentSchema), createStudentController);
 router.get('/', getAllStudentsController);
 router.get('/all', getAllStudentsUnfilteredController);
 router.get('/:id', getStudentByIdController);

@@ -15,6 +15,7 @@ import auditRoutes from './modules/audit/audit.routes.js';
 import paymentRoutes from './modules/payment/payment.routes.js';
 import invoiceRoutes from './modules/invoice/invoice.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
+import reviewRoutes from './modules/review/review.routes.js';
 
 import { softAuth, authenticate } from './core/guards/auth.guard.js';
 import { errorHandler } from './core/middlewares/error.middleware.js';
@@ -31,6 +32,7 @@ const allowedList = [
   'https://mantisplacements.com.au',
   'https://www.mantisplacements.com.au',
   'http://portal.mantisplacements.com.au',
+  'https://www.mantisplacements.com.au',
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost:5174',
@@ -121,6 +123,9 @@ app.use('/invoices', invoiceRoutes);
 
 app.use('/attendance', attendanceRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
+
+app.use('/reviews', reviewRoutes);
+app.use('/api/v1/reviews', reviewRoutes);
 
 app.get('/', (req, res) => {
   return res.status(200).json({ message: 'Server is running' });

@@ -3,7 +3,8 @@ import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import { fetchStudents, updateStudent } from '../api/studentsApi';
 import IndustryAttendanceSection from '../components/industry/IndustryAttendanceSection';
-import { Building2, Users, Calendar, CheckCircle2, Clock, Edit3, X, Save, ClipboardList } from 'lucide-react';
+import ReviewSubmitModal from '../components/review/ReviewSubmitModal';
+import { Building2, Users, Calendar, CheckCircle2, Clock, Edit3, X, Save, ClipboardList, Star } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 export default function IndustryPortalPage() {
@@ -11,6 +12,7 @@ export default function IndustryPortalPage() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [preselectedStudentId, setPreselectedStudentId] = useState('');
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   // Modal edit state for updating placement dates/status
   const [editingStudent, setEditingStudent] = useState(null);
@@ -104,26 +106,36 @@ export default function IndustryPortalPage() {
               </div>
             </div>
             
-            {/* Tab Switchers */}
-            <div className="flex items-center space-x-2 bg-black/20 p-1.5 rounded-xl backdrop-blur-xs">
+            {/* Header Actions & Tab Switchers */}
+            <div className="flex items-center space-x-3">
               <button
-                onClick={() => setActiveTab('students')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
-                  activeTab === 'students' ? 'bg-white text-slate-900 shadow-xs' : 'text-white/80 hover:text-white'
-                }`}
+                onClick={() => setIsReviewModalOpen(true)}
+                className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl text-xs font-bold transition shadow-sm flex items-center space-x-1.5 cursor-pointer"
               >
-                <Users className="w-4 h-4" />
-                <span>Assigned Students</span>
+                <Star className="w-4 h-4 fill-slate-900 text-slate-900" />
+                <span>Rate & Review Experience</span>
               </button>
-              <button
-                onClick={() => setActiveTab('attendance')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
-                  activeTab === 'attendance' ? 'bg-white text-slate-900 shadow-xs' : 'text-white/80 hover:text-white'
-                }`}
-              >
-                <ClipboardList className="w-4 h-4" />
-                <span>Record Attendance</span>
-              </button>
+
+              <div className="flex items-center space-x-2 bg-black/20 p-1.5 rounded-xl backdrop-blur-xs">
+                <button
+                  onClick={() => setActiveTab('students')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+                    activeTab === 'students' ? 'bg-white text-slate-900 shadow-xs' : 'text-white/80 hover:text-white'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Assigned Students</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('attendance')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+                    activeTab === 'attendance' ? 'bg-white text-slate-900 shadow-xs' : 'text-white/80 hover:text-white'
+                  }`}
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  <span>Record Attendance</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -319,6 +331,10 @@ export default function IndustryPortalPage() {
           </div>
         </div>
       )}
+      <ReviewSubmitModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+      />
     </div>
   );
 }

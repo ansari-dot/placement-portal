@@ -7,6 +7,7 @@ import WorkflowModel, {
 import StudentModel from '../student/student.model.js';
 import NotificationModel from '../notification/notification.model.js';
 import { sendPlacementStartedEmail, sendPlacementOutcomeEmail } from "../email/email.service.js";
+import { getStudentQueryScope } from "../../core/utils/rbacScope.js";
 
 // ===== ID Generators =====
 export const generateReqId = async () => {
@@ -1409,7 +1410,14 @@ export const bulkDeleteInternships = async (workflowId, internshipIds) => {
 };
 
 // ===== Workflow Data Aggregation =====
-export const getWorkflowDashboardData = async () => {
+export const getWorkflowDashboardData = async (user) => {
+    const role = user?.role;
+    const isRto = role === 'RTO Manager' || role === 'RTO';
+    let studentScope = {};
+    if (isRto) {
+        studentScope = await getStudentQueryScope(user);
+    }
+
     const [
         totalStudents,
         activeStudentsCount,
@@ -1420,8 +1428,9 @@ export const getWorkflowDashboardData = async () => {
         workflowRecords,
         students
     ] = await Promise.all([
-        StudentModel.countDocuments(),
+        StudentModel.countDocuments(studentScope),
         StudentModel.countDocuments({
+            ...studentScope,
             $and: [
                 { status: { $ne: 'Inactive' } },
                 { placementStatus: { $ne: 'Inactive' } },
@@ -1432,7 +1441,7 @@ export const getWorkflowDashboardData = async () => {
         InternshipModel.find().sort({ createdAt: -1 }),
         WorkflowModel.find().sort({ updatedAt: -1 }).limit(5),
         WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean(),
-        StudentModel.find({}, { _id: 1, studentId: 1, placementStatus: 1, status: 1 }).lean(),
+        StudentModel.find(studentScope, { _id: 1, studentId: 1, firstName: 1, lastName: 1, name: 1, placementStatus: 1, status: 1 }).lean(),
     ]);
 
     // Embedded workflow records are authoritative.
@@ -1598,32 +1607,44 @@ export const getWorkflowDashboardData = async () => {
     };
 
     const rawActivities = [];
+    const reqList = isRto ? validRequests : requests;
+    const apptList = isRto ? validAppointments : appointments;
+    const internList = isRto ? validInternships : internships;
 
-    requests.slice(0, 5).forEach((r) => {
+    reqList.slice(0, 5).forEach((r) => {
+        const studentLabel = r.student || 'Student';
         rawActivities.push({
-            id: r._id.toString(),
-            title: `${r.student} submitted request for ${r.company}`,
-            subtitle: `Internship Request (${r.status})`,
+            id: r._id ? r._id.toString() : String(Math.random()),
+            title: isRto
+                ? `${studentLabel} submitted placement request`
+                : `${studentLabel} submitted request for ${r.company || 'Host Facility'}`,
+            subtitle: `Internship Request (${r.status || 'Pending'})`,
             createdAt: r.createdAt || new Date(),
             type: "request"
         });
     });
 
-    appointments.slice(0, 5).forEach((a) => {
+    apptList.slice(0, 5).forEach((a) => {
+        const studentLabel = a.student || 'Student';
         rawActivities.push({
-            id: a._id.toString(),
-            title: `Appointment with ${a.student} at ${a.company}`,
-            subtitle: `Appointment (${a.status})`,
+            id: a._id ? a._id.toString() : String(Math.random()),
+            title: isRto
+                ? `Appointment scheduled for ${studentLabel}`
+                : `Appointment with ${studentLabel} at ${a.company || 'Host Facility'}`,
+            subtitle: `Appointment (${a.status || 'Scheduled'})`,
             createdAt: a.createdAt || new Date(),
             type: "appointment"
         });
     });
 
-    internships.slice(0, 5).forEach((i) => {
+    internList.slice(0, 5).forEach((i) => {
+        const studentLabel = i.student || 'Student';
         rawActivities.push({
-            id: i._id.toString(),
-            title: `${i.student} internship at ${i.company}`,
-            subtitle: `Internship Placement (${i.status})`,
+            id: i._id ? i._id.toString() : String(Math.random()),
+            title: isRto
+                ? `${studentLabel} placement status: ${i.status || 'Active'}`
+                : `${studentLabel} internship at ${i.company || 'Host Facility'}`,
+            subtitle: `Internship Placement (${i.status || 'Active'})`,
             createdAt: i.createdAt || new Date(),
             type: "internship"
         });
@@ -1658,12 +1679,12 @@ export const getWorkflowDashboardData = async () => {
         const year = d.getFullYear();
         const monthKey = `${monthName} ${year}`;
 
-        const reqCount = requests.filter((r) => {
+        const reqCount = (isRto ? validRequests : requests).filter((r) => {
             const rDate = new Date(r.createdAt || now);
             return rDate.getMonth() === d.getMonth() && rDate.getFullYear() === d.getFullYear();
         }).length;
 
-        const placeCount = internships.filter((intItem) => {
+        const placeCount = (isRto ? validInternships : internships).filter((intItem) => {
             const iDate = new Date(intItem.createdAt || now);
             return iDate.getMonth() === d.getMonth() && iDate.getFullYear() === d.getFullYear();
         }).length;

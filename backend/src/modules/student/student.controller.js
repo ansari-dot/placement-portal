@@ -4,6 +4,7 @@ import {
   processBulkImport,
   processBulkDocuments,
 } from './student.bulk.service.js';
+import { sanitizeStudentDataForRole } from '../../core/utils/rbacSanitizer.js';
 
 export const downloadBulkTemplateController = async (req, res, next) => {
   try {
@@ -58,11 +59,11 @@ export const bulkUploadDocumentsController = async (req, res, next) => {
 
 export const createStudentController = async (req, res, next) => {
   try {
-    const student = await StudentService.createStudent(req.body);
+    const student = await StudentService.createStudent(req.body, { actingUser: req.user });
     res.status(201).json({
       message: 'Student created successfully',
       success: true,
-      data: student,
+      data: sanitizeStudentDataForRole(student, req.user?.role),
     });
   } catch (error) {
     next(error);

@@ -96,3 +96,31 @@ export const getPresenceController = async (req, res, next) => {
     next(error);
   }
 };
+
+export const rtoAutocompleteController = async (req, res, next) => {
+  try {
+    const q = String(req.query.q || req.query.query || req.query.search || '');
+    const results = await AuthService.autocompleteRtos(q);
+    res.status(200).json({
+      success: true,
+      data: results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const industryAutocompleteController = async (req, res, next) => {
+  try {
+    const q = String(req.query.q || req.query.query || req.query.search || '');
+    const results = await AuthService.autocompleteIndustries(q);
+    res.status(200).json({
+      success: true,
+      data: results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+

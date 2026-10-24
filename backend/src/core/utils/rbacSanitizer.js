@@ -26,10 +26,7 @@ export const sanitizeStudentDataForRole = (studentDoc, role) => {
 
   if (role === 'RTO Manager' || role === 'RTO') {
     // RTO users must not be able to see:
-    // - Other RTO names / info
-    // - Industry or host facility names
-    // - Industry contact details
-    // - Other organisations' information
+    // 1. Industry information (confidential business policy)
     delete s.contactedIndustries;
     delete s.placementSite;
     delete s.preferredIndustry;
@@ -38,9 +35,22 @@ export const sanitizeStudentDataForRole = (studentDoc, role) => {
     delete s.industryEmail;
     delete s.industryPhone;
     delete s.industryId;
+    delete s.company;
+    delete s.industry;
+    delete s.placementNotes;
     delete s.additionalNotes;
+
+    // 2. Assigned Coordinator information (confidential business policy)
+    delete s.assignedCoordinator;
+    delete s.assignedCoordinatorName;
+    delete s.assignedCoordinatorAt;
+    delete s.assignedCoordinatorEmail;
     delete s.coordinatorHistory;
-    if (s.placementNotes) delete s.placementNotes;
+    delete s.coordinator;
+
+    // 3. Financial fields not meant for RTO
+    delete s.independentFee;
+
     return s;
   }
 
@@ -54,6 +64,8 @@ export const sanitizeStudentDataForRole = (studentDoc, role) => {
     delete s.industryEmail;
     delete s.industryPhone;
     delete s.industryId;
+    delete s.company;
+    delete s.industry;
     delete s.additionalNotes;
     delete s.independentFee;
     delete s.placementNotes;
@@ -82,14 +94,19 @@ export const sanitizeAppointmentForRole = (appointmentDoc, role) => {
   }
 
   if (role === 'RTO Manager' || role === 'RTO' || role === 'Student') {
-    // Redact host facility identity and contact details
+    // Redact host facility identity, industry contact details, and coordinator
     a.company = 'Host Facility';
     a.interviewer = '';
     a.contactPerson = '';
     a.email = '';
     a.phone = '';
     a.industryContactId = '';
+    a.industryType = '';
     a.location = 'Host Location';
+    a.notes = '';
+    delete a.coordinator;
+    delete a.assignedCoordinator;
+    delete a.assignedCoordinatorName;
   }
 
   return a;
@@ -106,6 +123,11 @@ export const sanitizeInternshipRequestForRole = (requestDoc, role) => {
   if (role === 'RTO Manager' || role === 'RTO' || role === 'Student') {
     r.company = 'Host Facility';
     r.contactedIndustries = [];
+    r.coordinator = '';
+    r.location = 'Host Location';
+    r.notes = '';
+    delete r.assignedCoordinator;
+    delete r.assignedCoordinatorName;
   }
 
   return r;
@@ -122,6 +144,10 @@ export const sanitizeInternshipForRole = (internshipDoc, role) => {
   if (role === 'RTO Manager' || role === 'RTO' || role === 'Student') {
     i.company = 'Host Facility';
     i.location = 'Host Location';
+    i.coordinator = '';
+    i.notes = '';
+    delete i.assignedCoordinator;
+    delete i.assignedCoordinatorName;
   }
 
   return i;
@@ -130,15 +156,19 @@ export const sanitizeInternshipForRole = (internshipDoc, role) => {
 export const sanitizeAttendanceForRole = (attendanceDoc, role) => {
   if (!attendanceDoc) return attendanceDoc;
   const att = typeof attendanceDoc.toObject === 'function' ? attendanceDoc.toObject() : { ...attendanceDoc };
+  if (!att._id && att.id) att._id = att.id;
+  if (!att.id && att._id) att.id = att._id;
 
   if (role === 'Administrator' || role === 'Admin' || role === 'Industry' || role === 'Industry/Host') {
     return att;
   }
 
+
   if (role === 'RTO Manager' || role === 'RTO' || role === 'Student') {
     // Redact facility identity to preserve privacy boundary
     att.facilityName = 'Host Facility';
     att.industry = null;
+    att.notes = '';
   }
 
   return att;
