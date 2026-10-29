@@ -296,7 +296,7 @@ export default function Sidebar() {
               />
 
               <span className="truncate">
-                {isIndustry ? 'Students & Attendance' : 'My Progress'}
+                {isIndustry ? 'Students & Attendance' : isStudent ? 'Placement Project & Steps' : 'My Progress'}
               </span>
 
             </Link>

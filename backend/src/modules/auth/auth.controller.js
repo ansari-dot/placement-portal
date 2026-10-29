@@ -123,4 +123,18 @@ export const industryAutocompleteController = async (req, res, next) => {
   }
 };
 
+export const checkStudentEmailController = async (req, res, next) => {
+  try {
+    const email = String(req.query.email || req.query.q || '');
+    const result = await AuthService.checkStudentEmail(email);
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 

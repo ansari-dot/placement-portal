@@ -42,5 +42,12 @@ export const fetchIndustryAutocomplete = async (query, signal) => {
   return response.data?.data || [];
 };
 
+export const checkStudentEmailApi = async (email, signal) => {
+  if (!email || !email.trim()) return null;
+  const response = await api.get(`/auth/check-student-email?email=${encodeURIComponent(email.trim())}`, { signal });
+  return response.data;
+};
+
+
 
 

@@ -202,6 +202,23 @@ export class UserService {
       } catch (_) {}
     }
 
+    if (user.role === 'Student') {
+      try {
+        if (user.studentIdRef) {
+          await StudentModel.findByIdAndUpdate(user.studentIdRef, { status: 'Active' });
+        } else {
+          const matchedStu = await StudentModel.findOne({ emailAddress: user.email });
+          if (matchedStu) {
+            user.studentIdRef = matchedStu._id;
+            matchedStu.status = 'Active';
+            await matchedStu.save();
+          }
+        }
+      } catch (stuErr) {
+        console.error('Failed to activate student profile on approval:', stuErr.message);
+      }
+    }
+
     await user.save();
 
 

@@ -8,6 +8,7 @@ import {
   getPresenceController,
   rtoAutocompleteController,
   industryAutocompleteController,
+  checkStudentEmailController,
 } from './auth.controller.js';
 import { authenticate, softAuth } from '../../core/guards/auth.guard.js';
 import { authRateLimiter, autocompleteRateLimiter } from '../../core/middlewares/rateLimiter.middleware.js';
@@ -16,6 +17,7 @@ import { loginSchema, signupSchema } from './auth.dto.js';
 
 const router = express.Router();
 
+router.get('/check-student-email', autocompleteRateLimiter, checkStudentEmailController);
 router.get('/rto-autocomplete', autocompleteRateLimiter, rtoAutocompleteController);
 router.get('/industry-autocomplete', autocompleteRateLimiter, industryAutocompleteController);
 router.post('/login', authRateLimiter, validateBody(loginSchema), loginController);

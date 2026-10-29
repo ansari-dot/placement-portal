@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginThunk, clearError } from '../redux/authSlice';
-import { signupUser, fetchRtoAutocomplete, fetchIndustryAutocomplete } from '../api/authApi';
+import { signupUser, fetchRtoAutocomplete, fetchIndustryAutocomplete, checkStudentEmailApi } from '../api/authApi';
 import logo1 from '../assets/logo1.png';
 import {
   Lock, Mail, Eye, EyeOff, ShieldCheck, ArrowRight,
-  AlertCircle, Loader2, LayoutDashboard, Users, User, UserPlus, CheckCircle2, Building2
+  AlertCircle, Loader2, LayoutDashboard, Users, User, UserPlus, CheckCircle2, Building2,
+  BookOpen, GraduationCap
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -33,6 +34,18 @@ export default function LoginPage() {
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [signupLoading, setSignupLoading] = useState(false);
   const [signupError, setSignupError] = useState('');
+
+  // Student specific registration & claiming state
+  const [studentLookup, setStudentLookup] = useState({
+    isChecking: false,
+    foundInDatabase: false,
+    isAlreadyUser: false,
+    student: null,
+    message: '',
+  });
+  const [signupCourse, setSignupCourse] = useState('');
+  const [signupStudentRto, setSignupStudentRto] = useState('');
+  const [isClaimedSuccess, setIsClaimedSuccess] = useState(false);
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -122,6 +135,74 @@ export default function LoginPage() {
     };
   }, [signupFacilityName, signupRole]);
 
+  // Debounced Student email lookup for signup (detects pre-assigned vs new student)
+  useEffect(() => {
+    if (signupRole !== 'Student') {
+      setStudentLookup({
+        isChecking: false,
+        foundInDatabase: false,
+        isAlreadyUser: false,
+        student: null,
+        message: '',
+      });
+      return;
+    }
+
+    const trimmedEmail = signupEmail.trim();
+    if (!trimmedEmail || !/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(trimmedEmail)) {
+      setStudentLookup({
+        isChecking: false,
+        foundInDatabase: false,
+        isAlreadyUser: false,
+        student: null,
+        message: '',
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        setStudentLookup((prev) => ({ ...prev, isChecking: true }));
+        const res = await checkStudentEmailApi(trimmedEmail, controller.signal);
+        if (res) {
+          setStudentLookup({
+            isChecking: false,
+            foundInDatabase: !!res.foundInDatabase,
+            isAlreadyUser: !!res.isAlreadyUser,
+            student: res.student || null,
+            message: res.message || '',
+          });
+
+          // Pre-populate name & phone if pre-enrolled student found
+          if (res.foundInDatabase && res.student) {
+            if (res.student.name && !signupName.trim()) {
+              setSignupName(res.student.name);
+            }
+            if (res.student.phone && !signupPhone.trim()) {
+              setSignupPhone(res.student.phone);
+            }
+          }
+        }
+      } catch (err) {
+        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+          setStudentLookup({
+            isChecking: false,
+            foundInDatabase: false,
+            isAlreadyUser: false,
+            student: null,
+            message: '',
+          });
+        }
+      }
+    }, 450);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [signupEmail, signupRole]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) return;
@@ -135,6 +216,10 @@ export default function LoginPage() {
       setSignupError('All fields are required.');
       return;
     }
+    if (studentLookup.isAlreadyUser) {
+      setSignupError('An account with this email is already registered. Please sign in.');
+      return;
+    }
     if (signupRole === 'RTO Manager' && !signupRtoName.trim()) {
       setSignupError('RTO / College Name is required for RTO Manager registration.');
       return;
@@ -145,15 +230,17 @@ export default function LoginPage() {
     }
     try {
       setSignupLoading(true);
-      await signupUser({
+      const res = await signupUser({
         name: signupName.trim(),
         email: signupEmail.trim(),
         password: signupPassword.trim(),
         role: signupRole,
-        rtoName: signupRole === 'RTO Manager' ? signupRtoName.trim() : undefined,
+        rtoName: signupRole === 'RTO Manager' ? signupRtoName.trim() : signupRole === 'Student' ? (studentLookup.student?.rtoName || signupStudentRto.trim()) : undefined,
         facilityName: signupRole === 'Industry' ? signupFacilityName.trim() : undefined,
+        course: signupRole === 'Student' ? (studentLookup.student?.course || signupCourse.trim()) : undefined,
         phone: signupPhone.trim(),
       });
+      setIsClaimedSuccess(!!(res?.data?.isPreExistingStudent || studentLookup.foundInDatabase));
       setSignupSuccess(true);
     } catch (err) {
       setSignupError(err?.response?.data?.message || 'Signup failed. Please try again.');
@@ -165,6 +252,7 @@ export default function LoginPage() {
   const toggleMode = () => {
     setIsSignup(!isSignup);
     setSignupSuccess(false);
+    setIsClaimedSuccess(false);
     setSignupError('');
     dispatch(clearError());
   };
@@ -326,16 +414,27 @@ export default function LoginPage() {
             {signupSuccess && isSignup && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex flex-col items-center text-center space-y-3">
                 <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-                <h4 className="text-base font-extrabold text-emerald-800">Registration Submitted Successfully!</h4>
+                <h4 className="text-base font-extrabold text-emerald-800">
+                  {isClaimedSuccess ? 'Student Account Activated Successfully!' : 'Registration Submitted Successfully!'}
+                </h4>
                 <p className="text-xs text-emerald-700 leading-relaxed font-medium">
-                  Your signup request has been sent to the Administrator. Account status is currently <span className="font-extrabold underline">Pending</span>. You will be able to log in once Admin approves your account.
+                  {isClaimedSuccess ? (
+                    <>Your student account has been claimed and activated. You can now log in immediately with your email and password to access your placement workflow and documents.</>
+                  ) : (
+                    <>Your signup request has been sent to the Administrator. Account status is currently <span className="font-extrabold underline">Pending</span>. You will be able to log in once Admin approves your account.</>
+                  )}
                 </p>
                 <button
                   type="button"
-                  onClick={toggleMode}
+                  onClick={() => {
+                    toggleMode();
+                    if (isClaimedSuccess && signupEmail) {
+                      setEmail(signupEmail);
+                    }
+                  }}
                   className="w-full py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-xs rounded-xl shadow-xs transition-all duration-500 cursor-pointer mt-2"
                 >
-                  Return to Sign In Screen
+                  {isClaimedSuccess ? 'Sign In to Your Student Account' : 'Return to Sign In Screen'}
                 </button>
               </div>
             )}
@@ -343,9 +442,22 @@ export default function LoginPage() {
             {/* Signup Form */}
             {isSignup && !signupSuccess ? (
               <form onSubmit={handleSignupSubmit} className="space-y-3 text-xs">
-                <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-2.5 text-[11px] text-blue-900 font-semibold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>New registrations require Admin approval before log in.</span>
+                <div className={`rounded-xl p-2.5 text-[11px] font-semibold flex items-center gap-2 ${
+                  signupRole === 'Student' && studentLookup.foundInDatabase
+                    ? 'bg-emerald-50 border border-emerald-300 text-emerald-900'
+                    : 'bg-blue-50/70 border border-blue-200/80 text-blue-900'
+                }`}>
+                  {signupRole === 'Student' && studentLookup.foundInDatabase ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Pre-enrolled student found: Set password to activate your account immediately.</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>New registrations require Admin approval before log in.</span>
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -364,7 +476,14 @@ export default function LoginPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs font-bold text-slate-700">Email Address *</label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-700">Email Address *</label>
+                    {signupRole === 'Student' && studentLookup.isChecking && (
+                      <span className="flex items-center gap-1 text-[10px] text-blue-600 font-semibold">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Checking student records...
+                      </span>
+                    )}
+                  </div>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                     <input
@@ -372,10 +491,52 @@ export default function LoginPage() {
                       required
                       value={signupEmail}
                       onChange={(e) => setSignupEmail(e.target.value)}
-                      placeholder="e.g. sarah@organization.com"
+                      placeholder={signupRole === 'Student' ? "Enter your enrolled student email address" : "e.g. sarah@organization.com"}
                       className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
                     />
                   </div>
+
+                  {/* Student email lookup status indicators */}
+                  {signupRole === 'Student' && signupEmail.trim().length > 3 && (
+                    <div className="pt-1">
+                      {studentLookup.foundInDatabase && studentLookup.student && (
+                        <div className="bg-emerald-50 border border-emerald-300/80 rounded-xl p-2.5 space-y-1 text-emerald-900">
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-800">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Pre-Enrolled Student Profile Found!</span>
+                          </div>
+                          <p className="text-[11px] text-emerald-700">
+                            <strong>{studentLookup.student.name}</strong> • {studentLookup.student.course} ({studentLookup.student.rtoName})
+                          </p>
+                          <p className="text-[10px] text-emerald-600 font-medium">
+                            Set your password below to claim your account. Immediate activation without waiting!
+                          </p>
+                        </div>
+                      )}
+
+                      {!studentLookup.isChecking && !studentLookup.foundInDatabase && !studentLookup.isAlreadyUser && /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(signupEmail.trim()) && (
+                        <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-2.5 space-y-1 text-blue-900">
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-blue-800">
+                            <UserPlus className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>New Student Registration</span>
+                          </div>
+                          <p className="text-[11px] text-blue-700">
+                            No pre-existing student record found. Complete the form to register as a new student applicant for Admin approval.
+                          </p>
+                        </div>
+                      )}
+
+                      {studentLookup.isAlreadyUser && (
+                        <div className="bg-amber-50 border border-amber-300 rounded-xl p-2.5 flex items-start gap-2 text-amber-900">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div className="text-[11px]">
+                            <span className="font-bold block">Account Already Exists</span>
+                            <span>This email is already registered. Please click <strong>Sign In</strong> above to log in.</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -524,6 +685,38 @@ export default function LoginPage() {
                   </div>
                 )}
 
+                {signupRole === 'Student' && !studentLookup.foundInDatabase && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-slate-700">Course / Qualification Program *</label>
+                      <div className="relative">
+                        <BookOpen className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                          type="text"
+                          required
+                          value={signupCourse}
+                          onChange={(e) => setSignupCourse(e.target.value)}
+                          placeholder="e.g. Diploma of Nursing / Cert III in Individual Support"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-slate-700">College / RTO Name (Optional)</label>
+                      <div className="relative">
+                        <GraduationCap className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                          type="text"
+                          value={signupStudentRto}
+                          onChange={(e) => setSignupStudentRto(e.target.value)}
+                          placeholder="e.g. Sydney Health Institute"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="space-y-1">
                   <label className="block text-xs font-bold text-slate-700">Phone Number (Optional)</label>
@@ -538,18 +731,31 @@ export default function LoginPage() {
 
                 <button
                   type="submit"
-                  disabled={signupLoading}
-                  className="w-full py-3 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-sm rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                  disabled={signupLoading || studentLookup.isAlreadyUser}
+                  className={`w-full py-3 text-white font-bold text-sm rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer mt-2 ${
+                    signupRole === 'Student' && studentLookup.foundInDatabase
+                      ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                      : 'bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center]'
+                  }`}
                 >
                   {signupLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting Request...</span>
+                      <span>{signupRole === 'Student' && studentLookup.foundInDatabase ? 'Activating Account...' : 'Submitting Request...'}</span>
                     </>
                   ) : (
                     <>
-                      <UserPlus className="w-4 h-4" />
-                      <span>Submit Signup for Admin Approval</span>
+                      {signupRole === 'Student' && studentLookup.foundInDatabase ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Claim & Activate Student Account</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-4 h-4" />
+                          <span>Submit Signup for Admin Approval</span>
+                        </>
+                      )}
                     </>
                   )}
                 </button>

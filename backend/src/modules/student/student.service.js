@@ -315,10 +315,17 @@ export class StudentService {
       // Throws 404 NotFound if resource is not owned/assigned, preventing cross-tenant enumeration!
       await this.getStudentById(id, actingUser);
 
-      // Student can ONLY update their own permitted personal contact fields!
+      // Student can update their own permitted personal, places, preferences, and compliance document fields
       if (role === 'Student') {
         const allowedStudentFields = [
           'preferredName',
+          'firstName',
+          'middleName',
+          'lastName',
+          'dateOfBirth',
+          'gender',
+          'nationality',
+          'language',
           'phoneNumber',
           'phoneCode',
           'alternatePhone',
@@ -329,10 +336,42 @@ export class StudentService {
           'suburb',
           'state',
           'postCode',
+          'country',
           'emergencyContactName',
           'emergencyContactRelationship',
           'emergencyContactPhone',
-          'language',
+          // Placement preferences & places
+          'preferredLocation',
+          'placementRadius',
+          'placementSite',
+          'preferredIndustry',
+          'availabilityDays',
+          'availabilityFrom',
+          'availabilityTo',
+          'willingToRelocate',
+          'transport',
+          'licenceNumber',
+          'visaStatus',
+          'visaSubclass',
+          'visaExpiryDate',
+          'workRights',
+          'workExperience',
+          'englishProficiency',
+          'placementNotes',
+          // Documents / Dox uploads
+          'policeCheckDoc',
+          'covidCheckDoc',
+          'ndisDoc',
+          'resumeDoc',
+          'resumeFile',
+          'wwccDoc',
+          'passportDoc',
+          'drivingLicenceDoc',
+          'infectionControlDoc',
+          'handHygieneDoc',
+          'cbrDoc',
+          'additionalDocuments',
+          'documents',
         ];
         const sanitizedUpdate = {};
         for (const key of allowedStudentFields) {

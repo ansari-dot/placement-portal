@@ -148,6 +148,54 @@ export class AuthService {
       } catch (_) {}
     }
 
+    // Auto-resolve Student profile if student was already added by Admin or RTO
+    let boundStudentIdRef = null;
+    let isPreExistingStudent = false;
+    let userStatus = 'Pending';
+    let userApproved = false;
+    let userApprovedAt = null;
+
+    if (canonicalRole === 'Student') {
+      try {
+        const matchedStudent = await StudentModel.findOne({ emailAddress: normEmail });
+        if (matchedStudent) {
+          boundStudentIdRef = matchedStudent._id;
+          isPreExistingStudent = true;
+          // Pre-enrolled student by Admin/RTO is claiming/activating their existing profile
+          userStatus = 'Active';
+          userApproved = true;
+          userApprovedAt = new Date();
+          if (matchedStudent.rtoId) {
+            boundRtoId = matchedStudent.rtoId;
+          }
+          if (matchedStudent.assignedRto || matchedStudent.institute) {
+            boundRtoName = matchedStudent.assignedRto || matchedStudent.institute;
+          }
+        } else {
+          // Brand new student applicant registering: create pending student profile
+          const nameParts = (name || '').trim().split(/\s+/);
+          const fName = nameParts[0] || 'Student';
+          const lName = nameParts.slice(1).join(' ') || 'Applicant';
+          const genStudentId = (studentId || `STU-${Date.now().toString().slice(-6)}`).toUpperCase();
+
+          const newPendingStudent = await StudentModel.create({
+            firstName: fName,
+            lastName: lName,
+            emailAddress: normEmail,
+            phoneNumber: (phone || 'Pending').trim(),
+            courseQualification: (course || 'Vocational Placement Program').trim(),
+            assignedRto: (rtoName || 'Awaiting Assignment').trim(),
+            studentType: 'RTO Student',
+            status: 'Pending',
+            studentId: genStudentId,
+          });
+          boundStudentIdRef = newPendingStudent._id;
+        }
+      } catch (stuErr) {
+        console.error('Error resolving student during signup:', stuErr.message);
+      }
+    }
+
     let user;
     try {
       user = await UserModel.create({
@@ -155,8 +203,9 @@ export class AuthService {
         email: normEmail,
         password: (password || '').trim(),
         role: canonicalRole,
-        status: 'Pending',
-        approved: false,
+        status: userStatus,
+        approved: userApproved,
+        approvedAt: userApprovedAt,
         isDeleted: false,
         phone: (phone || '').trim(),
         department: canonicalRole === 'Industry' ? 'Industry Partner' : canonicalRole === 'RTO Manager' ? 'RTO Relations' : 'Placement Operations',
@@ -169,6 +218,7 @@ export class AuthService {
         facilityName: boundFacilityName || (facilityName ? facilityName.trim() : undefined),
         requestedCourse: (course || '').trim(),
         requestedStudentId: (studentId || '').trim(),
+        studentIdRef: boundStudentIdRef,
       });
 
     } catch (err) {
@@ -178,25 +228,27 @@ export class AuthService {
       throw err;
     }
 
-    // Notify active administrators of the new signup request
-    try {
-      const admins = await UserModel.find({
-        role: { $in: ['Administrator', 'Admin'] },
-        status: 'Active',
-        isDeleted: false,
-      });
-
-      for (const admin of admins) {
-        await NotificationModel.create({
-          title: 'New User Registration Request',
-          desc: `${user.name} (${user.role}) has requested access. Please review and approve.`,
-          type: 'system',
-          link: '/users',
-          recipient: admin._id,
+    // Notify active administrators of the new signup request if not auto-approved
+    if (!userApproved) {
+      try {
+        const admins = await UserModel.find({
+          role: { $in: ['Administrator', 'Admin'] },
+          status: 'Active',
+          isDeleted: false,
         });
+
+        for (const admin of admins) {
+          await NotificationModel.create({
+            title: 'New User Registration Request',
+            desc: `${user.name} (${user.role}) has requested access. Please review and approve.`,
+            type: 'system',
+            link: '/users',
+            recipient: admin._id,
+          });
+        }
+      } catch (notifyErr) {
+        console.error('Failed to notify admins of signup:', notifyErr.message);
       }
-    } catch (notifyErr) {
-      console.error('Failed to notify admins of signup:', notifyErr.message);
     }
 
     return {
@@ -207,6 +259,8 @@ export class AuthService {
       role: user.role,
       status: user.status,
       approved: user.approved,
+      isPreExistingStudent,
+      studentIdRef: user.studentIdRef,
       industryId: user.industryId,
       facilityName: user.facilityName,
       rtoId: user.rtoId,
@@ -385,6 +439,60 @@ export class AuthService {
 
   static async autocompleteIndustries(queryStr) {
     return await IndustryService.autocompleteIndustries(queryStr);
+  }
+
+  static async checkStudentEmail(email) {
+    const normEmail = (email || '').toLowerCase().trim();
+    if (!normEmail || !/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(normEmail)) {
+      return {
+        foundInDatabase: false,
+        isAlreadyUser: false,
+        message: 'Please provide a valid email address',
+      };
+    }
+
+    // 1. Check if a User account already exists
+    const existingUser = await UserModel.findOne({ email: normEmail, isDeleted: false });
+    if (existingUser) {
+      return {
+        foundInDatabase: false,
+        isAlreadyUser: true,
+        message: 'An account with this email is already registered. Please switch to Sign In.',
+      };
+    }
+
+    // 2. Check if student profile exists in StudentModel (added by Admin/RTO)
+    const student = await StudentModel.findOne({ emailAddress: normEmail });
+    if (student) {
+      const studentName = student.name || `${student.firstName || ''} ${student.lastName || ''}`.trim();
+      const rtoDisplay = student.assignedRto || student.institute || 'Registered Training Organisation';
+      const courseDisplay = student.courseQualification || student.courses || 'Vocational Placement';
+
+      return {
+        foundInDatabase: true,
+        isAlreadyUser: false,
+        student: {
+          id: student._id,
+          studentId: student.studentId || '',
+          name: studentName,
+          firstName: student.firstName || '',
+          lastName: student.lastName || '',
+          email: student.emailAddress,
+          phone: student.phoneNumber || '',
+          course: courseDisplay,
+          rtoName: rtoDisplay,
+          placementStatus: student.placementStatus || 'Awaiting',
+        },
+        message: `Student record found for ${studentName}! Set your password to claim and activate your account.`,
+      };
+    }
+
+    // 3. Not found in StudentModel
+    return {
+      foundInDatabase: false,
+      isAlreadyUser: false,
+      message: 'No pre-existing student record found. You can register as a New Student applicant.',
+    };
   }
 }
 
