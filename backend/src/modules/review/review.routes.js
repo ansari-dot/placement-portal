@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   createReviewController,
+  createPublicReviewController,
   getMyReviewsController,
   getAllReviewsAdminController,
   updateReviewStatusController,
@@ -11,12 +12,14 @@ import { authenticate } from '../../core/guards/auth.guard.js';
 import { requireRoles } from '../../core/guards/roles.guard.js';
 import { apiRateLimiter } from '../../core/middlewares/rateLimiter.js';
 import { validateBody } from '../../core/middlewares/validate.middleware.js';
-import { createReviewSchema, updateReviewStatusSchema } from './review.dto.js';
+import { createReviewSchema, createPublicReviewSchema, updateReviewStatusSchema } from './review.dto.js';
 
 const router = express.Router();
 
-// Public endpoint for homepage slider (approved reviews only)
+// Public endpoints for webmantis-placement website
 router.get('/public', apiRateLimiter, getPublicApprovedReviewsController);
+router.post('/public', apiRateLimiter, validateBody(createPublicReviewSchema), createPublicReviewController);
+router.post('/submit', apiRateLimiter, validateBody(createPublicReviewSchema), createPublicReviewController);
 
 // Authenticated user actions
 router.post('/', authenticate, validateBody(createReviewSchema), createReviewController);

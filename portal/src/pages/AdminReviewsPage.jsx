@@ -297,9 +297,16 @@ export default function AdminReviewsPage() {
                                   <span>Featured on Home</span>
                                 </span>
                               )}
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                                rev.reviewer
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              }`}>
+                                {rev.reviewer ? 'Portal User' : 'Website Submission'}
+                              </span>
                             </div>
                             <p className="text-[11px] text-slate-400">
-                              {rev.reviewerEmail || 'Verified User'} • Submitted on{' '}
+                              {rev.reviewerEmail || (rev.reviewer ? 'Verified Portal Account' : 'Website Visitor')} • Submitted on{' '}
                               {new Date(rev.createdAt).toLocaleDateString('en-AU', {
                                 day: 'numeric',
                                 month: 'short',

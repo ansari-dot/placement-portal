@@ -24,12 +24,87 @@ const maskNameForPolicy = (name, type = 'Partner') => {
 
 export class ReviewService {
   /**
+   * Submit a review publicly from the webmantis-placement website.
+   * Stored with status 'Pending' for Admin moderation in placement portal.
+   */
+  static async createPublicReview(data) {
+    const {
+      reviewerName,
+      reviewerRole = 'Student',
+      reviewerEmail = '',
+      rating,
+      comment,
+      title = '',
+      category = 'Platform Experience',
+      rtoName = '',
+      facilityName = '',
+    } = data;
+
+    if (!reviewerName || reviewerName.trim().length < 2) {
+      throw new BadRequestError('Reviewer name is required (at least 2 characters)');
+    }
+
+    if (!rating || Number(rating) < 1 || Number(rating) > 5) {
+      throw new BadRequestError('Rating must be an integer between 1 and 5');
+    }
+
+    if (!comment || comment.trim().length < 5) {
+      throw new BadRequestError('Review comment must be at least 5 characters');
+    }
+
+    const numRating = Math.round(Number(rating));
+
+    let canonicalRole = (reviewerRole || 'Student').trim();
+    if (canonicalRole.toLowerCase().includes('rto')) canonicalRole = 'RTO Manager';
+    else if (canonicalRole.toLowerCase().includes('industry') || canonicalRole.toLowerCase().includes('host') || canonicalRole.toLowerCase().includes('facility')) canonicalRole = 'Industry';
+    else if (canonicalRole.toLowerCase().includes('student')) canonicalRole = 'Student';
+
+    const review = await ReviewModel.create({
+      reviewer: null,
+      reviewerName: reviewerName.trim(),
+      reviewerRole: canonicalRole,
+      reviewerEmail: (reviewerEmail || '').toLowerCase().trim(),
+      reviewerAvatar: '',
+      rating: numRating,
+      title: (title || '').trim(),
+      comment: comment.trim(),
+      category: category || 'Platform Experience',
+      rtoName: (rtoName || '').trim(),
+      facilityName: (facilityName || '').trim(),
+      status: 'Pending',
+    });
+
+    // Notify active administrators of the new review needing approval
+    try {
+      const admins = await UserModel.find({
+        role: { $in: ['Administrator', 'Admin'] },
+        status: 'Active',
+        isDeleted: false,
+      }).select('_id');
+
+      for (const admin of admins) {
+        await NotificationModel.create({
+          title: 'New Website Review Pending Approval',
+          desc: `${reviewerName.trim()} (${canonicalRole}) submitted a ${numRating}-star review: "${title || comment.substring(0, 40)}..."`,
+          type: 'system',
+          link: '/reviews',
+          recipient: admin._id,
+        });
+      }
+    } catch (notifErr) {
+      console.error('Failed to notify admins of new review:', notifErr.message);
+    }
+
+    return review;
+  }
+
+  /**
    * Submit a new review and rating.
    * Accessible by Student, RTO Manager, and Industry partner users.
    */
   static async createReview(data, user) {
     if (!user || !user._id) {
-      throw new ForbiddenError('Authentication required to submit a review');
+      return await this.createPublicReview(data);
     }
 
     const { rating, comment, title = '', category = 'Platform Experience' } = data;
@@ -219,18 +294,20 @@ export class ReviewService {
 
     await review.save();
 
-    // Notify reviewer of decision
-    try {
-      await NotificationModel.create({
-        title: status === 'Approved' ? 'Review Approved' : 'Review Status Update',
-        desc: status === 'Approved'
-          ? 'Your review has been approved and published to the Mantis testimonials section!'
-          : `Your review could not be approved: ${rejectionReason || 'Does not meet publication guidelines.'}`,
-        type: 'system',
-        link: '/',
-        recipient: review.reviewer,
-      });
-    } catch (_) {}
+    // Notify reviewer of decision if authenticated user
+    if (review.reviewer) {
+      try {
+        await NotificationModel.create({
+          title: status === 'Approved' ? 'Review Approved' : 'Review Status Update',
+          desc: status === 'Approved'
+            ? 'Your review has been approved and published to the Mantis testimonials section!'
+            : `Your review could not be approved: ${rejectionReason || 'Does not meet publication guidelines.'}`,
+          type: 'system',
+          link: '/',
+          recipient: review.reviewer,
+        });
+      } catch (_) {}
+    }
 
     return review;
   }

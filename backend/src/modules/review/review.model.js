@@ -5,7 +5,8 @@ const reviewSchema = new mongoose.Schema(
     reviewer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: false,
+      default: null,
       index: true,
     },
     reviewerName: {
@@ -15,7 +16,7 @@ const reviewSchema = new mongoose.Schema(
     },
     reviewerRole: {
       type: String,
-      enum: ['Student', 'RTO Manager', 'RTO', 'Industry', 'Industry/Host', 'Coordinator', 'Staff', 'Administrator'],
+      enum: ['Student', 'RTO Manager', 'RTO', 'Industry', 'Industry/Host', 'Host Facility', 'Coordinator', 'Staff', 'Administrator', 'Partner', 'Other'],
       required: [true, 'Reviewer role is required'],
     },
     reviewerEmail: {

@@ -13,6 +13,19 @@ export const createReviewController = async (req, res, next) => {
   }
 };
 
+export const createPublicReviewController = async (req, res, next) => {
+  try {
+    const review = await ReviewService.createPublicReview(req.body);
+    res.status(201).json({
+      success: true,
+      message: 'Review submitted successfully! It will appear on the homepage once reviewed and approved by an administrator.',
+      data: review,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getMyReviewsController = async (req, res, next) => {
   try {
     const reviews = await ReviewService.getMyReviews(req.user);
