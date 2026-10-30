@@ -153,9 +153,18 @@ export class StudentService {
       } else if (isRto) {
         filter = await getStudentQueryScope(user);
       } else if (isStudent) {
-        filter = {
-          $or: [{ emailAddress: userEmail }, { _id: user.studentIdRef || user._id }],
-        };
+        const studentMatches = [];
+        if (userEmail) {
+          const escaped = userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          studentMatches.push({ emailAddress: { $regex: `^${escaped}$`, $options: 'i' } });
+        }
+        if (user.studentIdRef && mongoose.Types.ObjectId.isValid(user.studentIdRef)) {
+          studentMatches.push({ _id: new mongoose.Types.ObjectId(user.studentIdRef) });
+        }
+        if (user.requestedStudentId) {
+          studentMatches.push({ studentId: user.requestedStudentId.trim() });
+        }
+        filter = studentMatches.length > 0 ? { $or: studentMatches } : { _id: null };
       } else if (isIndustry) {
         filter = await getStudentQueryScope(user);
       } else {
@@ -207,7 +216,8 @@ export class StudentService {
       if (role === 'Student') {
         const isOwnRecord =
           (student.emailAddress && student.emailAddress.toLowerCase().trim() === userEmail) ||
-          (user.studentIdRef && user.studentIdRef.toString() === student._id.toString());
+          (user.studentIdRef && user.studentIdRef.toString() === student._id.toString()) ||
+          (user.requestedStudentId && student.studentId && user.requestedStudentId.trim().toLowerCase() === student.studentId.trim().toLowerCase());
         if (!isOwnRecord) {
           throw new NotFoundError('Student not found');
         }
@@ -358,6 +368,27 @@ export class StudentService {
           'workExperience',
           'englishProficiency',
           'placementNotes',
+          // Education and course credentials
+          'courseQualification',
+          'specialisation',
+          'courseLevel',
+          'studyMode',
+          'campus',
+          'startDate',
+          'expectedEndDate',
+          'currentYearSemester',
+          'attendanceStatus',
+          'academicStatus',
+          'gpa',
+          'previousQualification',
+          'yearOfCompletion',
+          'placementHours',
+          'courses',
+          // Additional info
+          'heardAboutUs',
+          'hasResume',
+          'additionalNotes',
+          'cprDoc',
           // Documents / Dox uploads
           'policeCheckDoc',
           'covidCheckDoc',
@@ -483,6 +514,21 @@ export class StudentService {
         await WorkflowModel.updateMany(
           { 'internships.studentId': student.studentId },
           { $set: updateFields }
+        );
+      } catch (_) {}
+    }
+
+    // Sync student name & phone to linked User account
+    if (student && (studentData.firstName || studentData.lastName || studentData.phoneNumber)) {
+      try {
+        const UserModel = (await import('../user/user.model.js')).default;
+        const newFullName = `${student.firstName || ''} ${student.lastName || ''}`.trim();
+        const userUpdates = {};
+        if (newFullName) userUpdates.name = newFullName;
+        if (student.phoneNumber) userUpdates.phone = student.phoneNumber;
+        await UserModel.updateMany(
+          { $or: [{ studentIdRef: student._id }, { email: student.emailAddress?.toLowerCase()?.trim() }] },
+          { $set: userUpdates }
         );
       } catch (_) {}
     }

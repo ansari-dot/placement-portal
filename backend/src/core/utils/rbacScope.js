@@ -87,10 +87,14 @@ export const getStudentQueryScope = async (user) => {
   if (role === 'Student') {
     const studentConditions = [];
     if (userEmail) {
-      studentConditions.push({ emailAddress: userEmail });
+      const escaped = userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      studentConditions.push({ emailAddress: { $regex: `^${escaped}$`, $options: 'i' } });
     }
-    if (user.studentIdRef) {
-      studentConditions.push({ _id: user.studentIdRef });
+    if (user.studentIdRef && mongoose.Types.ObjectId.isValid(user.studentIdRef)) {
+      studentConditions.push({ _id: new mongoose.Types.ObjectId(user.studentIdRef) });
+    }
+    if (user.requestedStudentId) {
+      studentConditions.push({ studentId: user.requestedStudentId.trim() });
     }
     return studentConditions.length > 0 ? { $or: studentConditions } : { _id: null };
   }
