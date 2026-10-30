@@ -20,6 +20,9 @@ import {
   CreditCard,
   FileSpreadsheet,
   Star,
+  User,
+  ShieldCheck,
+  FileText,
 } from 'lucide-react';
 import ReviewSubmitModal from '../review/ReviewSubmitModal';
 import { fetchAdminReviews } from '../../api/reviewApi';
@@ -93,6 +96,50 @@ export default function Sidebar() {
 
   const isWorkflowStepActive = (step) => {
     return pathname === '/workflow' && workflowStep === step;
+  };
+
+  // ============================================
+  // STUDENT VIEW ACTIVE ROUTE
+  // ============================================
+
+  const isStudentViewActive = (view) => {
+    if (view === 'dashboard') {
+      return (pathname === '/' || pathname === '/my-students') && (!searchParams.get('view') || searchParams.get('view') === 'dashboard');
+    }
+    return (pathname === '/' || pathname === '/my-students') && searchParams.get('view') === view;
+  };
+
+  const studentLinkClass = (view) => {
+    const active = isStudentViewActive(view);
+    return `
+      group
+      flex
+      items-center
+      gap-2.5
+      w-full
+      px-2.5
+      py-1.5
+      rounded-md
+      transition-all
+      duration-200
+      text-[10px]
+      ${
+        active
+          ? 'bg-[#08a8b8] text-white font-medium shadow-sm'
+          : 'text-white/75 hover:bg-white/10 hover:text-white'
+      }
+    `;
+  };
+
+  const studentIconClass = (view) => {
+    const active = isStudentViewActive(view);
+    return `
+      w-3
+      h-3
+      shrink-0
+      transition-colors
+      ${active ? 'text-white' : 'text-white/60 group-hover:text-white'}
+    `;
   };
 
   // ============================================
@@ -273,64 +320,96 @@ export default function Sidebar() {
 
 
         {/* ===================================================
-            MY LIST
+            STUDENT PORTAL NAVIGATION OR MY LIST
         ==================================================== */}
 
-        <div className="mb-4">
+        {isStudent ? (
+          <div className="mb-4">
+            <p className={sectionTitle}>
+              My Placement Portal
+            </p>
+            <div className="space-y-0.5">
+              <Link to="/my-students?view=dashboard" className={studentLinkClass('dashboard')}>
+                <LayoutDashboard className={studentIconClass('dashboard')} />
+                <span className="truncate">Overview & Pipeline</span>
+              </Link>
 
-          <p className={sectionTitle}>
-            My List
-          </p>
+              <Link to="/my-students?view=profile" className={studentLinkClass('profile')}>
+                <User className={studentIconClass('profile')} />
+                <span className="truncate">My Enrolment Profile</span>
+              </Link>
 
-          <div className="space-y-0.5">
+              <Link to="/my-students?view=applications" className={studentLinkClass('applications')}>
+                <Briefcase className={studentIconClass('applications')} />
+                <span className="truncate">Applications & Outreach</span>
+              </Link>
 
-            {/* My Progress */}
+              <Link to="/my-students?view=interviews" className={studentLinkClass('interviews')}>
+                <Calendar className={studentIconClass('interviews')} />
+                <span className="truncate">Interviews & Schedule</span>
+              </Link>
 
-            <Link
-              to="/my-students"
-              className={navLinkClass('/my-students')}
-            >
+              <Link to="/my-students?view=placement" className={studentLinkClass('placement')}>
+                <Building2 className={studentIconClass('placement')} />
+                <span className="truncate">Placement & Training</span>
+              </Link>
 
-              <Users
-                className={iconClass('/my-students')}
-              />
+              <Link to="/my-students?view=compliance" className={studentLinkClass('compliance')}>
+                <ShieldCheck className={studentIconClass('compliance')} />
+                <span className="truncate">Compliance Clearances</span>
+              </Link>
 
-              <span className="truncate">
-                {isIndustry ? 'Students & Attendance' : isStudent ? 'Placement Project & Steps' : 'My Progress'}
-              </span>
-
-            </Link>
-
-
-            {/* Add Student — Admin, Coordinator & RTO Manager */}
-            {(isAdmin || isCoordinator || isRtoManager) && (
-            <Link
-              to="/add-student"
-              className={navLinkClass('/add-student')}
-            >
-
-              <UserPlus
-                className={iconClass('/add-student')}
-              />
-
-              <span className="truncate">
-                Add New Student
-              </span>
-
-            </Link>
-            )}
-
-            {/* Bulk Import — Admin only */}
-            {isAdmin && (
-            <Link to="/bulk-import" className={navLinkClass('/bulk-import')}>
-              <FileSpreadsheet className={iconClass('/bulk-import')} />
-              <span className="truncate">Bulk Import</span>
-            </Link>
-            )}
-
+              <Link to="/my-students?view=reviews" className={studentLinkClass('reviews')}>
+                <Star className={studentIconClass('reviews')} />
+                <span className="truncate">Reviews & Feedback</span>
+              </Link>
+            </div>
           </div>
+        ) : (
+          <div className="mb-4">
+            <p className={sectionTitle}>
+              My List
+            </p>
 
-        </div>
+            <div className="space-y-0.5">
+              {/* My Progress */}
+              <Link
+                to="/my-students"
+                className={navLinkClass('/my-students')}
+              >
+                <Users
+                  className={iconClass('/my-students')}
+                />
+                <span className="truncate">
+                  {isIndustry ? 'Students & Attendance' : 'My Progress'}
+                </span>
+              </Link>
+
+              {/* Add Student — Admin, Coordinator & RTO Manager */}
+              {(isAdmin || isCoordinator || isRtoManager) && (
+              <Link
+                to="/add-student"
+                className={navLinkClass('/add-student')}
+              >
+                <UserPlus
+                  className={iconClass('/add-student')}
+                />
+                <span className="truncate">
+                  Add New Student
+                </span>
+              </Link>
+              )}
+
+              {/* Bulk Import — Admin only */}
+              {isAdmin && (
+              <Link to="/bulk-import" className={navLinkClass('/bulk-import')}>
+                <FileSpreadsheet className={iconClass('/bulk-import')} />
+                <span className="truncate">Bulk Import</span>
+              </Link>
+              )}
+            </div>
+          </div>
+        )}
 
 
         {/* ===================================================

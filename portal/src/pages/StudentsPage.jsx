@@ -1,11 +1,18 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { UserPlus } from 'lucide-react';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import AllStudentsTable from '../components/student/AllStudentsTable';
+import StudentPortalPage from './StudentPortalPage';
 
 export default function StudentsPage() {
+  const authUser = useSelector((s) => s.auth?.user);
+
+  if (authUser?.role === 'Student') {
+    return <StudentPortalPage />;
+  }
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-800">
       {/* SIDEBAR */}

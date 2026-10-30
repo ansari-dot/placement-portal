@@ -9,6 +9,7 @@ import MyProgressIndustryTab from '../components/progress/MyProgressIndustryTab'
 import MyProgressScoreTab from '../components/progress/MyProgressScoreTab';
 
 import IndustryPortalPage from './IndustryPortalPage';
+import StudentPortalPage from './StudentPortalPage';
 
 const TABS = [
   { key: 'students', label: 'Students',  icon: Users    },
@@ -29,6 +30,10 @@ export default function MyProgressPage() {
     }
     return true;
   });
+
+  if (authUser?.role === 'Student') {
+    return <StudentPortalPage />;
+  }
 
   if (authUser?.role === 'Industry') {
     return <IndustryPortalPage />;

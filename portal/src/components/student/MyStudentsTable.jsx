@@ -746,7 +746,7 @@ export default function MyStudentsTable() {
                 RTO View
               </span>
             </div>
-          ) : (
+          ) : isCoordinator ? (
             <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 px-4 flex items-center justify-between shadow-2xs">
               <div className="flex items-center space-x-2.5">
                 <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
@@ -758,7 +758,7 @@ export default function MyStudentsTable() {
                 Coordinator View
               </span>
             </div>
-          )}
+          ) : null}
 
           <StudentFilters
             filters={filters}
