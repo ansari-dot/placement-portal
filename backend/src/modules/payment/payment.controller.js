@@ -25,9 +25,46 @@ export {
   retrySendInvoiceEmailController,
 };
 
+import RtoModel from '../rto/rto.model.js';
+import StudentModel from '../student/student.model.js';
+import { getStudentQueryScope } from '../../core/utils/rbacScope.js';
+
 export const getPaymentsController = async (req, res, next) => {
   try {
-    const result = await getPaymentsService(req.query);
+    const user = req.user;
+    const query = { ...req.query };
+    if (user && (user.role === 'RTO Manager' || user.role === 'RTO')) {
+      const studentScope = await getStudentQueryScope(user);
+      const studentDocs = await StudentModel.find(studentScope, { _id: 1, studentId: 1, assignedRto: 1, institute: 1 }).lean();
+      const studentDbIds = studentDocs.map((s) => s._id).filter(Boolean);
+      const studentBizIds = studentDocs.map((s) => s.studentId).filter(Boolean);
+
+      let rtoName = user.rtoName;
+      if (!rtoName && user.rtoId) {
+        const rtoDoc = await RtoModel.findById(user.rtoId).lean();
+        if (rtoDoc) rtoName = rtoDoc.name;
+      }
+      if (!rtoName && user.email) {
+        const matchedRto = await RtoModel.findOne({ contactEmail: user.email.toLowerCase().trim() }).lean();
+        if (matchedRto) rtoName = matchedRto.name;
+      }
+      if (!rtoName && user.requestedOrgName) {
+        rtoName = user.requestedOrgName;
+      }
+
+      const rtoNames = [
+        ...new Set([rtoName, ...studentDocs.flatMap((s) => [s.assignedRto, s.institute])].filter(Boolean)),
+      ];
+
+      query.allowedStudentDbIds = studentDbIds;
+      query.allowedStudentIds = studentBizIds;
+      query.rtoNames = rtoNames;
+      if (rtoName) {
+        query.rto = rtoName;
+      }
+    }
+
+    const result = await getPaymentsService(query);
 
     if (result.pagination) {
       return res.status(200).json({
@@ -49,7 +86,40 @@ export const getPaymentsController = async (req, res, next) => {
 
 export const getPaymentTotalsController = async (req, res, next) => {
   try {
-    const data = await getPaymentTotalsService(req.query);
+    const user = req.user;
+    const query = { ...req.query };
+    if (user && (user.role === 'RTO Manager' || user.role === 'RTO')) {
+      const studentScope = await getStudentQueryScope(user);
+      const studentDocs = await StudentModel.find(studentScope, { _id: 1, studentId: 1, assignedRto: 1, institute: 1 }).lean();
+      const studentDbIds = studentDocs.map((s) => s._id).filter(Boolean);
+      const studentBizIds = studentDocs.map((s) => s.studentId).filter(Boolean);
+
+      let rtoName = user.rtoName;
+      if (!rtoName && user.rtoId) {
+        const rtoDoc = await RtoModel.findById(user.rtoId).lean();
+        if (rtoDoc) rtoName = rtoDoc.name;
+      }
+      if (!rtoName && user.email) {
+        const matchedRto = await RtoModel.findOne({ contactEmail: user.email.toLowerCase().trim() }).lean();
+        if (matchedRto) rtoName = matchedRto.name;
+      }
+      if (!rtoName && user.requestedOrgName) {
+        rtoName = user.requestedOrgName;
+      }
+
+      const rtoNames = [
+        ...new Set([rtoName, ...studentDocs.flatMap((s) => [s.assignedRto, s.institute])].filter(Boolean)),
+      ];
+
+      query.allowedStudentDbIds = studentDbIds;
+      query.allowedStudentIds = studentBizIds;
+      query.rtoNames = rtoNames;
+      if (rtoName) {
+        query.rto = rtoName;
+      }
+    }
+
+    const data = await getPaymentTotalsService(query);
     return res.status(200).json({
       success: true,
       data,

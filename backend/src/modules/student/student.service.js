@@ -86,6 +86,44 @@ export class StudentService {
       delete studentData.contactedIndustries;
       delete studentData.placementSite;
       delete studentData.preferredIndustry;
+    } else {
+      // Dynamic RTO resolution & registration for non-RTO managers (Admins, Coordinators, Direct Enrollment)
+      const rawRtoName = (studentData.assignedRto || studentData.institute || '').trim();
+
+      if (studentData.studentType === 'Independent Student') {
+        if (!rawRtoName) {
+          studentData.assignedRto = 'Independent Student';
+          studentData.institute = studentData.institute || 'Independent Student';
+        }
+      } else if (studentData.studentType === 'RTO Student' && !rawRtoName) {
+        studentData.studentType = 'Awaiting RTO Assignment';
+      }
+
+      if (rawRtoName && rawRtoName !== 'Independent Student' && rawRtoName !== 'Unassigned') {
+        const escaped = rawRtoName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const matchedRto = await RtoModel.findOne({ name: { $regex: `^${escaped}$`, $options: 'i' } });
+
+        if (matchedRto) {
+          studentData.rtoId = matchedRto._id;
+          studentData.assignedRto = matchedRto.name;
+          studentData.institute = matchedRto.name;
+        } else {
+          // New RTO entered — dynamically register in RtoModel so suggestions return it in future
+          try {
+            const newRto = await RtoModel.create({
+              name: rawRtoName,
+              status: 'Active',
+              shortDescription: `Registered via student enrollment (${studentData.studentType || 'Student'})`,
+            });
+            studentData.rtoId = newRto._id;
+            studentData.assignedRto = newRto.name;
+            studentData.institute = newRto.name;
+          } catch (_) {
+            studentData.assignedRto = rawRtoName;
+            studentData.institute = rawRtoName;
+          }
+        }
+      }
     }
 
     const manualId = (studentData.studentId || '').trim();
@@ -115,6 +153,9 @@ export class StudentService {
         desc: `${studentName} was successfully added to student roster`,
         type: 'student',
         link: '/my-students',
+        targetRoles: ['Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'RTO', 'RTO Manager'],
+        rtoName: student.assignedRto || student.institute || '',
+        studentName,
       });
     } catch (nErr) {
       console.error('Failed to create notification on student add:', nErr);
@@ -184,6 +225,91 @@ export class StudentService {
   static async getAllStudents(user, coordinatorIdQuery) {
     const filter = await this.buildRbacFilter(user, coordinatorIdQuery);
     const rawStudents = await StudentModel.find(filter).sort({ createdAt: -1 });
+
+    // Derive live dynamic statuses from workflows so student status is never stale
+    try {
+      const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+      if (workflows && workflows.length > 0) {
+        const allAppts = workflows.flatMap((wf) => wf.appointments || []);
+        const allInts = workflows.flatMap((wf) => wf.internships || []);
+
+        const apptsByStudent = new Map();
+        allAppts.forEach((a) => {
+          const keys = [a.studentId, String(a._id || ''), a.student?.trim().toLowerCase()].filter(Boolean);
+          keys.forEach((k) => {
+            if (!apptsByStudent.has(k)) apptsByStudent.set(k, []);
+            apptsByStudent.get(k).push(a);
+          });
+        });
+
+        const intsByStudent = new Map();
+        allInts.forEach((i) => {
+          const keys = [i.studentId, String(i._id || ''), i.student?.trim().toLowerCase()].filter(Boolean);
+          keys.forEach((k) => {
+            if (!intsByStudent.has(k)) intsByStudent.set(k, []);
+            intsByStudent.get(k).push(i);
+          });
+        });
+
+        const now = new Date();
+        rawStudents.forEach((s) => {
+          const sFullName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
+          const sName = (s.name || sFullName).trim().toLowerCase();
+          const keys = [s.studentId, String(s._id || ''), sName, sFullName].filter(Boolean);
+
+          const studentAppts = keys.flatMap((k) => apptsByStudent.get(k) || []);
+          const studentInts = keys.flatMap((k) => intsByStudent.get(k) || []);
+
+          if (studentInts.length > 0 || studentAppts.length > 0) {
+            if (
+              studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
+              studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status))
+            ) {
+              s.placementStatus = 'Placement Completed';
+            } else if (
+              studentInts.some((i) => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
+              studentAppts.some(
+                (a) =>
+                  !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
+                  (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
+                  a.commencementDate &&
+                  new Date(a.commencementDate) <= now
+              )
+            ) {
+              s.placementStatus = 'Placement Started';
+            } else if (
+              studentAppts.some(
+                (a) =>
+                  !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
+                  a.appointmentOutcome === 'successful' &&
+                  !a.commencementDate
+              )
+            ) {
+              s.placementStatus = 'Appointment Successful';
+            } else if (studentAppts.some((a) => ['Scheduled', 'Rescheduled'].includes(a.status))) {
+              s.placementStatus = 'Appointment Scheduled';
+            }
+
+            const latestAppt = studentAppts.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
+            if (latestAppt) {
+              if (!s.appointmentDate && latestAppt.date) s.appointmentDate = latestAppt.date;
+              if (!s.appointmentTime && latestAppt.time) s.appointmentTime = latestAppt.time;
+              if (!s.commencementDate && latestAppt.commencementDate) s.commencementDate = latestAppt.commencementDate;
+            }
+
+            const latestInt = studentInts.sort((a, b) => new Date(b.start || b.startDate || 0) - new Date(a.start || a.startDate || 0))[0];
+            if (latestInt) {
+              if (!s.commencementDate && (latestInt.start || latestInt.startDate)) {
+                s.commencementDate = latestInt.start || latestInt.startDate;
+              }
+            }
+          }
+        });
+      }
+    } catch (_) {
+      // Non-blocking fallback
+    }
+
     return rawStudents.map((s) => sanitizeStudentDataForRole(s, user?.role));
   }
 
@@ -454,16 +580,32 @@ export class StudentService {
       }
     }
 
-    // If assignedRto is provided without rtoId, auto-resolve rtoId
-    if (studentData.assignedRto && !studentData.rtoId && studentData.studentType !== 'Independent Student') {
+    // If assignedRto or institute is provided, auto-resolve rtoId or dynamically register new RTO
+    const cleanRtoName = (studentData.assignedRto || studentData.institute || '').trim();
+    if (cleanRtoName && cleanRtoName !== 'Independent Student' && cleanRtoName !== 'Unassigned') {
       try {
+        const escaped = cleanRtoName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const matchedRto = await RtoModel.findOne({
-          name: { $regex: `^${studentData.assignedRto.trim()}$`, $options: 'i' },
-        }).select('_id name');
+          name: { $regex: `^${escaped}$`, $options: 'i' },
+        });
         if (matchedRto) {
           studentData.assignedRto = matchedRto.name;
+          studentData.institute = matchedRto.name;
           studentData.rtoId = matchedRto._id;
-          studentData.studentType = 'RTO Student';
+        } else {
+          try {
+            const newRto = await RtoModel.create({
+              name: cleanRtoName,
+              status: 'Active',
+              shortDescription: `Registered via student profile update (${studentData.studentType || 'Student'})`,
+            });
+            studentData.assignedRto = newRto.name;
+            studentData.institute = newRto.name;
+            studentData.rtoId = newRto._id;
+          } catch (_) {
+            studentData.assignedRto = cleanRtoName;
+            studentData.institute = cleanRtoName;
+          }
         }
       } catch (_) {}
     }
@@ -503,18 +645,104 @@ export class StudentService {
       })
       .catch(() => {});
 
-    // Sync placement dates / status into workflow internships if present
+    // Sync placement dates / status into workflow internships, appointments, and payments if present
     if (student && (studentData.commencementDate || studentData.completionDate || studentData.placementStatus)) {
       try {
-        const updateFields = {};
-        if (studentData.commencementDate) updateFields['internships.$.start'] = studentData.commencementDate;
-        if (studentData.completionDate) updateFields['internships.$.end'] = studentData.completionDate;
-        if (studentData.placementStatus) updateFields['internships.$.status'] = studentData.placementStatus;
+        const studentBizId = String(student.studentId || '').trim();
+        const studentDbId = String(student._id || student.id || '').trim();
+        const studentName = `${student.firstName || ''} ${student.lastName || ''}`.trim();
+        const isCompleted = ['Placement Completed', 'Completed'].includes(studentData.placementStatus);
 
-        await WorkflowModel.updateMany(
-          { 'internships.studentId': student.studentId },
-          { $set: updateFields }
-        );
+        const stuMatchConditions = [
+          ...(studentBizId ? [{ studentId: studentBizId }, { studentId: new RegExp(`^${studentBizId}$`, 'i') }] : []),
+          ...(studentDbId && mongoose.Types.ObjectId.isValid(studentDbId) ? [{ _id: studentDbId }] : []),
+          ...(studentName ? [{ student: studentName }, { student: new RegExp(`^${studentName}$`, 'i') }, { name: studentName }] : []),
+        ];
+
+        // 1. Update WorkflowModel embedded internships & appointments
+        const workflows = await WorkflowModel.find({
+          $or: [
+            ...(studentBizId ? [{ 'internships.studentId': studentBizId }, { 'appointments.studentId': studentBizId }] : []),
+            ...(studentName ? [{ 'internships.student': new RegExp(`^${studentName}$`, 'i') }, { 'appointments.student': new RegExp(`^${studentName}$`, 'i') }] : []),
+          ],
+        });
+
+        for (const wf of workflows) {
+          let wfModified = false;
+          (wf.internships || []).forEach((i) => {
+            const matches =
+              (studentBizId && String(i.studentId || '').trim().toLowerCase() === studentBizId.toLowerCase()) ||
+              (studentName && String(i.student || '').trim().toLowerCase() === studentName.toLowerCase());
+            if (matches) {
+              if (studentData.commencementDate) i.start = studentData.commencementDate;
+              if (studentData.completionDate) i.end = studentData.completionDate;
+              if (studentData.placementStatus) {
+                i.status = isCompleted ? 'Completed' : studentData.placementStatus;
+                if (isCompleted) i.progress = 100;
+              }
+              wfModified = true;
+            }
+          });
+
+          (wf.appointments || []).forEach((a) => {
+            const matches =
+              (studentBizId && String(a.studentId || '').trim().toLowerCase() === studentBizId.toLowerCase()) ||
+              (studentName && String(a.student || '').trim().toLowerCase() === studentName.toLowerCase());
+            if (matches) {
+              if (studentData.commencementDate) a.commencementDate = studentData.commencementDate;
+              if (studentData.completionDate) a.expectedCompletionDate = studentData.completionDate;
+              if (isCompleted) {
+                a.status = 'Completed';
+                a.appointmentOutcome = 'successful';
+              } else if (studentData.placementStatus === 'Placement Started') {
+                a.status = 'Confirmed';
+              }
+              wfModified = true;
+            }
+          });
+
+          if (wfModified) {
+            await wf.save({ validateBeforeSave: false });
+          }
+        }
+
+        // 2. Update standalone AppointmentModel
+        if (isCompleted) {
+          try {
+            const AppointmentModel = (await import('../appointment/appointment.model.js')).default;
+            if (AppointmentModel) {
+              await AppointmentModel.updateMany(
+                {
+                  $or: [
+                    ...(studentBizId ? [{ studentId: studentBizId }, { studentId: new RegExp(`^${studentBizId}$`, 'i') }] : []),
+                    ...(studentName ? [{ student: studentName }, { student: new RegExp(`^${studentName}$`, 'i') }] : []),
+                  ],
+                },
+                { status: 'Completed', appointmentOutcome: 'successful' },
+                { runValidators: false }
+              );
+            }
+          } catch (_) {}
+        }
+
+        // 3. Update PaymentModel & trigger sync
+        try {
+          const PaymentModel = (await import('../payment/payment.model.js')).default;
+          if (PaymentModel && studentData.placementStatus) {
+            await PaymentModel.updateMany(
+              {
+                $or: [
+                  ...(studentBizId ? [{ studentId: studentBizId }] : []),
+                  ...(studentDbId && mongoose.Types.ObjectId.isValid(studentDbId) ? [{ student: studentDbId }] : []),
+                ],
+              },
+              { placementStatus: studentData.placementStatus },
+              { runValidators: false }
+            );
+          }
+          const { syncChargeableStudents } = await import('../payment/payment.service.js');
+          await syncChargeableStudents();
+        } catch (_) {}
       } catch (_) {}
     }
 

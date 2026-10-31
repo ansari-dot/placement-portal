@@ -54,6 +54,7 @@ const norm = (val) => (val === undefined || val === null ? '' : String(val).trim
 export default function WorkflowPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const stepParam = parseInt(searchParams.get('step') || '1', 10);
+  const searchParam = searchParams.get('search') || '';
   const [activeStep, setActiveStep] = useState(
     stepParam >= 1 && stepParam <= 5 ? stepParam : 1
   );
@@ -188,7 +189,9 @@ export default function WorkflowPage() {
 
   const goToStep = useCallback(async (step) => {
     setActiveStep(step);
-    setSearchParams({ step: String(step) });
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('step', String(step));
+    setSearchParams(newParams);
 
     if (workflowId) {
       try {
@@ -200,7 +203,7 @@ export default function WorkflowPage() {
         console.error('Failed to update workflow step:', err);
       }
     }
-  }, [workflowId, setSearchParams]);
+  }, [workflowId, searchParams, setSearchParams]);
 
   // ─── 🔒 Coordinators cannot access Step 1 (Students) ──────────────────────
   // Step 1 is Admin-only per spec. If a coordinator lands here (direct URL,
@@ -343,12 +346,16 @@ export default function WorkflowPage() {
   const findRequestsForStudent = useCallback((stu) => {
     const stuDbId = norm(stu.id || stu._id);
     const stuBizId = norm(stu.studentId);
+    const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
+    const stuName = norm(stu.name || stuFullName);
 
     return (workflow?.requests || []).filter((r) => {
       const reqStudentId = norm(r.studentId);
+      const reqStudentName = norm(r.student);
       return (
         (reqStudentId && stuDbId && reqStudentId === stuDbId) ||
-        (reqStudentId && stuBizId && reqStudentId === stuBizId)
+        (reqStudentId && stuBizId && reqStudentId === stuBizId) ||
+        (reqStudentName && stuName && reqStudentName === stuName)
       );
     });
   }, [workflow]);
@@ -356,12 +363,16 @@ export default function WorkflowPage() {
   const findAppointmentsForStudent = useCallback((stu) => {
     const stuDbId = norm(stu.id || stu._id);
     const stuBizId = norm(stu.studentId);
+    const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
+    const stuName = norm(stu.name || stuFullName);
 
     return (workflow?.appointments || []).filter((a) => {
       const apptStudentId = norm(a.studentId);
+      const apptStudentName = norm(a.student);
       return (
         (apptStudentId && stuDbId && apptStudentId === stuDbId) ||
-        (apptStudentId && stuBizId && apptStudentId === stuBizId)
+        (apptStudentId && stuBizId && apptStudentId === stuBizId) ||
+        (apptStudentName && stuName && apptStudentName === stuName)
       );
     });
   }, [workflow]);
@@ -369,7 +380,13 @@ export default function WorkflowPage() {
   const mapStudentsForStep1 = useCallback(() => {
     if (!visibleWorkflowStudents || visibleWorkflowStudents.length === 0) return [];
 
-    return visibleWorkflowStudents.map((stu) => {
+    const sortedStudents = [...visibleWorkflowStudents].sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || a.addedOn || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || b.addedOn || 0).getTime();
+      return tB - tA;
+    });
+
+    return sortedStudents.map((stu) => {
       const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim();
       const stuDbId = norm(stu.id || stu._id);
       const stuBizId = norm(stu.studentId);
@@ -388,9 +405,11 @@ export default function WorkflowPage() {
       // ── Internship records for this student ──────────────────────────────
       const matchingInternships = (workflow?.internships || []).filter((i) => {
         const iStuId = norm(i.studentId);
+        const iStuName = norm(i.student);
         return (
           (iStuId && stuDbId && iStuId === stuDbId) ||
-          (iStuId && stuBizId && iStuId === stuBizId)
+          (iStuId && stuBizId && iStuId === stuBizId) ||
+          (iStuName && stuName && iStuName === stuName)
         );
       });
 
@@ -417,9 +436,12 @@ export default function WorkflowPage() {
 
       // Placement Completed
       const hasCompleted =
-        matchingInternships.some((i) => i.status === 'Completed') ||
+        ['Placement Completed', 'Completed'].includes(stu.placementStatus) ||
+        matchingInternships.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
         sortedAppointments.some(
-          (a) => a.appointmentOutcome === 'successful' && a.status === 'Completed'
+          (a) =>
+            ['Completed', 'Placement Completed'].includes(a.status) ||
+            (a.appointmentOutcome === 'successful' && a.status === 'Completed')
         );
 
       const hasStartedPlacement =
@@ -429,13 +451,14 @@ export default function WorkflowPage() {
             i.status === 'Active' ||
             (
               i.start &&
-              !['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Withdrawn', 'Cancelled', 'Completed', 'Not Suitable Site'].includes(i.status) &&
+              !['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Withdrawn', 'Cancelled', 'Completed', 'Placement Completed', 'Not Suitable Site'].includes(i.status) &&
               !isNaN(new Date(i.start).getTime()) &&
               new Date(i.start) <= now
             )
           ) ||
           sortedAppointments.some((a) => {
             if (TERMINAL_APPT_STATUSES.includes(a.status)) return false;
+            if (['Completed', 'Placement Completed'].includes(a.status)) return false;
             // Confirmed = placement outcome successful, treat as started
             if (a.status === 'Confirmed') return true;
             if (a.commencementDate) {
@@ -642,6 +665,11 @@ export default function WorkflowPage() {
           updatedAt: req.updatedAt || null,
           changeHistory: req.changeHistory || [],
         };
+      })
+      .sort((a, b) => {
+        const tA = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
+        const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+        return tB - tA;
       });
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators]);
 
@@ -755,6 +783,11 @@ export default function WorkflowPage() {
           updatedAt: appt.updatedAt || '',
           createdAt: appt.createdAt || '',
         };
+      })
+      .sort((a, b) => {
+        const tA = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
+        const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+        return tB - tA;
       });
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents]);
 
@@ -799,9 +832,31 @@ export default function WorkflowPage() {
           stuMatch?.availabilityTo
         );
       }
+      const matchingInt = (workflow?.internships || []).find((i) => {
+        const iDbId = norm(i.id || i._id);
+        const iBizId = norm(i.studentId);
+        const iName = norm(i.student);
+        const targetId = norm(studentId);
+        const targetName = norm(studentName);
+        return (
+          (iDbId && targetId && iDbId === targetId) ||
+          (iBizId && targetId && iBizId === targetId) ||
+          (iName && targetName && iName === targetName)
+        );
+      });
+
       // ── Resolve the correct status from appointment fields ─────────────────
       const resolveApptStatus = (a) => {
-        if (a.status === 'Completed') return { status: 'Completed', cancellationReason: '', cancellationType: '' };
+        if (
+          a.status === 'Completed' ||
+          a.status === 'Placement Completed' ||
+          matchingInt?.status === 'Completed' ||
+          matchingInt?.status === 'Placement Completed' ||
+          stuMatch?.placementStatus === 'Placement Completed' ||
+          stuMatch?.placementStatus === 'Completed'
+        ) {
+          return { status: 'Completed', cancellationReason: '', cancellationType: '' };
+        }
         if (a.status === 'Not Suitable Site' || (a.status === 'Declined' && a.appointmentOutcome === 'not_suitable_site')) {
           return {
             status: 'Not Suitable Site',
@@ -817,6 +872,9 @@ export default function WorkflowPage() {
         if (a.status === 'Cancelled') return { status: 'Cancelled', cancellationReason: a.cancellationReason || 'Appointment was cancelled', cancellationType: '' };
         if (a.status === 'No Show') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
         if (a.status === 'Student Missed Appointment') return { status: 'Student Missed Appointment', cancellationReason: 'Student did not show up for appointment', cancellationType: 'student' };
+        if (matchingInt?.status) {
+          return { status: matchingInt.status, cancellationReason: '', cancellationType: '' };
+        }
         if (a.commencementDate) return { status: 'Placement Started', cancellationReason: '', cancellationType: '' };
         return { status: 'Waiting to Join', cancellationReason: '', cancellationType: '' };
       };
@@ -830,26 +888,28 @@ export default function WorkflowPage() {
       const cancellationType = resolved.cancellationType;
       const duration = '12 weeks';
 
+      const isCompletedPlacement = status === 'Completed' || status === 'Placement Completed';
+
       const newItem = {
-        id: appt.id || appt._id || `PL-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        intId: appt.apptId ? `PL-${appt.apptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`,
+        id: matchingInt?._id || matchingInt?.id || appt.id || appt._id || `PL-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        intId: matchingInt?.intId || (appt.apptId ? `PL-${appt.apptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`),
         student: studentName,
         studentId: studentId,
-        company: appt.company || 'Unknown Company',
-        title: appt.position || 'Internship Placement',
-        rto: appt.rto || 'TBD',
+        company: matchingInt?.company || appt.company || 'Unknown Company',
+        title: matchingInt?.title || appt.position || 'Internship Placement',
+        rto: matchingInt?.rto || appt.rto || 'TBD',
         status: status,
-        start: startDate,
-        end: calculatedEnd,
+        start: matchingInt?.start || startDate,
+        end: matchingInt?.end || calculatedEnd,
         duration: duration,
-        workType: appt.meetingType || 'In-Person',
-        location: appt.location || 'TBD',
-        coordinator: appt.interviewer || '',
-        progress: status === 'Completed' ? 100 : 0,
-        tasksCompleted: '0',
-        trainingCompleted: '0',
-        reviewsCompleted: '0',
-        notes: appt.notes || '',
+        workType: matchingInt?.workType || appt.meetingType || 'In-Person',
+        location: matchingInt?.location || appt.location || 'TBD',
+        coordinator: matchingInt?.coordinator || appt.interviewer || '',
+        progress: isCompletedPlacement ? 100 : (matchingInt?.progress || 0),
+        tasksCompleted: matchingInt?.tasksCompleted || '0',
+        trainingCompleted: matchingInt?.trainingCompleted || '0',
+        reviewsCompleted: matchingInt?.reviewsCompleted || '0',
+        notes: matchingInt?.notes || appt.notes || '',
         _appointmentId: appt.id || appt._id,
         _appointmentDate: appt.date,
         _appointmentTime: appt.time,
@@ -866,6 +926,12 @@ export default function WorkflowPage() {
       };
 
       result.push(newItem);
+    });
+
+    result.sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || a.start || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || b.start || 0).getTime();
+      return tB - tA;
     });
 
     return result;
@@ -1365,6 +1431,7 @@ export default function WorkflowPage() {
         }
         return (
           <WorkflowStep1Students
+            initialSearch={searchParam}
             students={mapStudentsForStep1()}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}
@@ -1378,6 +1445,7 @@ export default function WorkflowPage() {
       case 2:
         return (
           <WorkflowStep2Requests
+            initialSearch={searchParam}
             requests={mapRequestsForStep2(true)}
             onBack={() => goToStep(1)}
             onNext={handleStep2Next}
@@ -1395,6 +1463,7 @@ export default function WorkflowPage() {
       case 3:
         return (
           <WorkflowStep3Appointments
+            initialSearch={searchParam}
             appointments={mapAppointmentsForStep3()}
             onBack={() => goToStep(2)}
             onNext={handleStep3Next}
@@ -1414,6 +1483,7 @@ export default function WorkflowPage() {
       case 4:
         return (
           <WorkflowStep4Internships
+            initialSearch={searchParam}
             internships={mapInternshipsForStep4()}
             appointments={mapAppointmentsForStep3()}
             requests={mapRequestsForStep2()}
@@ -1427,7 +1497,7 @@ export default function WorkflowPage() {
           />
         );
       case 5:
-        return <WorkflowStep5Payments />;
+        return <WorkflowStep5Payments initialSearch={searchParam} />;
       default:
         if (!isAdmin) {
           return (
@@ -1443,6 +1513,7 @@ export default function WorkflowPage() {
         }
         return (
           <WorkflowStep1Students
+            initialSearch={searchParam}
             students={mapStudentsForStep1()}
             onNext={handleStep1Next}
             internshipRequestMap={internshipRequestMap}

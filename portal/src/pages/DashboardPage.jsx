@@ -20,7 +20,7 @@ import { PLACEMENT_DATA_CHANGED } from '../api/placementEvents';
 export default function DashboardPage() {
   const authUser = useSelector((state) => state.auth?.user);
 
-  if (authUser?.role === 'RTO Manager') {
+  if (authUser?.role === 'RTO Manager' || authUser?.role === 'RTO') {
     return <RTOManagerPortalPage />;
   }
 

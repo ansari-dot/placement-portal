@@ -340,6 +340,84 @@ export const bulkUpdateStatusController = async (req, res, next) => {
       { $set: updateFields }
     );
 
+    // If placementStatus is updated, sync across Workflow internships, appointments, and payments
+    if (placementStatus) {
+      try {
+        const workflowModule = await import('../workflow/workflow.model.js');
+        const WorkflowModel = workflowModule.default;
+        const AppointmentModel = workflowModule.AppointmentModel;
+        const InternshipModel = workflowModule.InternshipModel;
+
+        const updatedStudents = await StudentModel.find({
+          $or: [
+            { _id: { $in: validObjectIds } },
+            { studentId: { $in: bizIds } },
+          ],
+        }, { _id: 1, studentId: 1, name: 1, firstName: 1, lastName: 1 }).lean();
+
+        const matchKeys = new Set();
+        updatedStudents.forEach((s) => {
+          if (s._id) matchKeys.add(String(s._id));
+          if (s.studentId) matchKeys.add(String(s.studentId));
+          const fn = `${s.firstName || ''} ${s.lastName || ''}`.trim();
+          if (s.name) matchKeys.add(s.name.trim().toLowerCase());
+          if (fn) matchKeys.add(fn.toLowerCase());
+        });
+
+        const isCompleted = ['Completed', 'Placement Completed'].includes(placementStatus);
+        const intStatus = isCompleted ? 'Completed' : placementStatus;
+        const apptStatus = isCompleted ? 'Completed' : (placementStatus === 'Placement Started' ? 'Confirmed' : placementStatus);
+
+        const workflows = await WorkflowModel.find({
+          $or: [
+            { 'internships.studentId': { $in: Array.from(matchKeys) } },
+            { 'appointments.studentId': { $in: Array.from(matchKeys) } },
+          ],
+        });
+
+        for (const wf of workflows) {
+          let wfModified = false;
+          (wf.internships || []).forEach((i) => {
+            const iName = (i.student || '').trim().toLowerCase();
+            if (matchKeys.has(i.studentId) || matchKeys.has(iName)) {
+              i.status = intStatus;
+              if (isCompleted) i.progress = 100;
+              wfModified = true;
+            }
+          });
+          (wf.appointments || []).forEach((a) => {
+            const aName = (a.student || '').trim().toLowerCase();
+            if (matchKeys.has(a.studentId) || matchKeys.has(aName)) {
+              a.status = apptStatus;
+              if (isCompleted) a.appointmentOutcome = 'successful';
+              wfModified = true;
+            }
+          });
+          if (wfModified) {
+            await wf.save({ validateBeforeSave: false });
+          }
+        }
+
+        // Standalone models sync
+        const idList = Array.from(matchKeys);
+        if (isCompleted) {
+          await AppointmentModel.updateMany(
+            { studentId: { $in: idList } },
+            { $set: { status: 'Completed', appointmentOutcome: 'successful' } }
+          );
+          await InternshipModel.updateMany(
+            { studentId: { $in: idList } },
+            { $set: { status: 'Completed', progress: 100 } }
+          );
+        }
+
+        const { syncChargeableStudents } = await import('../payment/payment.service.js');
+        await syncChargeableStudents();
+      } catch (wfErr) {
+        console.warn('[StudentController] Error syncing workflow on bulk status update:', wfErr.message);
+      }
+    }
+
     res.json({
       success: true,
       message: `Updated status for ${result.modifiedCount} student(s)`,

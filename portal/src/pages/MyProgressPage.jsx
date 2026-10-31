@@ -10,6 +10,7 @@ import MyProgressScoreTab from '../components/progress/MyProgressScoreTab';
 
 import IndustryPortalPage from './IndustryPortalPage';
 import StudentPortalPage from './StudentPortalPage';
+import RTOManagerPortalPage from './RTOManagerPortalPage';
 
 const TABS = [
   { key: 'students', label: 'Students',  icon: Users    },
@@ -24,19 +25,16 @@ export default function MyProgressPage() {
   const isAdmin  = authUser?.role === 'Administrator';
   const isRtoManager = authUser?.role === 'RTO Manager' || authUser?.role === 'RTO';
 
-  const visibleTabs = TABS.filter(tab => {
-    if (isRtoManager) {
-      return tab.key === 'students' || tab.key === 'rto';
-    }
-    return true;
-  });
-
   if (authUser?.role === 'Student') {
     return <StudentPortalPage />;
   }
 
   if (authUser?.role === 'Industry') {
     return <IndustryPortalPage />;
+  }
+
+  if (authUser?.role === 'RTO Manager' || authUser?.role === 'RTO') {
+    return <RTOManagerPortalPage />;
   }
 
   return (

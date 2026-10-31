@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Download, Columns } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -46,6 +46,8 @@ const mapBackendStudent = (s) => ({
 
 export default function AllStudentsTable() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
   const authUser = useSelector((state) => state.auth.user);
   const isAdmin = authUser?.role === 'Administrator';
   const isCoordinator = authUser?.role === 'Coordinator';
@@ -133,9 +135,21 @@ export default function AllStudentsTable() {
         const toTime = to.setHours(23, 59, 59, 999);
         if (createdTime === null || createdTime > toTime) return false;
       }
+      if (urlSearch) {
+        const q = urlSearch.toLowerCase();
+        const matchesSearch =
+          (s.name || '').toLowerCase().includes(q) ||
+          (s.studentId || '').toLowerCase().includes(q) ||
+          (s.id || '').toLowerCase().includes(q) ||
+          (s.email || '').toLowerCase().includes(q) ||
+          (s.phone || '').toLowerCase().includes(q) ||
+          (s.rto || '').toLowerCase().includes(q) ||
+          (s.course || '').toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+      }
       return true;
     });
-  }, [students, filters]);
+  }, [students, filters, urlSearch, isCoordinator, authUser]);
 
   const sortedStudents = useMemo(() => {
     if (!sortField) return filteredStudents;

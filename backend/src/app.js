@@ -16,6 +16,7 @@ import paymentRoutes from './modules/payment/payment.routes.js';
 import invoiceRoutes from './modules/invoice/invoice.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
 import reviewRoutes from './modules/review/review.routes.js';
+import searchRoutes from './modules/search/search.routes.js';
 
 import { softAuth, authenticate } from './core/guards/auth.guard.js';
 import { errorHandler } from './core/middlewares/error.middleware.js';
@@ -126,6 +127,9 @@ app.use('/api/v1/attendance', attendanceRoutes);
 
 app.use('/reviews', reviewRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
+
+app.use('/search', searchRoutes);
+app.use('/api/v1/search', searchRoutes);
 
 app.get('/', (req, res) => {
   return res.status(200).json({ message: 'Server is running' });

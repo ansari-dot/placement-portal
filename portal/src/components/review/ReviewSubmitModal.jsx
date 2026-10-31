@@ -12,7 +12,7 @@ const RATING_LABELS = {
   5: '5 Stars — Outstanding & Exceptional',
 };
 
-export default function ReviewSubmitModal({ isOpen, onClose }) {
+export default function ReviewSubmitModal({ isOpen, onClose, onSuccess }) {
   const authUser = useSelector((state) => state.auth?.user);
   const [rating, setRating] = useState(5);
   const [hoverRating, setHoverRating] = useState(0);
@@ -59,6 +59,7 @@ export default function ReviewSubmitModal({ isOpen, onClose }) {
       setComment('');
       setRating(5);
       await loadMyReviews();
+      if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
       console.error('Failed to submit review:', err);
@@ -114,130 +115,176 @@ export default function ReviewSubmitModal({ isOpen, onClose }) {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-            {/* Star Rating Selector */}
-            <div className="text-center p-3 bg-amber-50/60 border border-amber-200/80 rounded-2xl space-y-2">
-              <label className="block text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
-                Overall Rating *
-              </label>
-              <div className="flex items-center justify-center space-x-2">
-                {[1, 2, 3, 4, 5].map((starNum) => {
-                  const isFilled = (hoverRating || rating) >= starNum;
-                  return (
-                    <button
-                      key={starNum}
-                      type="button"
-                      onClick={() => setRating(starNum)}
-                      onMouseEnter={() => setHoverRating(starNum)}
-                      onMouseLeave={() => setHoverRating(0)}
-                      className="p-1 transition-transform hover:scale-125 focus:outline-none cursor-pointer"
-                    >
-                      <Star
-                        className={`w-7 h-7 transition-colors ${
-                          isFilled
-                            ? 'text-amber-400 fill-amber-400 drop-shadow-xs'
-                            : 'text-slate-300'
-                        }`}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] font-bold text-amber-800">
-                {RATING_LABELS[hoverRating || rating]}
-              </p>
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                Feedback Category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-[#0147A6] bg-white font-semibold text-slate-700 shadow-xs cursor-pointer"
-              >
-                <option value="Platform Experience">Platform & Portal Experience</option>
-                <option value="Placement Support">Placement Coordination & Support</option>
-                <option value="Compliance & Tracking">Compliance & Attendance Tracking</option>
-                <option value="Host Facility Experience">Host Facility Partnership</option>
-                <option value="General">General Feedback & Testimonial</option>
-              </select>
-            </div>
-
-            {/* Title */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                Headline / Title (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Great placement support and smooth coordination"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                maxLength={100}
-                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-[#0147A6] font-medium text-slate-800 shadow-xs"
-              />
-            </div>
-
-            {/* Comment */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                Your Review / Testimonial *
-              </label>
-              <textarea
-                required
-                rows={4}
-                placeholder="Share your experience working with Mantis Placements. What did you like best?"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-[#0147A6] font-medium text-slate-800 shadow-xs resize-none"
-              />
-              <span className="text-[10px] text-slate-400 block text-right mt-0.5">
-                {comment.length}/2000 characters
-              </span>
-            </div>
-
-            {/* Privacy Policy Callout */}
-            <div className="bg-blue-50 border border-blue-200/80 rounded-2xl p-3 flex items-start space-x-2.5 text-[11px] text-blue-900 font-medium">
-              <ShieldCheck className="w-4 h-4 text-[#0147A6] shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <span className="font-bold text-[#0147A6] block">Data Privacy Guarantee:</span>
-                <p className="text-[10px] text-blue-800/90 leading-relaxed">
-                  In compliance with our business privacy policy, RTO and Host Facility names are strictly masked and blurred on public testimonial displays to protect company identities.
+          {myReviews.length > 0 ? (
+            <div className="space-y-4 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
+                <h4 className="text-base font-extrabold text-emerald-900">Review Already Submitted</h4>
+                <p className="text-xs text-emerald-700 font-medium">
+                  You have already submitted your review. Thank you for sharing your experience!
                 </p>
               </div>
-            </div>
 
-            {/* Buttons */}
-            <div className="flex items-center space-x-2.5 pt-2">
-              <button
-                type="submit"
-                disabled={submitting || !comment.trim()}
-                className="flex-1 py-3 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-extrabold rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Submitting for Review...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                    <span>Submit Review for Admin Approval</span>
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-3 border border-slate-200 font-bold text-slate-600 rounded-xl hover:bg-slate-50 transition cursor-pointer"
-              >
-                Cancel
-              </button>
+              {myReviews.map((rev) => (
+                <div key={rev._id || rev.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1 text-amber-400">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Star key={s} className={`w-4 h-4 ${s <= rev.rating ? 'fill-amber-400' : 'text-slate-300'}`} />
+                      ))}
+                      <span className="text-slate-600 text-xs font-bold ml-1.5">{rev.rating} / 5</span>
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      rev.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {rev.status || 'Pending Approval'}
+                    </span>
+                  </div>
+                  {rev.title && <p className="font-bold text-slate-800 text-xs">{rev.title}</p>}
+                  <p className="text-slate-600 text-xs leading-relaxed">"{rev.comment}"</p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200/60">
+                    <span>Category: {rev.category || 'Platform Experience'}</span>
+                    <span>Submitted: {new Date(rev.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+              {/* Star Rating Selector */}
+              <div className="text-center p-3 bg-amber-50/60 border border-amber-200/80 rounded-2xl space-y-2">
+                <label className="block text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                  Overall Rating *
+                </label>
+                <div className="flex items-center justify-center space-x-2">
+                  {[1, 2, 3, 4, 5].map((starNum) => {
+                    const isFilled = (hoverRating || rating) >= starNum;
+                    return (
+                      <button
+                        key={starNum}
+                        type="button"
+                        onClick={() => setRating(starNum)}
+                        onMouseEnter={() => setHoverRating(starNum)}
+                        onMouseLeave={() => setHoverRating(0)}
+                        className="p-1 transition-transform hover:scale-125 focus:outline-none cursor-pointer"
+                      >
+                        <Star
+                          className={`w-7 h-7 transition-colors ${
+                            isFilled
+                              ? 'text-amber-400 fill-amber-400 drop-shadow-xs'
+                              : 'text-slate-300'
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] font-bold text-amber-800">
+                  {RATING_LABELS[hoverRating || rating]}
+                </p>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Feedback Category
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-[#0147A6] bg-white font-semibold text-slate-700 shadow-xs cursor-pointer"
+                >
+                  <option value="Platform Experience">Platform & Portal Experience</option>
+                  <option value="Placement Support">Placement Coordination & Support</option>
+                  <option value="Compliance & Tracking">Compliance & Attendance Tracking</option>
+                  <option value="Host Facility Experience">Host Facility Partnership</option>
+                  <option value="General">General Feedback & Testimonial</option>
+                </select>
+              </div>
+
+              {/* Title */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Headline / Title (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Great placement support and smooth coordination"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  maxLength={100}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-[#0147A6] font-medium text-slate-800 shadow-xs"
+                />
+              </div>
+
+              {/* Comment */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Your Review / Testimonial *
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="Share your experience working with Mantis Placements. What did you like best?"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-[#0147A6] font-medium text-slate-800 shadow-xs resize-none"
+                />
+                <span className="text-[10px] text-slate-400 block text-right mt-0.5">
+                  {comment.length}/2000 characters
+                </span>
+              </div>
+
+              {/* Privacy Policy Callout */}
+              <div className="bg-blue-50 border border-blue-200/80 rounded-2xl p-3 flex items-start space-x-2.5 text-[11px] text-blue-900 font-medium">
+                <ShieldCheck className="w-4 h-4 text-[#0147A6] shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-[#0147A6] block">Data Privacy Guarantee:</span>
+                  <p className="text-[10px] text-blue-800/90 leading-relaxed">
+                    In compliance with our business privacy policy, RTO and Host Facility names are strictly masked and blurred on public testimonial displays to protect company identities.
+                  </p>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex items-center space-x-2.5 pt-2">
+                <button
+                  type="submit"
+                  disabled={submitting || !comment.trim()}
+                  className="flex-1 py-3 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-extrabold rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Submitting for Review...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                      <span>Submit Review for Admin Approval</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-3 border border-slate-200 font-bold text-slate-600 rounded-xl hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Past reviews accordion/history */}
           {myReviews.length > 0 && (

@@ -229,6 +229,7 @@ export class UserService {
         type: 'system',
         link: '/',
         recipient: user._id,
+        targetRoles: [user.role],
       });
     } catch (notifyErr) {
       console.error('Failed to notify approved user:', notifyErr.message);
@@ -401,6 +402,7 @@ export class UserService {
         desc: `${name} (${user.role}) was added to ${user.department}`,
         type: 'system',
         link: '/users',
+        targetRoles: ['Administrator', 'Admin'],
       });
     } catch (err) {
       console.error('Failed to trigger user notification:', err);

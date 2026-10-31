@@ -1,5 +1,5 @@
 // src/components/workflow/WorkflowStep2Requests.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -34,6 +34,7 @@ export default function WorkflowStep2Requests({
   activeStudent = null,
   appointments = [],
   onRefreshStudents,
+  initialSearch = '',
 }) {
   const [searchParams] = useSearchParams();
   const authUser = useSelector((state) => state.auth?.user);
@@ -79,7 +80,13 @@ export default function WorkflowStep2Requests({
 
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch || '');
+
+  useEffect(() => {
+    if (typeof initialSearch === 'string') {
+      setSearchQuery(initialSearch);
+    }
+  }, [initialSearch]);
   const [viewMode, setViewMode] = useState('grid');
   const [selectedRows, setSelectedRows] = useState([]);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
@@ -328,8 +335,16 @@ export default function WorkflowStep2Requests({
     return matchesSearch && matchesStatus && matchesRto;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
-  const paginatedRequests = filteredRequests.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const sortedFilteredRequests = useMemo(() => {
+    return [...filteredRequests].sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+      return tB - tA;
+    });
+  }, [filteredRequests]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedFilteredRequests.length / pageSize));
+  const paginatedRequests = sortedFilteredRequests.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const showToast = (message) => {
     setToast(message);

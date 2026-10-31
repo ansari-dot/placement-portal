@@ -378,6 +378,8 @@ export const processBulkImport = async (buffer, { commit = false, actingUser } =
           desc: `${created} student${created === 1 ? '' : 's'} imported from Excel${actingUser?.name ? ` by ${actingUser.name}` : ''}`,
           type: 'student',
           link: '/my-students',
+          targetRoles: ['Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'RTO', 'RTO Manager'],
+          rtoName: actingUser?.rtoName || actingUser?.requestedOrgName || '',
         });
       } catch (_) {}
       try {

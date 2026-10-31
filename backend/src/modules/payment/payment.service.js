@@ -192,40 +192,57 @@ export const syncChargeableStudents = async () => {
 
       const apptsByStudent = new Map();
       allWorkflowAppts.forEach((a) => {
-        const key = String(a.studentId || a.student || '').trim();
-        if (key) {
-          if (!apptsByStudent.has(key)) apptsByStudent.set(key, []);
-          apptsByStudent.get(key).push(a);
-        }
+        const keys = [
+          a.studentId ? String(a.studentId).trim() : null,
+          a._id ? String(a._id).trim() : null,
+          a.student ? String(a.student).trim().toLowerCase() : null,
+        ].filter(Boolean);
+        keys.forEach((k) => {
+          if (!apptsByStudent.has(k)) apptsByStudent.set(k, []);
+          apptsByStudent.get(k).push(a);
+        });
       });
 
       const intsByStudent = new Map();
       allWorkflowInts.forEach((i) => {
-        const key = String(i.studentId || i.student || '').trim();
-        if (key) {
-          if (!intsByStudent.has(key)) intsByStudent.set(key, []);
-          intsByStudent.get(key).push(i);
-        }
+        const keys = [
+          i.studentId ? String(i.studentId).trim() : null,
+          i._id ? String(i._id).trim() : null,
+          i.student ? String(i.student).trim().toLowerCase() : null,
+        ].filter(Boolean);
+        keys.forEach((k) => {
+          if (!intsByStudent.has(k)) intsByStudent.set(k, []);
+          intsByStudent.get(k).push(i);
+        });
       });
 
       const statusSyncOps = [];
 
       for (const stu of allStudents) {
-        const keyId = String(stu.studentId || stu._id).trim();
-        const keyMongo = String(stu._id).trim();
+        const keyId = String(stu.studentId || '').trim();
+        const keyMongo = String(stu._id || '').trim();
+        const fullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim().toLowerCase();
+        const keyName = String(stu.name || fullName).trim().toLowerCase();
 
         const studentAppts = [
-          ...(apptsByStudent.get(keyId) || []),
-          ...(apptsByStudent.get(keyMongo) || []),
+          ...(keyId ? (apptsByStudent.get(keyId) || []) : []),
+          ...(keyMongo ? (apptsByStudent.get(keyMongo) || []) : []),
+          ...(keyName ? (apptsByStudent.get(keyName) || []) : []),
+          ...(fullName ? (apptsByStudent.get(fullName) || []) : []),
         ];
         const studentInts = [
-          ...(intsByStudent.get(keyId) || []),
-          ...(intsByStudent.get(keyMongo) || []),
+          ...(keyId ? (intsByStudent.get(keyId) || []) : []),
+          ...(keyMongo ? (intsByStudent.get(keyMongo) || []) : []),
+          ...(keyName ? (intsByStudent.get(keyName) || []) : []),
+          ...(fullName ? (intsByStudent.get(fullName) || []) : []),
         ];
 
         let derivedStatus = null;
 
-        if (studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status))) {
+        if (
+          studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
+          studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status))
+        ) {
           derivedStatus = 'Placement Completed';
         } else if (
           studentInts.some((i) =>
@@ -236,8 +253,9 @@ export const syncChargeableStudents = async () => {
         } else if (
           studentAppts.some(
             (a) =>
-              ['Completed', 'Successful', 'Appointment Successful'].includes(a.status) ||
-              a.appointmentOutcome === 'completed'
+              ['Successful', 'Appointment Successful'].includes(a.status) ||
+              a.appointmentOutcome === 'completed' ||
+              a.appointmentOutcome === 'successful'
           )
         ) {
           derivedStatus = 'Appointment Successful';
@@ -494,37 +512,60 @@ export const syncChargeableStudents = async () => {
   }
 };
 
-/**
- * Service: Retrieve payment records with filtering, searching, and optional pagination
- */
-export const getPaymentsService = async (queryParams = {}) => {
-  await syncChargeableStudents();
+export const buildPaymentFilter = (queryParams = {}) => {
+  const {
+    rto,
+    rtoNames,
+    allowedStudentIds,
+    allowedStudentDbIds,
+    placementStatus,
+    paymentStatus,
+    fromDate,
+    toDate,
+    search,
+  } = queryParams;
 
-  const { rto, placementStatus, paymentStatus, fromDate, toDate, search, page, limit } = queryParams;
+  const andClauses = [];
 
-  const filter = {};
+  const rtoConditions = [];
+  if (Array.isArray(allowedStudentDbIds) && allowedStudentDbIds.length > 0) {
+    rtoConditions.push({ student: { $in: allowedStudentDbIds } });
+  }
+  if (Array.isArray(allowedStudentIds) && allowedStudentIds.length > 0) {
+    rtoConditions.push({ studentId: { $in: allowedStudentIds } });
+  }
+  if (Array.isArray(rtoNames) && rtoNames.length > 0) {
+    const escapedNames = rtoNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    rtoConditions.push({ rto: { $in: escapedNames.map((n) => new RegExp(`^${n}$`, 'i')) } });
+  } else if (rto && rto !== 'All') {
+    andClauses.push({ rto: { $regex: rto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } });
+  }
 
-  if (rto && rto !== 'All') {
-    filter.rto = { $regex: rto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+  if (rtoConditions.length > 0) {
+    andClauses.push({ $or: rtoConditions });
+  } else if (allowedStudentDbIds !== undefined || allowedStudentIds !== undefined) {
+    andClauses.push({ _id: null });
   }
 
   if (placementStatus && placementStatus !== 'All') {
-    filter.placementStatus = placementStatus;
+    andClauses.push({ placementStatus });
   }
 
   if (paymentStatus && paymentStatus !== 'All') {
-    filter.paymentStatus = paymentStatus;
+    andClauses.push({ paymentStatus });
   }
 
   if (search) {
     const q = search.trim();
-    filter.$or = [
-      { studentName: { $regex: q, $options: 'i' } },
-      { studentId: { $regex: q, $options: 'i' } },
-      { invoiceNumber: { $regex: q, $options: 'i' } },
-      { rto: { $regex: q, $options: 'i' } },
-      { course: { $regex: q, $options: 'i' } },
-    ];
+    andClauses.push({
+      $or: [
+        { studentName: { $regex: q, $options: 'i' } },
+        { studentId: { $regex: q, $options: 'i' } },
+        { invoiceNumber: { $regex: q, $options: 'i' } },
+        { rto: { $regex: q, $options: 'i' } },
+        { course: { $regex: q, $options: 'i' } },
+      ],
+    });
   }
 
   if (fromDate || toDate) {
@@ -535,14 +576,28 @@ export const getPaymentsService = async (queryParams = {}) => {
       endDate.setHours(23, 59, 59, 999);
       dateFilter.$lte = endDate;
     }
-    filter.$or = [
-      { invoiceGeneratedDate: dateFilter },
-      { paymentReceivedDate: dateFilter },
-      { createdAt: dateFilter },
-    ];
+    andClauses.push({
+      $or: [
+        { invoiceGeneratedDate: dateFilter },
+        { paymentReceivedDate: dateFilter },
+        { createdAt: dateFilter },
+      ],
+    });
   }
 
-  const queryBuilder = PaymentModel.find(filter).sort({ updatedAt: -1 });
+  return andClauses.length > 0 ? (andClauses.length === 1 ? andClauses[0] : { $and: andClauses }) : {};
+};
+
+/**
+ * Service: Retrieve payment records with filtering, searching, and optional pagination
+ */
+export const getPaymentsService = async (queryParams = {}) => {
+  await syncChargeableStudents();
+
+  const { page, limit } = queryParams;
+  const filter = buildPaymentFilter(queryParams);
+
+  const queryBuilder = PaymentModel.find(filter).sort({ updatedAt: -1, createdAt: -1 });
 
   if (page || limit) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -569,62 +624,34 @@ export const getPaymentsService = async (queryParams = {}) => {
  * Service: Compute summary payment totals
  */
 export const getPaymentTotalsService = async (queryParams = {}) => {
-  const { rto, placementStatus, paymentStatus, fromDate, toDate, search } = queryParams;
-
-  const filter = {};
-
-  if (rto && rto !== 'All') {
-    filter.rto = { $regex: rto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
-  }
-
-  if (placementStatus && placementStatus !== 'All') {
-    filter.placementStatus = placementStatus;
-  }
-
-  if (paymentStatus && paymentStatus !== 'All') {
-    filter.paymentStatus = paymentStatus;
-  }
-
-  if (search) {
-    const q = search.trim();
-    filter.$or = [
-      { studentName: { $regex: q, $options: 'i' } },
-      { studentId: { $regex: q, $options: 'i' } },
-      { invoiceNumber: { $regex: q, $options: 'i' } },
-      { rto: { $regex: q, $options: 'i' } },
-      { course: { $regex: q, $options: 'i' } },
-    ];
-  }
-
-  if (fromDate || toDate) {
-    const dateFilter = {};
-    if (fromDate) dateFilter.$gte = new Date(fromDate);
-    if (toDate) {
-      const endDate = new Date(toDate);
-      endDate.setHours(23, 59, 59, 999);
-      dateFilter.$lte = endDate;
-    }
-    filter.$or = [
-      { invoiceGeneratedDate: dateFilter },
-      { paymentReceivedDate: dateFilter },
-      { createdAt: dateFilter },
-    ];
-  }
-
+  const filter = buildPaymentFilter(queryParams);
   const payments = await PaymentModel.find(filter).lean();
 
   let total100Price = 0;
   let total30Price = 0;
   let missingPricingCount = 0;
+  let invoicedAmount = 0;
+  let paidAmount = 0;
+  let pendingAmount = 0;
 
   payments.forEach((p) => {
     if (!p.priceConfigured) {
       missingPricingCount++;
     }
+    const amt = p.paymentAmount || 0;
     if (p.chargePercentage === 100) {
-      total100Price += p.paymentAmount || 0;
+      total100Price += amt;
     } else {
-      total30Price += p.paymentAmount || 0;
+      total30Price += amt;
+    }
+
+    if (['Full Payment Received', '30% Received'].includes(p.paymentStatus)) {
+      paidAmount += amt;
+    } else if (['Invoice Generated', 'Invoice Sent'].includes(p.paymentStatus)) {
+      invoicedAmount += amt;
+      pendingAmount += amt;
+    } else {
+      pendingAmount += amt;
     }
   });
 
@@ -636,6 +663,10 @@ export const getPaymentTotalsService = async (queryParams = {}) => {
     total100Price,
     total30Price,
     totalRevenue,
+    totalAmount: totalRevenue,
+    invoicedAmount: Number(invoicedAmount.toFixed(2)),
+    paidAmount: Number(paidAmount.toFixed(2)),
+    pendingAmount: Number(pendingAmount.toFixed(2)),
     totalCount: payments.length,
     missingPricingCount,
   };
@@ -857,6 +888,7 @@ export const syncSingleStudentPayment = async (studentDoc) => {
         paymentAmount: calculatedPaymentAmount,
         gstAmount,
         totalAmount,
+        placementStatus: studentDoc.placementStatus || existingPayment.placementStatus,
       },
     }
   );

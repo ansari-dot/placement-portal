@@ -13,6 +13,7 @@ import { fetchStudentById, updateStudent, openStudentDocument, isStoredDocument 
 import { fetchWorkflows, fetchWorkflowById } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
 import { fetchRtos } from '../api/rtoApi';
+import RtoAutocompleteInput from '../components/student/RtoAutocompleteInput';
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
 
@@ -785,7 +786,7 @@ export default function StudentViewEditPage() {
                             type="button"
                             onClick={() => {
                               updateField('studentType', 'Independent Student');
-                              updateField('assignedRto', 'Independent Student');
+                              if (formData.assignedRto === 'Independent Student') updateField('assignedRto', '');
                               updateField('rtoId', undefined);
                             }}
                             className={`px-3 py-1 font-semibold rounded-md transition ${
@@ -809,37 +810,29 @@ export default function StudentViewEditPage() {
                         <label className="block text-[11px] font-semibold text-slate-500 mb-1">
                           College / RTO
                         </label>
-                        {isEdit && formData.studentType !== 'Independent Student' ? (
-                          <div className="relative">
-                            <select
+                        {isEdit ? (
+                          <div className="space-y-1">
+                            <RtoAutocompleteInput
                               value={formData.assignedRto || formData.institute || ''}
-                              onChange={e => {
-                                const val = e.target.value;
-                                updateField('assignedRto', val);
-                                updateField('institute', val);
-                                const matched = allRtos.find(r => r.name === val);
-                                if (matched) updateField('rtoId', matched._id);
+                              onChange={(rtoName, rtoObj) => {
+                                updateField('assignedRto', rtoName);
+                                updateField('institute', rtoName);
+                                if (rtoObj?._id) updateField('rtoId', rtoObj._id);
                                 else updateField('rtoId', undefined);
-                                // Reset studentType when RTO is selected
-                                if (val) updateField('studentType', 'RTO Student');
                               }}
-                              className={selectCls}
-                            >
-                              <option value="">Select College / RTO</option>
-                              {formData.assignedRto && !activeRtos.includes(formData.assignedRto) && formData.assignedRto !== 'Other' && (
-                                <option value={formData.assignedRto}>{formData.assignedRto}</option>
-                              )}
-                              {activeRtos.map(rto => (
-                                <option key={rto} value={rto}>{rto}</option>
-                              ))}
-                              <option value="Other">Other</option>
-                            </select>
-                            <ChevronDown size={14} className="absolute inset-y-0 right-3 my-auto text-slate-400 pointer-events-none" />
+                              studentType={formData.studentType || 'RTO Student'}
+                              allRtos={allRtos}
+                              placeholder={
+                                formData.studentType === 'Independent Student'
+                                  ? 'Type college / RTO name, or add a new RTO...'
+                                  : 'Type RTO name or code (50% rule)...'
+                              }
+                            />
                           </div>
                         ) : (
                           <input
                             type="text"
-                            value={formData.studentType === 'Independent Student' ? 'Independent Student (Direct Billing)' : (formData.assignedRto || formData.institute || 'Unassigned')}
+                            value={formData.assignedRto || formData.institute || (formData.studentType === 'Independent Student' ? 'Independent Student (Direct Billing)' : 'Unassigned')}
                             disabled
                             className={fieldClass(false)}
                           />

@@ -9,6 +9,8 @@ import {
   rtoAutocompleteController,
   industryAutocompleteController,
   checkStudentEmailController,
+  updateProfileController,
+  submitSupportTicketController,
 } from './auth.controller.js';
 import { authenticate, softAuth } from '../../core/guards/auth.guard.js';
 import { authRateLimiter, autocompleteRateLimiter } from '../../core/middlewares/rateLimiter.middleware.js';
@@ -25,7 +27,10 @@ router.post('/login', authRateLimiter, validateBody(loginSchema), loginControlle
 router.post('/signup', authRateLimiter, validateBody(signupSchema), signupController);
 router.post('/logout', softAuth, logoutController);
 router.get('/me', authenticate, getMeController);
+router.patch('/profile', authenticate, updateProfileController);
+router.post('/support-ticket', authenticate, submitSupportTicketController);
 router.post('/heartbeat', authenticate, heartbeatController);
 router.get('/presence', authenticate, getPresenceController);
 
 export default router;
+

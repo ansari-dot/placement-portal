@@ -3,24 +3,55 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logoutThunk } from '../../redux/authSlice';
 import logo1 from '../../assets/logo1.png';
-import { Search, Bell, Settings, ChevronDown, ChevronRight, Menu, LogOut, User, HelpCircle, X, CheckCheck } from 'lucide-react';
+import {
+  Search, Bell, Settings, ChevronDown, ChevronRight, Menu, LogOut, User,
+  HelpCircle, X, CheckCheck, Plus, Send, Users,
+  GraduationCap, ClipboardList, Calendar, Briefcase, CreditCard, School, Building2, Loader2
+} from 'lucide-react';
 import {
   fetchNotifications,
   markNotificationRead,
-  markAllNotificationsRead
+  markAllNotificationsRead,
+  createNotification
 } from '../../api/notificationApi';
+import { globalSearch } from '../../api/searchApi';
+import ProfileSettingsModal from '../modals/ProfileSettingsModal';
+import HelpSupportModal from '../modals/HelpSupportModal';
+import GeneralSettingsModal from '../modals/GeneralSettingsModal';
 
 export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
   const authUser = useSelector((state) => state.auth?.user);
+  const isAdmin = authUser?.role === 'Administrator' || authUser?.role === 'Admin';
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isGeneralSettingsOpen, setIsGeneralSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Global Live Search State
+  const [searchResults, setSearchResults] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchContainerRef = useRef(null);
+  const searchDebounceRef = useRef(null);
+
   // Dynamic Notifications State
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Admin Notification Composer Modal State
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [composeTitle, setComposeTitle] = useState('');
+  const [composeDesc, setComposeDesc] = useState('');
+  const [composeTargetRole, setComposeTargetRole] = useState('All');
+  const [composeType, setComposeType] = useState('system');
+  const [composeLink, setComposeLink] = useState('');
+  const [sendSuccessMsg, setSendSuccessMsg] = useState('');
+
 
   const navigate = useNavigate();
 
@@ -54,16 +85,66 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
       if (profileRef.current && !profileRef.current.contains(e.target)) setIsProfileOpen(false);
       if (notificationsRef.current && !notificationsRef.current.contains(e.target)) setIsNotificationsOpen(false);
       if (settingsRef.current && !settingsRef.current.contains(e.target)) setIsSettingsOpen(false);
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) setIsSearchOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Debounced live global search
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setIsSearching(false);
+      setIsSearchOpen(false);
+      return;
+    }
+
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    setIsSearching(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await globalSearch(q);
+        if (res && res.data) {
+          setSearchResults(res.data);
+          setIsSearchOpen(true);
+        }
+      } catch (err) {
+        console.error('Global search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 200);
+
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchQuery]);
+
+  const handleSelectResult = (path) => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    navigate(path);
+  };
+
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/my-students?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery('');
+    const q = searchQuery.trim();
+    if (!q) return;
+    setIsSearchOpen(false);
+
+    const currentPath = window.location.pathname;
+    if (currentPath.includes('/workflow')) {
+      const sp = new URLSearchParams(window.location.search);
+      const step = sp.get('step') || '1';
+      navigate(`/workflow?step=${step}&search=${encodeURIComponent(q)}`);
+    } else if (currentPath.includes('/my-students')) {
+      navigate(`/my-students?search=${encodeURIComponent(q)}`);
+    } else if (currentPath.includes('/students')) {
+      navigate(`/students?search=${encodeURIComponent(q)}`);
+    } else {
+      navigate(isAdmin ? `/workflow?step=1&search=${encodeURIComponent(q)}` : `/my-students?search=${encodeURIComponent(q)}`);
     }
   };
 
@@ -104,6 +185,55 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
     setIsNotificationsOpen(false);
     if (n.link) {
       navigate(n.link);
+    }
+  };
+
+  // Admin Broadcast / Targeted Notification Send Handler
+  const handleSendNotification = async (e) => {
+    e.preventDefault();
+    if (!composeTitle.trim() || !composeDesc.trim()) return;
+
+    setIsSending(true);
+    setSendSuccessMsg('');
+    try {
+      let targetRoles = [];
+      if (composeTargetRole === 'All') {
+        targetRoles = ['All'];
+      } else if (composeTargetRole === 'Student') {
+        targetRoles = ['Student'];
+      } else if (composeTargetRole === 'Industry') {
+        targetRoles = ['Industry', 'Industry/Host'];
+      } else if (composeTargetRole === 'RTO') {
+        targetRoles = ['RTO', 'RTO Manager'];
+      } else if (composeTargetRole === 'Coordinator') {
+        targetRoles = ['Coordinator', 'Placement Coordinator', 'Staff'];
+      } else if (composeTargetRole === 'Admin') {
+        targetRoles = ['Administrator', 'Admin'];
+      }
+
+      await createNotification({
+        title: composeTitle.trim(),
+        desc: composeDesc.trim(),
+        type: composeType,
+        link: composeLink.trim(),
+        targetRoles,
+        targetRole: composeTargetRole,
+      });
+
+      setSendSuccessMsg(`Notification sent to ${composeTargetRole} successfully!`);
+      setComposeTitle('');
+      setComposeDesc('');
+      setComposeLink('');
+      await loadNotifications();
+      setTimeout(() => {
+        setIsSendModalOpen(false);
+        setSendSuccessMsg('');
+      }, 1400);
+    } catch (err) {
+      console.error('Failed to create notification:', err);
+      alert('Failed to send notification: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -166,19 +296,241 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <form onSubmit={handleSearch} className="relative hidden md:block w-64">
-        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-          <Search className="w-3.5 h-3.5 text-slate-400" />
-        </span>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search students, requests, RTOs, industries..."
-          className="w-full bg-slate-50 text-[11px] text-slate-800 placeholder-slate-400 pl-9 pr-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
-        />
-      </form>
+      {/* Live Global Search Bar */}
+      <div ref={searchContainerRef} className="relative hidden md:block w-72 lg:w-96">
+        <form onSubmit={handleSearch} className="relative">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            {isSearching ? (
+              <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+            ) : (
+              <Search className="w-3.5 h-3.5 text-slate-400" />
+            )}
+          </span>
+          <input
+            type="text"
+            value={searchQuery}
+            onFocus={() => {
+              if (searchResults && searchQuery.trim()) setIsSearchOpen(true);
+            }}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search students, requests, RTOs, industries..."
+            className="w-full bg-slate-50 text-[11px] text-slate-800 placeholder-slate-400 pl-9 pr-8 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setSearchResults(null);
+                setIsSearchOpen(false);
+              }}
+              className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </form>
+
+        {/* Global Live Search Results Dropdown */}
+        {isSearchOpen && searchResults && (
+          <div className="absolute left-0 mt-2 w-[420px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden max-h-[480px] overflow-y-auto divide-y divide-slate-100">
+            {/* Header info */}
+            <div className="px-4 py-2 bg-slate-50 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>Quick Search Results for "{searchQuery}"</span>
+              <span className="text-[10px] text-blue-600 font-semibold">Press Enter to filter</span>
+            </div>
+
+            {/* Students */}
+            {searchResults.students?.length > 0 && (
+              <div className="p-2">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Students ({searchResults.students.length})</span>
+                </div>
+                {searchResults.students.map((s) => (
+                  <button
+                    key={s.id || s.studentId}
+                    type="button"
+                    onClick={() => handleSelectResult(isAdmin ? `/workflow?step=1&search=${encodeURIComponent(s.name || s.studentId)}` : `/my-students?search=${encodeURIComponent(s.name || s.studentId)}`)}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 group-hover:text-blue-600">{s.name}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{s.studentId} · {s.rto || s.course || 'RTO Student'}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-blue-50 text-blue-700 border-blue-200">
+                      {s.placementStatus}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Placement Requests */}
+            {searchResults.requests?.length > 0 && (
+              <div className="p-2">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <ClipboardList className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Requests ({searchResults.requests.length})</span>
+                </div>
+                {searchResults.requests.map((r) => (
+                  <button
+                    key={r.id || r.reqId}
+                    type="button"
+                    onClick={() => handleSelectResult(`/workflow?step=2&search=${encodeURIComponent(r.reqId || r.student)}`)}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 group-hover:text-indigo-600">{r.reqId}: {r.title}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{r.student} · {r.company || 'Pending'}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
+                      {r.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Appointments */}
+            {searchResults.appointments?.length > 0 && (
+              <div className="p-2">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Appointments ({searchResults.appointments.length})</span>
+                </div>
+                {searchResults.appointments.map((a) => (
+                  <button
+                    key={a.id || a.apptId}
+                    type="button"
+                    onClick={() => handleSelectResult(`/workflow?step=3&search=${encodeURIComponent(a.apptId || a.student)}`)}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 group-hover:text-amber-600">{a.student}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{a.apptId} · {a.company || 'Appointment'}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-amber-50 text-amber-700 border-amber-200">
+                      {a.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Placements */}
+            {searchResults.placements?.length > 0 && (
+              <div className="p-2">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Briefcase className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Placements ({searchResults.placements.length})</span>
+                </div>
+                {searchResults.placements.map((i) => (
+                  <button
+                    key={i.id || i.intId}
+                    type="button"
+                    onClick={() => handleSelectResult(`/workflow?step=4&search=${encodeURIComponent(i.intId || i.student)}`)}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 group-hover:text-purple-600">{i.intId}: {i.student}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{i.company || 'Facility'} · {i.title}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-purple-50 text-purple-700 border-purple-200">
+                      {i.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Payments */}
+            {searchResults.payments?.length > 0 && (
+              <div className="p-2">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Payments ({searchResults.payments.length})</span>
+                </div>
+                {searchResults.payments.map((p) => (
+                  <button
+                    key={p._id || p.id}
+                    type="button"
+                    onClick={() => handleSelectResult(`/workflow?step=5&search=${encodeURIComponent(p.studentName || p.studentId)}`)}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 group-hover:text-emerald-600">{p.studentName}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{p.studentId} · {p.rto || 'RTO'} · ${p.totalAmount || p.paymentAmount || 0}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                      {p.placementStatus || p.paymentStatus}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* RTOs */}
+            {searchResults.rtos?.length > 0 && (
+              <div className="p-2">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <School className="w-3.5 h-3.5 text-sky-600" />
+                  <span>RTOs ({searchResults.rtos.length})</span>
+                </div>
+                {searchResults.rtos.map((rto) => (
+                  <button
+                    key={rto._id || rto.code}
+                    type="button"
+                    onClick={() => handleSelectResult('/rtos')}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 group-hover:text-sky-600">{rto.name}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Code: {rto.code || 'N/A'} · {rto.contactName || rto.email || ''}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Industries */}
+            {searchResults.industries?.length > 0 && (
+              <div className="p-2">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Industries ({searchResults.industries.length})</span>
+                </div>
+                {searchResults.industries.map((ind) => (
+                  <button
+                    key={ind._id}
+                    type="button"
+                    onClick={() => handleSelectResult('/industries')}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 group-hover:text-teal-600">{ind.companyName || ind.organizationName}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{ind.industryType || 'Host Facility'} · {ind.contactPerson || ind.email || ''}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {(!searchResults.students?.length &&
+              !searchResults.requests?.length &&
+              !searchResults.appointments?.length &&
+              !searchResults.placements?.length &&
+              !searchResults.payments?.length &&
+              !searchResults.rtos?.length &&
+              !searchResults.industries?.length) && (
+              <div className="p-6 text-center text-xs text-slate-500">
+                No matching results found for <span className="font-semibold text-slate-700">"{searchQuery}"</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Right Controls */}
       <div className="flex items-center space-x-4">
@@ -204,7 +556,7 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
 
           {/* Notifications Dropdown */}
           {isNotificationsOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
+            <div className="absolute right-0 mt-2 w-84 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div className="flex items-center space-x-2">
                   <h4 className="text-xs font-bold text-slate-900">Notifications</h4>
@@ -214,20 +566,38 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
                     </span>
                   )}
                 </div>
-                {unreadCount > 0 && (
-                  <button 
-                    onClick={handleMarkAllRead}
-                    className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center space-x-1"
-                  >
-                    <CheckCheck className="w-3 h-3" />
-                    <span>Mark all as read</span>
-                  </button>
-                )}
+                <div className="flex items-center space-x-2">
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsNotificationsOpen(false);
+                        setIsSendModalOpen(true);
+                      }}
+                      className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-semibold rounded flex items-center space-x-1 shadow-sm transition"
+                      title="Send role-specific notification"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Send</span>
+                    </button>
+                  )}
+                  {unreadCount > 0 && (
+                    <button 
+                      onClick={handleMarkAllRead}
+                      className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center space-x-1"
+                    >
+                      <CheckCheck className="w-3 h-3" />
+                      <span>Mark all read</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="max-h-72 overflow-y-auto">
+              <div className="max-h-80 overflow-y-auto">
                 {notifications.map((n, i) => {
                   const nId = n.id || n._id || i;
+                  const targetLabel = n.targetRoles?.length > 0 ? n.targetRoles.join(', ') : n.targetRole;
                   return (
                     <div 
                       key={nId} 
@@ -244,9 +614,16 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
                             )}
                           </div>
                           <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">{n.desc}</p>
-                          <span className="text-[9px] text-slate-400 font-medium mt-1 block">
-                            {getTimeAgo(n.createdAt)}
-                          </span>
+                          <div className="flex items-center space-x-2 mt-1">
+                            <span className="text-[9px] text-slate-400 font-medium">
+                              {getTimeAgo(n.createdAt)}
+                            </span>
+                            {isAdmin && targetLabel && (
+                              <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                To: {targetLabel}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -286,18 +663,39 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
           {isSettingsOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg z-50 overflow-hidden">
               <div className="py-1">
-                <Link to="/" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsGeneralSettingsOpen(true);
+                    setIsSettingsOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-left"
+                >
                   <Settings className="w-3.5 h-3.5 text-slate-400" />
                   <span>General Settings</span>
-                </Link>
-                <Link to="/" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileModalOpen(true);
+                    setIsSettingsOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-left"
+                >
                   <User className="w-3.5 h-3.5 text-slate-400" />
                   <span>Profile Settings</span>
-                </Link>
-                <Link to="/" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsHelpModalOpen(true);
+                    setIsSettingsOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-left"
+                >
                   <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
                   <span>Help & Support</span>
-                </Link>
+                </button>
               </div>
             </div>
           )}
@@ -360,14 +758,32 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
                 </div>
               </div>
               <div className="py-1">
-                <Link to="/" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileModalOpen(true);
+                    setIsProfileOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-left"
+                >
                   <User className="w-3.5 h-3.5 text-slate-400" />
                   <span>My Profile</span>
-                </Link>
-                <Link to="/users" className="flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    if (isAdmin) {
+                      navigate('/users');
+                    } else {
+                      setIsProfileModalOpen(true);
+                    }
+                  }}
+                  className="w-full flex items-center space-x-2 px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-left"
+                >
                   <Settings className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Account & User Settings</span>
-                </Link>
+                  <span>{isAdmin ? 'Account & User Settings' : 'Account Settings'}</span>
+                </button>
                 <div className="border-t border-slate-100 my-1" />
                 <button
                   onClick={handleLogout}
@@ -402,6 +818,165 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
           </div>
         </div>
       )}
+
+      {/* Admin Send Role-Based Notification Modal */}
+      {isSendModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                  <Send className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Send Role Notification</h3>
+                  <p className="text-[10px] text-slate-500">Only selected user roles will see this notification</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSendModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-white/60 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {sendSuccessMsg && (
+              <div className="m-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-medium flex items-center space-x-2">
+                <CheckCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{sendSuccessMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSendNotification} className="p-5 space-y-4">
+              {/* Target Role Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Target Audience (Role)
+                </label>
+                <select
+                  value={composeTargetRole}
+                  onChange={(e) => setComposeTargetRole(e.target.value)}
+                  className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                >
+                  <option value="All">🌐 All Users (Public Broadcast)</option>
+                  <option value="Student">🎓 Students Only</option>
+                  <option value="Industry">🏢 Industry / Host Employers Only</option>
+                  <option value="RTO">🏛️ RTO Managers Only</option>
+                  <option value="Coordinator">📋 Placement Coordinators Only</option>
+                  <option value="Admin">🔒 Administrators Only</option>
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {composeTargetRole === 'All'
+                    ? 'Everyone across the platform will see this notice.'
+                    : `Only users with the "${composeTargetRole}" role will see this notification.`}
+                </p>
+              </div>
+
+              {/* Notification Type & Link */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Type
+                  </label>
+                  <select
+                    value={composeType}
+                    onChange={(e) => setComposeType(e.target.value)}
+                    className="w-full text-xs font-medium px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                  >
+                    <option value="system">System Notice</option>
+                    <option value="student">Student Alert</option>
+                    <option value="internship">Internship</option>
+                    <option value="appointment">Appointment</option>
+                    <option value="job">Job Update</option>
+                    <option value="request">Placement Request</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Portal Link (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={composeLink}
+                    onChange={(e) => setComposeLink(e.target.value)}
+                    placeholder="e.g. /workflow or /my-students"
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* Title */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Notification Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={composeTitle}
+                  onChange={(e) => setComposeTitle(e.target.value)}
+                  placeholder="e.g. Mandatory Placement Orientation"
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Message / Description *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={composeDesc}
+                  onChange={(e) => setComposeDesc(e.target.value)}
+                  placeholder="Enter details of the notification here..."
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 resize-none"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex items-center justify-end space-x-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsSendModalOpen(false)}
+                  className="px-3.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSending || !composeTitle.trim() || !composeDesc.trim()}
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition flex items-center space-x-1.5 disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSending ? 'Sending...' : 'Send Notification'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Settings Modal */}
+      <ProfileSettingsModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      {/* Help & Support Modal */}
+      <HelpSupportModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setIsHelpModalOpen(false)}
+      />
+
+      {/* General Settings Modal */}
+      <GeneralSettingsModal
+        isOpen={isGeneralSettingsOpen}
+        onClose={() => setIsGeneralSettingsOpen(false)}
+      />
     </header>
   );
 }

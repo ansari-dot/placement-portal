@@ -119,9 +119,14 @@ export const sanitizeInternshipRequestForRole = (requestDoc, role) => {
     role === 'Administrator' ||
     role === 'Admin' ||
     role === 'Coordinator' ||
-    role === 'Placement Coordinator' ||
-    role === 'Student'
+    role === 'Placement Coordinator'
   ) {
+    return r;
+  }
+
+  if (role === 'Student') {
+    // For students: do not expose all raw contacted industries in requests
+    r.contactedIndustries = [];
     return r;
   }
 

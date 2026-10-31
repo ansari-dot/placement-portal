@@ -671,13 +671,15 @@ export const sendPaymentInvoiceEmail = async (invoicePayload) => {
     const gstAmount = gstEnabled ? Number((subtotal * 0.10).toFixed(2)) : 0;
     const totalAmount = subtotal + gstAmount;
 
-    // Create In-App Notification
+    // Create In-App Notification strictly scoped to this RTO & Admin
     await NotificationModel.create({
       title: `Invoice Generated — ${invoiceNumber}`,
       desc: `Invoice ${invoiceNumber} of $${totalAmount.toFixed(2)} AUD generated for ${rtoName}.`,
-      type: 'system',
+      type: 'rto',
+      targetRoles: ['Administrator', 'Admin', 'RTO', 'RTO Manager'],
+      rtoName: rtoName || '',
       isRead: false,
-      link: '/workflow?step=5',
+      link: '/payments',
     });
 
     const studentRowsHtml = studentItems.map((item) => `

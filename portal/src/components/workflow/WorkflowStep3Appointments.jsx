@@ -24,7 +24,8 @@ export default function WorkflowStep3Appointments({
   activeRequest = null,
   activeCompany = null,
   prefilledAppointmentData = null,
-  onClearPrefilledData = null
+  onClearPrefilledData = null,
+  initialSearch = '',
 }) {
   // ─── Get pre-selected student from navigation state or URL ──────────────
   const location = useLocation();
@@ -293,7 +294,13 @@ export default function WorkflowStep3Appointments({
   const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
 
   // Filtering State
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearch || '');
+
+  useEffect(() => {
+    if (typeof initialSearch === 'string') {
+      setSearchTerm(initialSearch);
+    }
+  }, [initialSearch]);
 
   const showToast = (message) => {
     setToast(message);
@@ -366,6 +373,10 @@ export default function WorkflowStep3Appointments({
         return studentMatch || companyMatch || interviewerMatch || industryTypeMatch || idMatch;
       }
       return true;
+    }).sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+      return tB - tA;
     });
   }, [appointments, searchTerm]);
 

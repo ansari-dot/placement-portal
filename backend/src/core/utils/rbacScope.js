@@ -239,6 +239,37 @@ export const filterWorkflowForUser = async (workflow, user) => {
       }
     }
 
+    // If Student user, filter out rejected appointments so they disappear and only active appointments show
+    if (role === 'Student') {
+      const isRejected = (a) => {
+        if (!a) return false;
+        const outcome = String(a.appointmentOutcome || '').trim().toLowerCase();
+        const status = String(a.status || '').trim().toLowerCase();
+        const rejectedOutcomes = [
+          'industry_rejected',
+          'student_withdrawal',
+          'student_missed',
+          'not_suitable_site',
+          'rejected',
+          'declined',
+          'cancelled',
+          'withdrawn',
+          'no show'
+        ];
+        const rejectedStatuses = [
+          'declined',
+          'rejected',
+          'cancelled',
+          'withdrawn',
+          'student withdraw',
+          'not suitable site'
+        ];
+        return rejectedOutcomes.some((ro) => outcome.includes(ro)) || rejectedStatuses.some((rs) => status === rs);
+      };
+
+      filteredAppts = filteredAppts.filter((a) => !isRejected(a));
+    }
+
     wfObj.appointments = filteredAppts.map((a) => sanitizeAppointmentForRole(a, role));
   }
 
@@ -332,12 +363,18 @@ export const getAttendanceQueryScope = async (user) => {
 
   // Students only see their own attendance
   if (role === 'Student') {
-    const myStudent = await StudentModel.findOne({ emailAddress: userEmail }, { _id: 1, studentId: 1 }).lean();
+    const studentScope = await getStudentQueryScope(user);
+    const myStudent = await StudentModel.findOne(studentScope, { _id: 1, studentId: 1 }).lean();
     if (!myStudent) return { _id: null };
+
+    const orClauses = [{ student: myStudent._id }, { student: String(myStudent._id) }];
+    if (myStudent.studentId) {
+      orClauses.push({ studentId: myStudent.studentId });
+    }
 
     return {
       isDeleted: false,
-      $or: [{ student: myStudent._id }, { studentId: myStudent.studentId }],
+      $or: orClauses,
     };
   }
 

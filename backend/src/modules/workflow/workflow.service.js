@@ -153,6 +153,9 @@ export const createInternshipRequest = async (workflowId, requestData) => {
             desc: `${request.student} applied for ${request.title || "placement"} at ${request.company}`,
             type: "request",
             link: "/workflow?step=2",
+            targetRoles: ['Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'Industry', 'Industry/Host', 'Student'],
+            studentName: request.student,
+            company: request.company,
         });
     } catch (err) {
         console.error("Failed to create notification:", err);
@@ -497,6 +500,9 @@ export const createAppointment = async (workflowId, appointmentData) => {
             desc: `Interview scheduled for ${appointment.student} at ${appointment.company} on ${appointment.date}`,
             type: "appointment",
             link: "/workflow?step=3",
+            targetRoles: ['Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'Student', 'Industry', 'Industry/Host', 'RTO', 'RTO Manager'],
+            studentName: appointment.student,
+            company: appointment.company,
         });
     } catch (err) {
         console.error("Failed to create notification:", err);
@@ -690,6 +696,9 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
                 type: 'system',
                 isRead: false,
                 link: '/workflow?step=4',
+                targetRoles: ['Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'Student', 'Industry', 'Industry/Host', 'RTO', 'RTO Manager'],
+                studentName: appt.student,
+                company: appt.company,
             });
         } catch (notifErr) {
             console.warn('[Workflow] Placement started notification failed:', notifErr.message);
@@ -829,6 +838,9 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
                 type: 'system',
                 isRead: false,
                 link: '/workflow?step=1',
+                targetRoles: ['Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'Student', 'Industry', 'Industry/Host', 'RTO', 'RTO Manager'],
+                studentName: appt.student,
+                company: appt.company,
             });
         } catch (notifErr) {
             console.warn('[Workflow] Placement outcome notification failed:', notifErr.message);
@@ -988,6 +1000,9 @@ export const createInternship = async (workflowId, internshipData) => {
             desc: `${internship.student} placed as ${internship.title || "Intern"} at ${internship.company}`,
             type: "internship",
             link: "/workflow?step=4",
+            targetRoles: ['Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'Student', 'Industry', 'Industry/Host', 'RTO', 'RTO Manager'],
+            studentName: internship.student,
+            company: internship.company,
         });
     } catch (err) {
         console.error("Failed to create notification:", err);
@@ -1017,6 +1032,56 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
     }
     if (!workflow) return null;
 
+    // Helper to map internship status to canonical Student placementStatus
+    const mapToStudentPlacementStatus = (status, hasCommencement) => {
+        if (!status) return hasCommencement ? 'Placement Started' : 'Appointment Successful';
+        if (['Completed', 'Placement Completed'].includes(status)) return 'Placement Completed';
+        if (['Placement Started', 'Active', 'Joined'].includes(status)) return 'Placement Started';
+        if (['Waiting to Join'].includes(status)) return 'Waiting to Join';
+        if (['Withdrawn', 'Student Withdraw'].includes(status)) return 'Student Withdraw';
+        if (['Industry Rejected', 'Declined'].includes(status)) return 'Industry Rejected';
+        if (['Student Missed Appointment', 'No Show'].includes(status)) return 'Student Missed Appointment';
+        if (['Not Suitable Site'].includes(status)) return 'Not Suitable Site';
+        if (['Appointment Successful', 'Confirmed'].includes(status)) {
+            return hasCommencement ? 'Placement Started' : 'Appointment Successful';
+        }
+        return status;
+    };
+
+    // Helper to find and update student by id, studentId, or full name
+    const syncStudentPlacementStatus = async (studentId, studentName, newPlacementStatus) => {
+        try {
+            const stuQuery = [];
+            const cleanId = String(studentId || '').trim();
+            if (cleanId) {
+                stuQuery.push({ studentId: cleanId });
+                stuQuery.push({ studentId: new RegExp(`^${cleanId}$`, 'i') });
+                if (mongoose.Types.ObjectId.isValid(cleanId)) stuQuery.push({ _id: cleanId });
+            }
+            const cleanName = String(studentName || '').trim();
+            if (cleanName) {
+                stuQuery.push({ name: cleanName });
+                stuQuery.push({ name: new RegExp(`^${cleanName}$`, 'i') });
+                const parts = cleanName.split(/\s+/);
+                if (parts.length >= 2) {
+                    stuQuery.push({
+                        firstName: new RegExp(`^${parts[0]}$`, 'i'),
+                        lastName: new RegExp(`^${parts[parts.length - 1]}$`, 'i'),
+                    });
+                }
+            }
+            if (stuQuery.length > 0) {
+                await StudentModel.updateMany(
+                    { $or: stuQuery },
+                    { placementStatus: newPlacementStatus },
+                    { runValidators: false }
+                );
+            }
+        } catch (err) {
+            console.warn('[Workflow] syncStudentPlacementStatus skipped:', err.message);
+        }
+    };
+
     // 1. Check if found in workflow.internships
     const internshipIndex = workflow.internships.findIndex(
         (i) =>
@@ -1026,41 +1091,47 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
     );
 
     if (internshipIndex !== -1) {
-        Object.assign(workflow.internships[internshipIndex], internshipData);
-        await workflow.save({ validateBeforeSave: false });
+        const existingInt = workflow.internships[internshipIndex];
+        Object.assign(existingInt, internshipData);
 
-        // ── Set student placementStatus from internship status ───────────────
-        if (internshipData.status) {
-            try {
-                const studentId = workflow.internships[internshipIndex].studentId;
-                const stuQuery = [];
-                if (studentId) {
-                    stuQuery.push({ studentId });
-                    if (mongoose.Types.ObjectId.isValid(studentId)) stuQuery.push({ _id: studentId });
+        // Normalize status
+        if (internshipData.status === 'Placement Completed') {
+            existingInt.status = 'Completed';
+            existingInt.progress = 100;
+        }
+
+        const isCompleted = ['Completed', 'Placement Completed'].includes(internshipData.status);
+        const hasCommencement = Boolean(existingInt.start || existingInt.commencementDate);
+        const newPs = mapToStudentPlacementStatus(internshipData.status, hasCommencement);
+
+        // Sync corresponding appointments in workflow & AppointmentModel
+        for (const appt of workflow.appointments) {
+            const matches =
+                (existingInt.studentId && appt.studentId === existingInt.studentId) ||
+                (existingInt.student && appt.student === existingInt.student);
+            if (matches) {
+                if (isCompleted) {
+                    appt.status = 'Completed';
+                    appt.appointmentOutcome = 'successful';
+                } else if (internshipData.status === 'Placement Started') {
+                    appt.status = 'Confirmed';
                 }
-                if (stuQuery.length > 0) {
-                    const hasCommencementDate = Boolean(internshipData.commencementDate || internshipData.start || workflow.internships[internshipIndex].start);
-                    const status = internshipData.status;
-                    const newPs = ['Completed', 'Placement Completed'].includes(status) ? 'Placement Completed'
-                        : ['Withdrawn', 'Student Withdraw'].includes(status) ? 'Student Withdraw'
-                            : status === 'Industry Rejected' ? 'Industry Rejected'
-                                : status === 'Student Missed Appointment' ? 'Student Missed Appointment'
-                                    : hasCommencementDate ? 'Placement Started'
-                                        : 'Appointment Successful';
-                    await StudentModel.findOneAndUpdate(
-                        { $or: stuQuery },
-                        { placementStatus: newPs },
-                        { runValidators: false }
-                    );
+                if (appt._id && mongoose.Types.ObjectId.isValid(appt._id)) {
+                    AppointmentModel.findByIdAndUpdate(appt._id, {
+                        status: appt.status,
+                        appointmentOutcome: appt.appointmentOutcome,
+                    }, { runValidators: false }).catch(() => {});
                 }
-            } catch (psErr) {
-                console.warn('[Workflow] placementStatus internship (direct) update skipped:', psErr.message);
             }
         }
-        // ─────────────────────────────────────────────────────────────────────
+
+        await workflow.save({ validateBeforeSave: false });
+
+        // Update StudentModel
+        await syncStudentPlacementStatus(existingInt.studentId, existingInt.student, newPs);
 
         try {
-            const dbId = workflow.internships[internshipIndex]._id;
+            const dbId = existingInt._id;
             if (dbId && mongoose.Types.ObjectId.isValid(dbId)) {
                 await InternshipModel.findByIdAndUpdate(dbId, internshipData, { runValidators: false });
             }
@@ -1068,10 +1139,10 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
 
         try {
             const { syncChargeableStudents } = await import('../payment/payment.service.js');
-            syncChargeableStudents().catch(e => console.warn('[Workflow] Payment sync error on updateInternship:', e.message));
+            await syncChargeableStudents();
         } catch (e) { }
 
-        return workflow.internships[internshipIndex];
+        return existingInt;
     }
 
     // 2. If not found in internships, check workflow.appointments (since Step 4 reflects appointments)
@@ -1084,20 +1155,25 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
 
     if (appointmentIndex !== -1) {
         const appt = workflow.appointments[appointmentIndex];
+        const isCompleted = ['Completed', 'Placement Completed'].includes(internshipData.status);
 
-        // Map display status back to appointment status without wiping placement-critical fields
         if (internshipData.status) {
-            if (internshipData.status === 'Completed' || internshipData.status === 'Placement Completed') appt.status = 'Completed';
-            else if (internshipData.status === 'Appointment Successful') appt.status = 'Confirmed';
-            else if (internshipData.status === 'Placement Started' || internshipData.status === 'Waiting to Join') appt.status = 'Confirmed';
-            else if (internshipData.status === 'Declined') appt.status = 'Declined';
-            else if (internshipData.status === 'Industry Rejected') appt.status = 'Industry Rejected';
-            else if (internshipData.status === 'Student Missed Appointment') appt.status = 'No Show';
-            else if (internshipData.status === 'Withdrawn' || internshipData.status === 'Student Withdraw') appt.status = 'Withdrawn';
-            else if (internshipData.status === 'Cancelled') appt.status = 'Cancelled';
-            // For all active/in-progress statuses keep the appointment as Confirmed so
-            // placement-start side-effects (email, student status) are not undone
-            // Active placement statuses keep the appointment Confirmed.
+            if (isCompleted) {
+                appt.status = 'Completed';
+                appt.appointmentOutcome = 'successful';
+            } else if (internshipData.status === 'Appointment Successful') {
+                appt.status = 'Confirmed';
+            } else if (internshipData.status === 'Placement Started' || internshipData.status === 'Waiting to Join') {
+                appt.status = 'Confirmed';
+            } else if (internshipData.status === 'Declined' || internshipData.status === 'Industry Rejected') {
+                appt.status = 'Industry Rejected';
+            } else if (internshipData.status === 'Student Missed Appointment') {
+                appt.status = 'No Show';
+            } else if (internshipData.status === 'Withdrawn' || internshipData.status === 'Student Withdraw') {
+                appt.status = 'Withdrawn';
+            } else if (internshipData.status === 'Cancelled') {
+                appt.status = 'Cancelled';
+            }
         }
         if (internshipData.company) appt.company = internshipData.company;
         if (internshipData.title) appt.position = internshipData.title;
@@ -1114,6 +1190,7 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
             if (appt._id && mongoose.Types.ObjectId.isValid(appt._id)) {
                 await AppointmentModel.findByIdAndUpdate(appt._id, {
                     status: appt.status,
+                    appointmentOutcome: appt.appointmentOutcome,
                     company: appt.company,
                     position: appt.position,
                     notes: appt.notes,
@@ -1123,14 +1200,13 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
             }
         } catch (e) { }
 
-        // Upsert into workflow.internships — update existing record if one already exists
-        // for this appointment, otherwise create it once. This prevents duplicates on
-        // repeated saves.
+        // Upsert into workflow.internships
         const derivedIntId = appt.apptId ? `PL-${appt.apptId.substring(4)}` : null;
         const existingIntIndex = workflow.internships.findIndex(
             (i) =>
                 (derivedIntId && i.intId === derivedIntId) ||
-                (appt.studentId && i.studentId === appt.studentId && i.company === (internshipData.company || appt.company))
+                (appt.studentId && i.studentId === appt.studentId && i.company === (internshipData.company || appt.company)) ||
+                (appt.student && i.student === appt.student)
         );
 
         const intRecord = {
@@ -1140,9 +1216,8 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
             company: internshipData.company || appt.company,
             title: internshipData.title || appt.position || 'Internship Placement',
             rto: appt.rto || 'TBD',
-            // Preserve the display status from the form — this is what the coordinator set
-            status: internshipData.status === 'Placement Completed' ? 'Completed' : (internshipData.status || 'Waiting to Join'),
-            // Use placement start/end dates — not the appointment interview date
+            status: isCompleted ? 'Completed' : (internshipData.status || 'Waiting to Join'),
+            progress: isCompleted ? 100 : (internshipData.progress || 0),
             start: internshipData.start || internshipData.commencementDate || appt.commencementDate || '',
             end: internshipData.end || internshipData.expectedCompletionDate || appt.expectedCompletionDate || '',
             duration: '12 weeks',
@@ -1155,43 +1230,16 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
             workflow.internships.push(intRecord);
         }
 
-        // ── Set student placementStatus based on internship display status ──────
-        try {
-            const stuQuery = [];
-            if (appt.studentId) {
-                stuQuery.push({ studentId: appt.studentId });
-                if (mongoose.Types.ObjectId.isValid(appt.studentId)) stuQuery.push({ _id: appt.studentId });
-            }
-            // Name-based fallback in case studentId lookup misses
-            if (appt.student && stuQuery.length === 0) {
-                const nameParts = appt.student.trim().split(/\s+/);
-                if (nameParts.length >= 2) {
-                    stuQuery.push({ firstName: nameParts[0], lastName: nameParts[nameParts.length - 1] });
-                }
-            }
-            if (stuQuery.length > 0) {
-                const placementStatus = internshipData.status;
-                let newPlacementStatus = appt.commencementDate ? 'Placement Started' : 'Appointment Successful';
-                if (['Completed', 'Placement Completed'].includes(placementStatus)) newPlacementStatus = 'Placement Completed';
-                else if (['Withdrawn', 'Student Withdraw'].includes(placementStatus)) newPlacementStatus = 'Student Withdraw';
-                else if (placementStatus === 'Industry Rejected') newPlacementStatus = 'Industry Rejected';
-                else if (placementStatus === 'Student Missed Appointment') newPlacementStatus = 'Student Missed Appointment';
-                await StudentModel.findOneAndUpdate(
-                    { $or: stuQuery },
-                    { placementStatus: newPlacementStatus },
-                    { runValidators: false }
-                );
-            }
-        } catch (psErr) {
-            console.warn('[Workflow] placementStatus internship update skipped:', psErr.message);
-        }
-        // ─────────────────────────────────────────────────────────────────────
-
         await workflow.save({ validateBeforeSave: false });
+
+        // Update StudentModel
+        const hasCommencement = Boolean(appt.commencementDate);
+        const newPs = mapToStudentPlacementStatus(internshipData.status, hasCommencement);
+        await syncStudentPlacementStatus(appt.studentId, appt.student, newPs);
 
         try {
             const { syncChargeableStudents } = await import('../payment/payment.service.js');
-            syncChargeableStudents().catch(e => console.warn('[Workflow] Payment sync error on updateInternship:', e.message));
+            await syncChargeableStudents();
         } catch (e) { }
 
         return existingIntIndex !== -1 ? workflow.internships[existingIntIndex] : workflow.internships[workflow.internships.length - 1];
@@ -1463,10 +1511,14 @@ export const getWorkflowDashboardData = async (user) => {
         validStudentKeys.has(String(r.studentId || ''))
     );
 
-    // Build lookup maps keyed by studentId (business ID) and _id string
+    // Build lookup maps keyed by studentId (business ID), _id string, and normalized student name
     const apptsByStudent = {};
     for (const a of allAppointments) {
-        const keys = [a.studentId, String(a._id || '')].filter(Boolean);
+        const keys = [
+            a.studentId,
+            String(a._id || ''),
+            a.student ? a.student.trim().toLowerCase() : ''
+        ].filter(Boolean);
         for (const k of keys) {
             if (!apptsByStudent[k]) apptsByStudent[k] = [];
             apptsByStudent[k].push(a);
@@ -1474,7 +1526,11 @@ export const getWorkflowDashboardData = async (user) => {
     }
     const internshipsByStudent = {};
     for (const i of allInternships) {
-        const keys = [i.studentId, String(i._id || '')].filter(Boolean);
+        const keys = [
+            i.studentId,
+            String(i._id || ''),
+            i.student ? i.student.trim().toLowerCase() : ''
+        ].filter(Boolean);
         for (const k of keys) {
             if (!internshipsByStudent[k]) internshipsByStudent[k] = [];
             internshipsByStudent[k].push(i);
@@ -1482,7 +1538,10 @@ export const getWorkflowDashboardData = async (user) => {
     }
     const requestsByStudent = {};
     for (const r of allRequests) {
-        const keys = [r.studentId].filter(Boolean);
+        const keys = [
+            r.studentId,
+            r.student ? r.student.trim().toLowerCase() : ''
+        ].filter(Boolean);
         for (const k of keys) {
             if (!requestsByStudent[k]) requestsByStudent[k] = [];
             requestsByStudent[k].push(r);
@@ -1491,25 +1550,35 @@ export const getWorkflowDashboardData = async (user) => {
 
     // Derive the correct placementStatus for a student from live appointment/internship data
     const deriveStatus = (stu) => {
-        const keys = [stu.studentId, String(stu._id || '')].filter(Boolean);
+        const stuFullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim().toLowerCase();
+        const stuName = (stu.name || stuFullName).trim().toLowerCase();
+        const keys = [
+            stu.studentId,
+            String(stu._id || ''),
+            stuName,
+            stuFullName
+        ].filter(Boolean);
         const appts = keys.flatMap(k => apptsByStudent[k] || []);
         const ints = keys.flatMap(k => internshipsByStudent[k] || []);
         const reqs = keys.flatMap(k => requestsByStudent[k] || []);
 
-        const uniqueAppts = [...new Map(appts.map(a => [String(a._id), a])).values()];
-        const uniqueInts = [...new Map(ints.map(i => [String(i._id), i])).values()];
+        const uniqueAppts = [...new Map(appts.map(a => [String(a._id || a.apptId || a.id), a])).values()];
+        const uniqueInts = [...new Map(ints.map(i => [String(i._id || i.intId || i.id), i])).values()];
 
         const now = new Date();
 
-        // 1. Placement Completed — only when internship record is explicitly Completed
+        // 1. Placement Completed — when student, internship OR appointment record is explicitly Completed / Placement Completed
         if (
-            uniqueInts.some(i => i.status === 'Completed' || i.status === 'Placement Completed')
+            ['Completed', 'Placement Completed'].includes(stu.placementStatus) ||
+            uniqueInts.some(i => ['Completed', 'Placement Completed'].includes(i.status)) ||
+            uniqueAppts.some(a => ['Completed', 'Placement Completed'].includes(a.status))
         ) return 'Placement Completed';
 
-        // 2. Placement Started — confirmed with commencement date ≤ now, or active internship
+        // 2. Placement Started — confirmed with commencement date ≤ now, or active internship (excluding completed)
         if (
             uniqueInts.some(i => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
             uniqueAppts.some(a =>
+                !['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
                 (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
                 a.commencementDate && new Date(a.commencementDate) <= now
             )
@@ -1518,6 +1587,7 @@ export const getWorkflowDashboardData = async (user) => {
         // 3. Appointment Successful — confirmed outcome but no commencement date yet set
         if (
             uniqueAppts.some(a =>
+                !['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
                 a.appointmentOutcome === 'successful' &&
                 !a.commencementDate
             )

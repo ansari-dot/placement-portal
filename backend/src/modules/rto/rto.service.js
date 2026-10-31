@@ -387,7 +387,7 @@ export class RtoService {
       return [];
     }
     const cleanQuery = queryStr.trim();
-    if (cleanQuery.length < 3) {
+    if (cleanQuery.length < 2) {
       return [];
     }
 

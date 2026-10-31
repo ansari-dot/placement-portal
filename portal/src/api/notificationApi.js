@@ -24,3 +24,9 @@ export const clearAllNotifications = async () => {
   const response = await api.delete('/notifications/clear-all');
   return response.data;
 };
+
+export const createNotification = async (payload) => {
+  const response = await api.post('/notifications', payload);
+  return response.data;
+};
+

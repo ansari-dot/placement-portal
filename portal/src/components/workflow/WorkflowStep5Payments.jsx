@@ -113,7 +113,7 @@ const formatDate = (dateString) => {
   }
 };
 
-export default function WorkflowStep5Payments() {
+export default function WorkflowStep5Payments({ initialSearch = '' }) {
   const [payments, setPayments] = useState([]);
   const [totals, setTotals] = useState({
     total100Price: 0,
@@ -132,7 +132,13 @@ export default function WorkflowStep5Payments() {
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('All');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch || '');
+
+  useEffect(() => {
+    if (typeof initialSearch === 'string') {
+      setSearchQuery(initialSearch);
+    }
+  }, [initialSearch]);
 
   // Bulk Confirmation Modal States
   const [confirmModal, setConfirmModal] = useState({
@@ -339,7 +345,7 @@ export default function WorkflowStep5Payments() {
   // Selection handlers
   const handleSelectAll = (e) => {
     if (e.target.checked) {
-      setSelectedIds(payments.map((p) => p._id || p.id));
+      setSelectedIds(sortedPayments.map((p) => p._id || p.id));
     } else {
       setSelectedIds([]);
     }
@@ -421,7 +427,16 @@ export default function WorkflowStep5Payments() {
     return { total, pending, invoiceSent, received30, fullReceived };
   }, [payments]);
 
-  const isAllSelected = payments.length > 0 && selectedIds.length === payments.length;
+  // Sort payments with most recently updated / created student at the top
+  const sortedPayments = useMemo(() => {
+    return [...payments].sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return tB - tA;
+    });
+  }, [payments]);
+
+  const isAllSelected = sortedPayments.length > 0 && selectedIds.length === sortedPayments.length;
 
   return (
     <div className="space-y-5 select-none">
@@ -718,7 +733,7 @@ export default function WorkflowStep5Payments() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {payments.map((p) => {
+                {sortedPayments.map((p) => {
                   const pId = p._id || p.id;
                   const isSelected = selectedIds.includes(pId);
                   const is30Pct = p.chargePercentage === 30;

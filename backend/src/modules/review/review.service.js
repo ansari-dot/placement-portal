@@ -89,6 +89,7 @@ export class ReviewService {
           type: 'system',
           link: '/reviews',
           recipient: admin._id,
+          targetRoles: ['Administrator', 'Admin'],
         });
       }
     } catch (notifErr) {
@@ -108,6 +109,18 @@ export class ReviewService {
     }
 
     const { rating, comment, title = '', category = 'Platform Experience' } = data;
+
+    const userEmail = (user.email || '').toLowerCase().trim();
+    const existing = await ReviewModel.findOne({
+      $or: [
+        { reviewer: user._id },
+        ...(userEmail ? [{ reviewerEmail: userEmail }] : []),
+      ],
+      isDeleted: false,
+    });
+    if (existing) {
+      throw new BadRequestError('You have already submitted a review. Thank you for your feedback!');
+    }
 
     if (!rating || Number(rating) < 1 || Number(rating) > 5) {
       throw new BadRequestError('Rating must be an integer between 1 and 5');
@@ -176,6 +189,7 @@ export class ReviewService {
           type: 'system',
           link: '/reviews',
           recipient: admin._id,
+          targetRoles: ['Administrator', 'Admin'],
         });
       }
     } catch (notifErr) {
@@ -190,8 +204,12 @@ export class ReviewService {
    */
   static async getMyReviews(user) {
     if (!user || !user._id) return [];
+    const userEmail = (user.email || '').toLowerCase().trim();
     return await ReviewModel.find({
-      reviewer: user._id,
+      $or: [
+        { reviewer: user._id },
+        ...(userEmail ? [{ reviewerEmail: userEmail }] : []),
+      ],
       isDeleted: false,
     }).sort({ createdAt: -1 });
   }

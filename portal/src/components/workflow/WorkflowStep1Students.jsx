@@ -44,11 +44,18 @@ export default function WorkflowStep1Students({
   onCoordinatorAssigned, // Called after coordinator is assigned/changed — updates parent state
   coordinators = [], // Full list of active coordinators — used for the "User" filter
   onRefreshWorkflow,
+  initialSearch = '',
 }) {
   const navigate = useNavigate();
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch || '');
+
+  React.useEffect(() => {
+    if (typeof initialSearch === 'string') {
+      setSearchQuery(initialSearch);
+    }
+  }, [initialSearch]);
   const [viewMode, setViewMode] = useState('grid');
   const [selectedRows, setSelectedRows] = useState([]);
   const [assignRtoTarget, setAssignRtoTarget] = useState(null);
@@ -515,9 +522,17 @@ export default function WorkflowStep1Students({
     return true;
   });
 
+  const sortedFilteredStudents = React.useMemo(() => {
+    return [...filteredStudents].sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || a.addedOn || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || b.addedOn || 0).getTime();
+      return tB - tA;
+    });
+  }, [filteredStudents]);
+
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
-  const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = Math.max(1, Math.ceil(sortedFilteredStudents.length / pageSize));
+  const paginatedStudents = sortedFilteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const allPageSelected = paginatedStudents.length > 0 && paginatedStudents.every(s => selectedRows.includes(s.id));
   const isIndeterminate = !allPageSelected && paginatedStudents.some(s => selectedRows.includes(s.id));

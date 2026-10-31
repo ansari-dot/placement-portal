@@ -32,6 +32,7 @@ import {
 } from '../api/studentsApi';
 import { fetchWorkflows } from '../api/workflowApi';
 import { fetchMyReviews } from '../api/reviewApi';
+import { fetchAttendanceRecords } from '../api/attendanceApi';
 
 const initialFormData = {
   // Personal Information
@@ -268,11 +269,13 @@ export default function StudentPortalPage() {
   const [loading, setLoading] = useState(true);
   const [studentProfile, setStudentProfile] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Workflow tracking states
+  // Workflow & Attendance tracking states
   const [studentRequests, setStudentRequests] = useState([]);
   const [studentAppointments, setStudentAppointments] = useState([]);
   const [studentInternships, setStudentInternships] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [myReviews, setMyReviews] = useState([]);
 
   const totalSteps = 4;
@@ -280,18 +283,47 @@ export default function StudentPortalPage() {
 
   useEffect(() => {
     loadMyProfile();
+
+    // Real-time synchronization: poll silently every 10 seconds
+    const pollInterval = setInterval(() => {
+      loadMyProfile(true);
+    }, 10000);
+
+    // Sync immediately when window/tab regains focus
+    const handleFocus = () => {
+      loadMyProfile(true);
+    };
+
+    // Sync immediately when admin/coordinator updates placement data
+    const handleDataChanged = () => {
+      loadMyProfile(true);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('PLACEMENT_DATA_CHANGED', handleDataChanged);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('PLACEMENT_DATA_CHANGED', handleDataChanged);
+    };
   }, []);
 
-  const loadMyProfile = async () => {
+  const loadMyProfile = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
+      else setIsRefreshing(true);
+
       const res = await fetchStudents();
       const list = res?.data ?? res ?? [];
       let student = null;
       if (Array.isArray(list) && list.length > 0) {
         student = list[0];
         setStudentProfile(student);
-        setFormData(mapStudentToFormData(student));
+        setFormData(prev => {
+          // If already initialized, update fields from backend
+          return mapStudentToFormData(student);
+        });
       } else if (authUser?.email) {
         setFormData(prev => ({
           ...prev,
@@ -306,17 +338,19 @@ export default function StudentPortalPage() {
       }
     } catch (err) {
       console.error('Failed to load student profile:', err);
-      toast.error('Unable to load your profile details.');
+      if (!silent) toast.error('Unable to load your profile details.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   const loadWorkflowData = async (student) => {
     try {
-      const [wfRes, revRes] = await Promise.allSettled([
+      const [wfRes, revRes, attRes] = await Promise.allSettled([
         fetchWorkflows(),
         fetchMyReviews(),
+        fetchAttendanceRecords(),
       ]);
 
       const rawWfs = wfRes.status === 'fulfilled' ? (wfRes.value?.data || wfRes.value || []) : [];
@@ -324,6 +358,9 @@ export default function StudentPortalPage() {
 
       const reviews = revRes.status === 'fulfilled' ? (revRes.value?.data || revRes.value || []) : [];
       setMyReviews(Array.isArray(reviews) ? reviews : []);
+
+      const atts = attRes.status === 'fulfilled' ? (attRes.value?.data || attRes.value || []) : [];
+      setAttendanceRecords(Array.isArray(atts) ? atts : []);
 
       const sId = String(student?.studentId || '').trim().toLowerCase();
       const sDbId = String(student?._id || student?.id || '').trim().toLowerCase();
@@ -340,6 +377,32 @@ export default function StudentPortalPage() {
         );
       };
 
+      const isRejectedAppointment = (appt) => {
+        if (!appt) return false;
+        const outcome = String(appt.appointmentOutcome || '').trim().toLowerCase();
+        const status = String(appt.status || '').trim().toLowerCase();
+        const rejectedOutcomes = [
+          'industry_rejected',
+          'student_withdrawal',
+          'student_missed',
+          'not_suitable_site',
+          'rejected',
+          'declined',
+          'cancelled',
+          'withdrawn',
+          'no show'
+        ];
+        const rejectedStatuses = [
+          'declined',
+          'rejected',
+          'cancelled',
+          'withdrawn',
+          'student withdraw',
+          'not suitable site'
+        ];
+        return rejectedOutcomes.some((ro) => outcome.includes(ro)) || rejectedStatuses.some((rs) => status === rs);
+      };
+
       const matchedRequests = [];
       const matchedAppointments = [];
       const matchedInternships = [];
@@ -349,11 +412,28 @@ export default function StudentPortalPage() {
           if (isMatch(req)) matchedRequests.push(req);
         });
         (wf.appointments || []).forEach((appt) => {
-          if (isMatch(appt)) matchedAppointments.push(appt);
+          if (isMatch(appt) && !isRejectedAppointment(appt)) {
+            matchedAppointments.push(appt);
+          }
         });
         (wf.internships || []).forEach((intern) => {
           if (isMatch(intern)) matchedInternships.push(intern);
         });
+      });
+
+      if (
+        matchedInternships.some(i => ['Completed', 'Placement Completed'].includes(i.status)) ||
+        matchedAppointments.some(a => ['Completed', 'Placement Completed'].includes(a.status))
+      ) {
+        setStudentProfile(prev => prev ? ({ ...prev, placementStatus: 'Placement Completed' }) : prev);
+      }
+
+      // Sort so confirmed/active or newest scheduled appointment appears first
+      matchedAppointments.sort((a, b) => {
+        const aConfirmed = a.status === 'Confirmed' || a.appointmentOutcome === 'successful' ? 1 : 0;
+        const bConfirmed = b.status === 'Confirmed' || b.appointmentOutcome === 'successful' ? 1 : 0;
+        if (bConfirmed !== aConfirmed) return bConfirmed - aConfirmed;
+        return new Date(b.date || b.updatedAt || 0) - new Date(a.date || a.updatedAt || 0);
       });
 
       setStudentRequests(matchedRequests);
@@ -502,37 +582,60 @@ export default function StudentPortalPage() {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'Placement Started':
-      case 'Placement Completed':
-      case 'Active':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-300';
-      case 'Appointment Scheduled':
-      case 'Appointment Successful':
-        return 'bg-blue-50 text-blue-700 border-blue-300';
-      case 'In Progress':
-      case 'Industry Contacted':
-        return 'bg-indigo-50 text-indigo-700 border-indigo-300';
-      case 'Awaiting':
-      default:
-        return 'bg-amber-50 text-amber-700 border-amber-300';
-    }
+    const s = String(status || '').trim().toLowerCase();
+    if (s.includes('completed')) return 'bg-emerald-50 text-emerald-700 border-emerald-300';
+    if (s.includes('placement started') || s === 'active') return 'bg-emerald-50 text-emerald-700 border-emerald-300';
+    if (s.includes('appointment successful') || s.includes('successful')) return 'bg-teal-50 text-teal-700 border-teal-300';
+    if (s.includes('appointment') || s.includes('interview')) return 'bg-blue-50 text-blue-700 border-blue-300';
+    if (s.includes('contacted') || s.includes('progress') || s.includes('request')) return 'bg-indigo-50 text-indigo-700 border-indigo-300';
+    return 'bg-amber-50 text-amber-700 border-amber-300';
   };
 
   const calculateWorkflowProgress = (status) => {
-    switch (status) {
-      case 'Awaiting': return 1;
-      case 'In Progress': return 2;
-      case 'Industry Contacted': return 2.5;
-      case 'Appointment Scheduled': return 3;
-      case 'Appointment Successful': return 3.5;
-      case 'Placement Started': return 4;
-      case 'Placement Completed': return 5;
-      default: return 1;
-    }
+    const s = String(status || '').trim().toLowerCase();
+    if (s.includes('completed')) return 5;
+    if (s.includes('placement started') || s === 'active') return 4;
+    if (s.includes('appointment successful') || s.includes('successful')) return 3.5;
+    if (s.includes('appointment') || s.includes('interview')) return 3;
+    if (s.includes('contacted')) return 2.5;
+    if (s.includes('progress') || s.includes('request')) return 2;
+    return 1;
   };
 
-  const currentWorkflowStep = calculateWorkflowProgress(studentProfile?.placementStatus);
+  // Derive dynamic real-time status: synchronizes database record, active workflows, appointments, and internships
+  const effectiveStatus = (() => {
+    const direct = studentProfile?.placementStatus;
+    if (studentInternships.length > 0) {
+      const anyDone = studentInternships.some(i => ['Completed', 'Placement Completed'].includes(i.status));
+      if (anyDone || direct === 'Placement Completed' || direct === 'Completed') return 'Placement Completed';
+      return direct || studentInternships[0].status || 'Placement Started';
+    }
+    if (studentAppointments.length > 0) {
+      const anySuccess = studentAppointments.some(a => a.appointmentOutcome === 'successful' || a.status === 'Confirmed');
+      if (direct && direct !== 'Awaiting') return direct;
+      return anySuccess ? 'Appointment Successful' : 'Appointment Scheduled';
+    }
+    if (studentRequests.length > 0) {
+      if (direct && direct !== 'Awaiting') return direct;
+      return studentRequests[0].status || 'In Progress';
+    }
+    return direct || 'Awaiting';
+  })();
+
+  const currentWorkflowStep = calculateWorkflowProgress(effectiveStatus);
+
+  // Live verified shift hours calculated dynamically from Attendance records
+  const totalVerifiedHours = attendanceRecords
+    .filter(r => ['Present', 'Completed', 'Half Day', 'Late'].includes(r.status))
+    .reduce((sum, r) => sum + (Number(r.totalHours) || 0), 0);
+
+  const rawReqHours = Number(studentInternships[0]?.duration?.replace(/\D/g, '')) || Number(formData.placementHours) || 120;
+  const requiredPlacementHours = rawReqHours > 0 ? rawReqHours : 120;
+  const isPlacementCompleted = ['Placement Completed', 'Completed'].includes(effectiveStatus);
+  const liveProgressPct = isPlacementCompleted
+    ? 100
+    : Math.min(100, Math.max(studentInternships[0]?.progress || 0, Math.round((totalVerifiedHours / requiredPlacementHours) * 100)));
+
   const uploadedDocCount = STRUCTURED_DOCS.filter(d => Boolean(formData[d.field])).length;
 
   const navigateToView = (viewKey) => {
@@ -616,14 +719,29 @@ export default function StudentPortalPage() {
                   <div className="flex items-center space-x-2.5 shrink-0">
                     <button
                       type="button"
-                      onClick={() => setIsReviewModalOpen(true)}
-                      className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                      onClick={() => loadMyProfile(true)}
+                      className="p-1.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white text-slate-600 hover:text-blue-600 transition shadow-2xs flex items-center justify-center cursor-pointer"
+                      title="Sync data now"
                     >
-                      <Star className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
-                      <span>Rate Your Placement</span>
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
                     </button>
-                    <span className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${getStatusColor(studentProfile.placementStatus)}`}>
-                      {studentProfile.placementStatus || 'Awaiting'}
+                    {myReviews.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsReviewModalOpen(true)}
+                        className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                        <span>Rate Your Placement</span>
+                      </button>
+                    ) : (
+                      <span className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center space-x-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Review Submitted ({myReviews[0]?.rating || 5}★)</span>
+                      </span>
+                    )}
+                    <span className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${getStatusColor(effectiveStatus)}`}>
+                      {effectiveStatus}
                     </span>
                   </div>
                 </div>
@@ -650,7 +768,7 @@ export default function StudentPortalPage() {
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-500 font-medium">
-                              Current Stage: <strong className="text-teal-700">{studentProfile.placementStatus || 'Awaiting'}</strong>
+                              Current Stage: <strong className="text-teal-700">{effectiveStatus}</strong>
                             </p>
                           </div>
                         </div>
@@ -756,10 +874,14 @@ export default function StudentPortalPage() {
                         </div>
                       </div>
                       <p className="text-xl font-extrabold text-slate-900 truncate">
-                        {studentInternships[0]?.company || studentAppointments[0]?.company || studentRequests[0]?.company || 'Pending Match'}
+                        {studentInternships[0]?.company || studentAppointments[0]?.company || 'Pending Match'}
                       </p>
                       <p className="text-[11px] text-teal-700 font-semibold mt-1 truncate flex items-center justify-between">
-                        <span>{studentInternships[0]?.progress !== undefined ? `${studentInternships[0].progress}% Hours Completed` : 'In Preparation'}</span>
+                        <span>
+                          {studentInternships[0]
+                            ? `${liveProgressPct}% Hours Completed (${totalVerifiedHours}/${requiredPlacementHours}h)`
+                            : (studentAppointments[0] ? 'Appointment Scheduled' : 'In Preparation')}
+                        </span>
                         <ArrowRight className="w-3.5 h-3.5 text-teal-500" />
                       </p>
                     </div>
@@ -960,7 +1082,7 @@ export default function StudentPortalPage() {
                               </span>
                             </div>
                             <p className="text-xs text-slate-500 mt-1">
-                              Target Industry: <strong className="text-slate-800">{req.company}</strong> • RTO: {req.rto}
+                              Appointed Host Facility: <strong className="text-slate-800">{studentInternships[0]?.company || studentAppointments[0]?.company || 'Matching In Progress'}</strong> • RTO: {req.rto}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -994,34 +1116,73 @@ export default function StudentPortalPage() {
                           </div>
                         </div>
 
-                        {/* Contacted Host Facilities */}
-                        {Array.isArray(req.contactedIndustries) && req.contactedIndustries.length > 0 && (
+                        {/* Appointed Host Facility (Only show the industry that currently has their active appointment/placement) */}
+                        {studentAppointments.length > 0 ? (
                           <div className="pt-2">
                             <h5 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
-                              <Send className="w-3.5 h-3.5 text-blue-600" />
-                              <span>Host Facilities Contacted On Your Behalf ({req.contactedIndustries.length})</span>
+                              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Appointed Host Facility For Your Placement</span>
                             </h5>
-                            <div className="space-y-2">
-                              {req.contactedIndustries.map((ind, i) => (
-                                <div key={i} className="p-3.5 bg-slate-50/70 rounded-xl border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                  <div>
-                                    <p className="font-bold text-slate-900">{ind.organizationName || 'Host Facility'}</p>
-                                    <p className="text-[11px] text-slate-500 mt-0.5">
-                                      {[ind.suburb, ind.state].filter(Boolean).join(', ')}
-                                      {ind.contactPerson && ` • Contact: ${ind.contactPerson}`}
-                                      {ind.phone && ` (${ind.phone})`}
-                                    </p>
-                                    {ind.notes && <p className="text-[11px] text-slate-600 italic mt-0.5">"{ind.notes}"</p>}
-                                  </div>
-                                  <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold shrink-0 self-start sm:self-center ${
-                                    ind.response === 'Accepted' || ind.response === 'Confirmed'
-                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  }`}>
-                                    {ind.response || 'Outreach Pending'}
+                            <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-extrabold text-slate-900 text-sm">{studentAppointments[0].company}</p>
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    {studentAppointments[0].status || 'Appointment Scheduled'}
                                   </span>
                                 </div>
-                              ))}
+                                <p className="text-slate-600 text-[11px] flex items-center gap-2">
+                                  <span>Date: <strong>{studentAppointments[0].date}</strong> at <strong>{studentAppointments[0].time}</strong></span>
+                                  {studentAppointments[0].meetingType && <span>• Format: {studentAppointments[0].meetingType}</span>}
+                                </p>
+                                <p className="text-slate-500 text-[11px]">
+                                  Location: {studentAppointments[0].location || 'Facility Premises'}
+                                  {(studentAppointments[0].interviewer || studentAppointments[0].contactPerson) && ` • Interviewer: ${studentAppointments[0].interviewer || studentAppointments[0].contactPerson}`}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => navigateToView('interviews')}
+                                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 flex items-center space-x-1.5 cursor-pointer self-start sm:self-center"
+                              >
+                                <span>View Interview</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : studentInternships.length > 0 ? (
+                          <div className="pt-2">
+                            <h5 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Active Placement Host Facility</span>
+                            </h5>
+                            <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="space-y-1">
+                                <p className="font-extrabold text-slate-900 text-sm">{studentInternships[0].company}</p>
+                                <p className="text-slate-600 text-[11px]">
+                                  Program: {studentInternships[0].title} • Required Hours: {studentInternships[0].duration || `${formData.placementHours || 120} Hours`}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => navigateToView('placement')}
+                                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 flex items-center space-x-1.5 cursor-pointer self-start sm:self-center"
+                              >
+                                <span>View Placement</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pt-2">
+                            <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-center space-x-2 text-slate-600">
+                                <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+                                <span>Host facility appointment matching is currently in progress. Only your appointed host facility will appear here once booked.</span>
+                              </div>
+                              <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0 self-start sm:self-center">
+                                Awaiting Appointment
+                              </span>
                             </div>
                           </div>
                         )}
@@ -1186,18 +1347,115 @@ export default function StudentPortalPage() {
                         <div className="p-4 bg-teal-50/40 rounded-xl border border-teal-100 space-y-2">
                           <div className="flex justify-between text-xs font-bold">
                             <span className="text-slate-800">Placement Training Progress</span>
-                            <span className="text-teal-700">{intern.progress || 0}% Complete</span>
+                            <span className="text-teal-700">{liveProgressPct}% Complete ({totalVerifiedHours} / {requiredPlacementHours} Hours)</span>
                           </div>
                           <div className="w-full h-3 rounded-full bg-slate-200/80 overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-500"
-                              style={{ width: `${Math.min(intern.progress || 0, 100)}%` }}
+                              style={{ width: `${Math.min(liveProgressPct, 100)}%` }}
                             />
                           </div>
                         </div>
                       </div>
                     ))
                   )}
+
+                  {/* ================= VERIFIED LOGBOOK & PRACTICAL SHIFTS ================= */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                      <div>
+                        <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-teal-600" />
+                          <span>Verified Logbook & Shift Attendance</span>
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Real-time attendance shifts logged and verified by host facility supervisors.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 rounded-xl text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                          {totalVerifiedHours} / {requiredPlacementHours} Total Hours
+                        </span>
+                        <span className="px-3 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-700">
+                          {attendanceRecords.length} Shift{attendanceRecords.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Summary Counters */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block mb-0.5">Total Shifts</span>
+                        <span className="text-base font-extrabold text-slate-900">{attendanceRecords.length}</span>
+                      </div>
+                      <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] text-emerald-700 font-bold uppercase block mb-0.5">Verified Hours</span>
+                        <span className="text-base font-extrabold text-emerald-800">{totalVerifiedHours} hrs</span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase block mb-0.5">Target Requirement</span>
+                        <span className="text-base font-extrabold text-slate-900">{requiredPlacementHours} hrs</span>
+                      </div>
+                      <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100">
+                        <span className="text-[10px] text-blue-700 font-bold uppercase block mb-0.5">Remaining Hours</span>
+                        <span className="text-base font-extrabold text-blue-800">
+                          {Math.max(0, requiredPlacementHours - totalVerifiedHours)} hrs
+                        </span>
+                      </div>
+                    </div>
+
+                    {attendanceRecords.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        <Clock className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                        <p className="text-xs font-bold text-slate-700">No shifts logged in the logbook yet</p>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          When your placement facility records your shift attendance, each verified shift and hour will automatically appear here.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                              <th className="py-2.5 px-3">Date</th>
+                              <th className="py-2.5 px-3">Timing</th>
+                              <th className="py-2.5 px-3">Facility</th>
+                              <th className="py-2.5 px-3">Hours</th>
+                              <th className="py-2.5 px-3">Status</th>
+                              <th className="py-2.5 px-3">Notes & Supervisor</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {attendanceRecords.map((att, i) => (
+                              <tr key={att._id || att.id || i} className="hover:bg-slate-50/60 transition">
+                                <td className="py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap">{att.date}</td>
+                                <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                                  {att.startTime} - {att.finishTime}
+                                  {att.breakMinutes > 0 && <span className="text-slate-400 ml-1">({att.breakMinutes}m break)</span>}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-800 font-medium whitespace-nowrap">{att.facilityName || 'Placement Facility'}</td>
+                                <td className="py-2.5 px-3 font-extrabold text-slate-900 whitespace-nowrap">{att.totalHours} hrs</td>
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                    att.status === 'Present' || att.status === 'Completed'
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : att.status === 'Half Day'
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  }`}>
+                                    {att.status}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-500 max-w-[200px] truncate">
+                                  {att.notes || att.recordedByName ? `${att.notes ? `${att.notes} • ` : ''}Verified by ${att.recordedByName || 'Supervisor'}` : 'Verified shift'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1288,14 +1546,16 @@ export default function StudentPortalPage() {
                         Share star ratings and feedback regarding your host employer and placement experience.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsReviewModalOpen(true)}
-                      className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer shrink-0"
-                    >
-                      <Star className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
-                      <span>Write a New Review</span>
-                    </button>
+                    {myReviews.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsReviewModalOpen(true)}
+                        className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer shrink-0"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                        <span>Write a New Review</span>
+                      </button>
+                    )}
                   </div>
 
                   {myReviews.length === 0 ? (
@@ -1350,8 +1610,19 @@ export default function StudentPortalPage() {
       {/* Placement Review Modal */}
       <ReviewSubmitModal
         isOpen={isReviewModalOpen}
-        onClose={() => {
+        onClose={async () => {
           setIsReviewModalOpen(false);
+          try {
+            const revRes = await fetchMyReviews();
+            setMyReviews(Array.isArray(revRes?.data || revRes) ? (revRes?.data || revRes) : []);
+          } catch (_) {}
+          if (studentProfile) loadWorkflowData(studentProfile);
+        }}
+        onSuccess={async () => {
+          try {
+            const revRes = await fetchMyReviews();
+            setMyReviews(Array.isArray(revRes?.data || revRes) ? (revRes?.data || revRes) : []);
+          } catch (_) {}
           if (studentProfile) loadWorkflowData(studentProfile);
         }}
       />

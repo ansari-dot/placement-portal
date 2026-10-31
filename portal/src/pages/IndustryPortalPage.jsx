@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import { fetchStudents, updateStudent } from '../api/studentsApi';
+import { fetchMyReviews } from '../api/reviewApi';
 import IndustryAttendanceSection from '../components/industry/IndustryAttendanceSection';
 import ReviewSubmitModal from '../components/review/ReviewSubmitModal';
 import { Building2, Users, Calendar, CheckCircle2, Clock, Edit3, X, Save, ClipboardList, Star } from 'lucide-react';
@@ -13,6 +14,7 @@ export default function IndustryPortalPage() {
   const [loading, setLoading] = useState(true);
   const [preselectedStudentId, setPreselectedStudentId] = useState('');
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [myReviews, setMyReviews] = useState([]);
 
   // Modal edit state for updating placement dates/status
   const [editingStudent, setEditingStudent] = useState(null);
@@ -25,7 +27,15 @@ export default function IndustryPortalPage() {
 
   useEffect(() => {
     loadAssignedStudents();
+    loadMyReviews();
   }, []);
+
+  const loadMyReviews = async () => {
+    try {
+      const data = await fetchMyReviews();
+      setMyReviews(Array.isArray(data) ? data : []);
+    } catch (_) {}
+  };
 
   const loadAssignedStudents = async () => {
     try {
@@ -108,13 +118,20 @@ export default function IndustryPortalPage() {
             
             {/* Header Actions & Tab Switchers */}
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setIsReviewModalOpen(true)}
-                className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl text-xs font-bold transition shadow-sm flex items-center space-x-1.5 cursor-pointer"
-              >
-                <Star className="w-4 h-4 fill-slate-900 text-slate-900" />
-                <span>Rate & Review Experience</span>
-              </button>
+              {myReviews.length === 0 ? (
+                <button
+                  onClick={() => setIsReviewModalOpen(true)}
+                  className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl text-xs font-bold transition shadow-sm flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Star className="w-4 h-4 fill-slate-900 text-slate-900" />
+                  <span>Rate & Review Experience</span>
+                </button>
+              ) : (
+                <span className="flex items-center space-x-1.5 px-3 py-2 bg-white/20 text-white rounded-xl text-xs font-semibold backdrop-blur-xs">
+                  <Star className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+                  <span>Review Submitted ({myReviews[0]?.rating || 5}★)</span>
+                </span>
+              )}
 
               <div className="flex items-center space-x-2 bg-black/20 p-1.5 rounded-xl backdrop-blur-xs">
                 <button
@@ -333,7 +350,11 @@ export default function IndustryPortalPage() {
       )}
       <ReviewSubmitModal
         isOpen={isReviewModalOpen}
-        onClose={() => setIsReviewModalOpen(false)}
+        onClose={() => {
+          setIsReviewModalOpen(false);
+          loadMyReviews();
+        }}
+        onSuccess={loadMyReviews}
       />
     </div>
   );

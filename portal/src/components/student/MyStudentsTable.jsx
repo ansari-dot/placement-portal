@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Download, Columns, Users, UserCheck, Moon, X, Building2, Calendar, FileText, RotateCcw } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -92,6 +92,8 @@ function buildWorkflowRequestMap(workflowRequests) {
 
 export default function MyStudentsTable() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
   const authUser = useSelector((state) => state.auth.user);
   const isAdmin = authUser?.role === 'Administrator';
   const isCoordinator = authUser?.role === 'Coordinator';
@@ -477,9 +479,21 @@ export default function MyStudentsTable() {
         const dayEnd   = new Date(filters.assignedDate).setHours(23, 59, 59, 999);
         if (assignedTime === null || assignedTime < dayStart || assignedTime > dayEnd) return false;
       }
+      if (urlSearch) {
+        const q = urlSearch.toLowerCase();
+        const matchesSearch =
+          (s.name || '').toLowerCase().includes(q) ||
+          (s.studentId || '').toLowerCase().includes(q) ||
+          (s.id || '').toLowerCase().includes(q) ||
+          (s.email || '').toLowerCase().includes(q) ||
+          (s.phone || '').toLowerCase().includes(q) ||
+          (s.rto || '').toLowerCase().includes(q) ||
+          (s.course || '').toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+      }
       return true;
     });
-  }, [students, filters, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
+  }, [students, filters, urlSearch, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
 
   const sortedStudents = useMemo(() => {
     if (!sortField) return filteredStudents;

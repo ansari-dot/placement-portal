@@ -3,6 +3,7 @@ import {
   GraduationCap, ChevronDown, Info, X, Upload, Plus, Trash2, ShieldCheck, FileText, CheckCircle2
 } from 'lucide-react';
 import { fetchRtos } from '../../api/rtoApi';
+import RtoAutocompleteInput from './RtoAutocompleteInput';
 
 const studentSources = [
   'Walk-in',
@@ -313,8 +314,10 @@ export default function EducationDetailsForm({ formData, updateField, errors, is
                     type="button"
                     onClick={() => {
                       updateField('studentType', 'Independent Student');
-                      updateField('assignedRto', 'Independent Student');
-                      updateField('institute', 'Independent Student');
+                      if (formData.assignedRto === 'Independent Student') {
+                        updateField('assignedRto', '');
+                        updateField('institute', '');
+                      }
                       updateField('rtoId', undefined);
                     }}
                     className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
@@ -425,18 +428,7 @@ export default function EducationDetailsForm({ formData, updateField, errors, is
               </p>
             </div>
 
-            {formData.studentType === 'Independent Student' ? (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO</label>
-                <input
-                  type="text"
-                  value="Independent Student (Direct Billing)"
-                  disabled
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 font-semibold cursor-not-allowed"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Billed directly to student; not assigned to an RTO partner.</p>
-              </div>
-            ) : isRtoManager ? (
+            {isRtoManager ? (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO</label>
                 <input
@@ -449,40 +441,43 @@ export default function EducationDetailsForm({ formData, updateField, errors, is
               </div>
             ) : (
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">College / RTO (optional)</label>
-                <div className="relative">
-                  <select
-                    value={formData.institute || formData.assignedRto || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      updateField('institute', val);
-                      updateField('assignedRto', val);
-                      const matched = allRtos.find(r => r.name === val);
-                      if (matched) updateField('rtoId', matched._id);
-                    }}
-                    disabled={loadingRtos}
-                    className={selectClass()}
-                  >
-                    <option value="">{loadingRtos ? 'Loading College / RTO...' : 'Select College / RTO'}</option>
-                    {(formData.institute || formData.assignedRto) &&
-                      !activeRtos.includes(formData.institute || formData.assignedRto) &&
-                      (formData.institute || formData.assignedRto) !== 'Other' && (
-                        <option value={formData.institute || formData.assignedRto}>
-                          {formData.institute || formData.assignedRto}
-                        </option>
-                      )}
-                    {activeRtos.map((rto) => (
-                      <option key={rto} value={rto}>{rto}</option>
-                    ))}
-                    <option value="Other">Other</option>
-                  </select>
-                  <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
-                    <ChevronDown size={14} />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    {formData.studentType === 'Independent Student' ? 'College / RTO (Search or Add New)' : 'College / RTO (Search or Write Name)'}
+                  </label>
+                  <span className="text-[10px] text-slate-400">
+                    Type to search DB (50% match) or write new
                   </span>
                 </div>
-                {!(formData.institute || formData.assignedRto) && (
-                  <p className="text-[10px] text-amber-600 font-medium mt-1">No RTO selected — student will be marked as Awaiting RTO Assignment</p>
-                )}
+
+                <RtoAutocompleteInput
+                  value={formData.assignedRto || formData.institute || ''}
+                  onChange={(rtoName, rtoObj) => {
+                    updateField('assignedRto', rtoName);
+                    updateField('institute', rtoName);
+                    if (rtoObj?._id) {
+                      updateField('rtoId', rtoObj._id);
+                    } else {
+                      updateField('rtoId', undefined);
+                    }
+                  }}
+                  studentType={formData.studentType || 'RTO Student'}
+                  allRtos={allRtos}
+                  hasError={Boolean(errors?.assignedRto || errors?.institute)}
+                  placeholder={
+                    formData.studentType === 'Independent Student'
+                      ? 'Type college / RTO name, or add a new RTO...'
+                      : 'Type RTO name or code (suggestions appear from DB)...'
+                  }
+                />
+
+                <p className="text-[10px] text-slate-400 mt-1.5">
+                  {formData.studentType === 'Independent Student'
+                    ? 'Independent student is directly billed, but you can also record or add their college / RTO name.'
+                    : !(formData.institute || formData.assignedRto)
+                    ? 'Leave empty to mark student as "Awaiting RTO Assignment".'
+                    : 'Matched to database RTO or saved as direct college entry.'}
+                </p>
               </div>
             )}
           </div>

@@ -48,6 +48,17 @@ export const checkStudentEmailApi = async (email, signal) => {
   return response.data;
 };
 
+export const updateProfile = async (profileData) => {
+  const response = await api.patch('/auth/profile', profileData);
+  return response.data;
+};
+
+export const submitSupportTicket = async (ticketData) => {
+  const response = await api.post('/auth/support-ticket', ticketData);
+  return response.data;
+};
+
+
 
 
 

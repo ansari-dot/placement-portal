@@ -34,7 +34,7 @@ export default function Sidebar() {
   const userRole = authUser?.role || 'Administrator';
   const isAdmin = userRole === 'Administrator';
   const isCoordinator = userRole === 'Coordinator' || userRole === 'Staff';
-  const isRtoManager = userRole === 'RTO Manager';
+  const isRtoManager = userRole === 'RTO Manager' || userRole === 'RTO';
   const isStudent = userRole === 'Student';
   const isIndustry = userRole === 'Industry';
   const [pendingCount, setPendingCount] = useState(0);
@@ -133,6 +133,50 @@ export default function Sidebar() {
 
   const studentIconClass = (view) => {
     const active = isStudentViewActive(view);
+    return `
+      w-3
+      h-3
+      shrink-0
+      transition-colors
+      ${active ? 'text-white' : 'text-white/60 group-hover:text-white'}
+    `;
+  };
+
+  // ============================================
+  // RTO VIEW ACTIVE ROUTE
+  // ============================================
+
+  const isRtoViewActive = (view) => {
+    if (view === 'dashboard') {
+      return (pathname === '/' || pathname === '/my-students') && (!searchParams.get('view') || searchParams.get('view') === 'dashboard');
+    }
+    return (pathname === '/' || pathname === '/my-students') && searchParams.get('view') === view;
+  };
+
+  const rtoLinkClass = (view) => {
+    const active = isRtoViewActive(view);
+    return `
+      group
+      flex
+      items-center
+      gap-2.5
+      w-full
+      px-2.5
+      py-1.5
+      rounded-md
+      transition-all
+      duration-200
+      text-[10px]
+      ${
+        active
+          ? 'bg-[#08a8b8] text-white font-medium shadow-sm'
+          : 'text-white/75 hover:bg-white/10 hover:text-white'
+      }
+    `;
+  };
+
+  const rtoIconClass = (view) => {
+    const active = isRtoViewActive(view);
     return `
       w-3
       h-3
@@ -365,6 +409,63 @@ export default function Sidebar() {
               </Link>
             </div>
           </div>
+        ) : isRtoManager ? (
+          <div className="mb-4">
+            <p className={sectionTitle}>
+              RTO Management
+            </p>
+            <div className="space-y-0.5">
+              <Link to="/my-students?view=dashboard" className={rtoLinkClass('dashboard')}>
+                <LayoutDashboard className={rtoIconClass('dashboard')} />
+                <span className="truncate">Overview & Dashboard</span>
+              </Link>
+
+              <Link to="/my-students?view=students" className={rtoLinkClass('students')}>
+                <Users className={rtoIconClass('students')} />
+                <span className="truncate">Enrolled Students</span>
+              </Link>
+
+              <Link to="/my-students?view=pipeline" className={rtoLinkClass('pipeline')}>
+                <Layers className={rtoIconClass('pipeline')} />
+                <span className="truncate">Placement Pipeline</span>
+              </Link>
+
+              <Link to="/my-students?view=interviews" className={rtoLinkClass('interviews')}>
+                <Calendar className={rtoIconClass('interviews')} />
+                <span className="truncate">Interviews & Schedule</span>
+              </Link>
+
+              <Link to="/my-students?view=placements" className={rtoLinkClass('placements')}>
+                <Briefcase className={rtoIconClass('placements')} />
+                <span className="truncate">Placements & Hours</span>
+              </Link>
+
+              <Link to="/my-students?view=compliance" className={rtoLinkClass('compliance')}>
+                <ShieldCheck className={rtoIconClass('compliance')} />
+                <span className="truncate">Compliance Clearances</span>
+              </Link>
+
+              <Link to="/my-students?view=invoices" className={rtoLinkClass('invoices')}>
+                <CreditCard className={rtoIconClass('invoices')} />
+                <span className="truncate">Invoices & Statements</span>
+              </Link>
+
+              <Link to="/my-students?view=profile" className={rtoLinkClass('profile')}>
+                <Building2 className={rtoIconClass('profile')} />
+                <span className="truncate">RTO Profile</span>
+              </Link>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-white/10">
+              <p className={sectionTitle}>Quick Actions</p>
+              <div className="space-y-0.5">
+                <Link to="/add-student" className={navLinkClass('/add-student')}>
+                  <UserPlus className={iconClass('/add-student')} />
+                  <span className="truncate">Add New Student</span>
+                </Link>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="mb-4">
             <p className={sectionTitle}>
@@ -385,8 +486,8 @@ export default function Sidebar() {
                 </span>
               </Link>
 
-              {/* Add Student — Admin, Coordinator & RTO Manager */}
-              {(isAdmin || isCoordinator || isRtoManager) && (
+              {/* Add Student — Admin, Coordinator */}
+              {(isAdmin || isCoordinator) && (
               <Link
                 to="/add-student"
                 className={navLinkClass('/add-student')}

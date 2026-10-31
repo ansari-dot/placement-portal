@@ -2,7 +2,7 @@ import { NotificationService } from './notification.service.js';
 
 export const getAllNotificationsController = async (req, res, next) => {
   try {
-    const { notifications, unreadCount } = await NotificationService.getAllNotifications();
+    const { notifications, unreadCount } = await NotificationService.getAllNotifications(req.user);
     res.status(200).json({
       success: true,
       unreadCount,
@@ -15,7 +15,12 @@ export const getAllNotificationsController = async (req, res, next) => {
 
 export const createNotificationController = async (req, res, next) => {
   try {
-    const notification = await NotificationService.createNotification(req.body);
+    const payload = {
+      ...req.body,
+      sender: req.user?._id || null,
+      senderName: req.user?.name || 'Administrator',
+    };
+    const notification = await NotificationService.createNotification(payload);
     res.status(201).json({
       success: true,
       message: 'Notification created successfully',
@@ -28,7 +33,7 @@ export const createNotificationController = async (req, res, next) => {
 
 export const markReadController = async (req, res, next) => {
   try {
-    const notification = await NotificationService.markRead(req.params.id);
+    const notification = await NotificationService.markRead(req.params.id, req.user);
     res.status(200).json({
       success: true,
       message: 'Notification marked as read',
@@ -41,7 +46,7 @@ export const markReadController = async (req, res, next) => {
 
 export const markAllReadController = async (req, res, next) => {
   try {
-    await NotificationService.markAllRead();
+    await NotificationService.markAllRead(req.user);
     res.status(200).json({
       success: true,
       message: 'All notifications marked as read',
@@ -53,7 +58,7 @@ export const markAllReadController = async (req, res, next) => {
 
 export const deleteNotificationController = async (req, res, next) => {
   try {
-    await NotificationService.deleteNotification(req.params.id);
+    await NotificationService.deleteNotification(req.params.id, req.user);
     res.status(200).json({
       success: true,
       message: 'Notification deleted successfully',
@@ -65,7 +70,7 @@ export const deleteNotificationController = async (req, res, next) => {
 
 export const clearAllNotificationsController = async (req, res, next) => {
   try {
-    await NotificationService.clearAllNotifications();
+    await NotificationService.clearAllNotifications(req.user);
     res.status(200).json({
       success: true,
       message: 'All notifications cleared',
@@ -74,3 +79,4 @@ export const clearAllNotificationsController = async (req, res, next) => {
     next(error);
   }
 };
+

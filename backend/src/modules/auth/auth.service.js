@@ -244,6 +244,7 @@ export class AuthService {
             type: 'system',
             link: '/users',
             recipient: admin._id,
+            targetRoles: ['Administrator', 'Admin'],
           });
         }
       } catch (notifyErr) {
@@ -494,5 +495,108 @@ export class AuthService {
       message: 'No pre-existing student record found. You can register as a New Student applicant.',
     };
   }
+
+  static async updateProfile(userId, payload) {
+    if (!userId) {
+      throw new BadRequestError('User ID is required');
+    }
+
+    const { name, phone, avatar, currentPassword, newPassword } = payload;
+    const user = await UserModel.findById(userId).select('+password');
+
+    if (!user || user.isDeleted) {
+      throw new BadRequestError('User account not found');
+    }
+
+    if (name && typeof name === 'string' && name.trim()) {
+      user.name = name.trim();
+    }
+
+    if (phone !== undefined) {
+      user.phone = String(phone || '').trim();
+    }
+
+    if (avatar !== undefined) {
+      user.avatar = String(avatar || '').trim();
+    }
+
+    // Password change verification
+    if (newPassword) {
+      if (!currentPassword) {
+        throw new BadRequestError('Current password is required to set a new password');
+      }
+      if (newPassword.length < 6) {
+        throw new BadRequestError('New password must be at least 6 characters long');
+      }
+
+      const isCurrentValid = await user.comparePassword(currentPassword);
+      if (!isCurrentValid) {
+        throw new BadRequestError('Current password does not match');
+      }
+
+      user.password = newPassword;
+    }
+
+    await user.save();
+
+    // Synchronize linked profile records
+    if (user.email) {
+      const normEmail = user.email.toLowerCase().trim();
+      try {
+        if (name || phone || avatar) {
+          await StudentModel.updateMany(
+            { emailAddress: normEmail },
+            {
+              $set: {
+                ...(name ? { name: user.name, firstName: user.name.split(' ')[0] } : {}),
+                ...(phone !== undefined ? { phoneNumber: user.phone } : {}),
+                ...(avatar !== undefined ? { avatar: user.avatar } : {}),
+              },
+            }
+          );
+        }
+      } catch {}
+    }
+
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    return userObj;
+  }
+
+  static async submitSupportTicket(user, payload) {
+    const { subject, category, message, priority } = payload;
+
+    if (!subject || !subject.trim()) {
+      throw new BadRequestError('Subject is required');
+    }
+    if (!message || !message.trim()) {
+      throw new BadRequestError('Message is required');
+    }
+
+    const ticketTitle = `Support Request: ${subject.trim()}`;
+    const ticketDesc = `[${category || 'General'} | Priority: ${priority || 'Normal'}] From ${user.name || 'User'} (${user.role || 'Member'}): ${message.trim()}`;
+
+    // Create persistent support notification for Administrators
+    const notification = await NotificationModel.create({
+      title: ticketTitle,
+      desc: ticketDesc,
+      type: 'request',
+      link: '/users',
+      sender: user._id || null,
+      senderName: user.name || 'Portal User',
+      targetRoles: ['Administrator', 'Admin'],
+      isRead: false,
+    });
+
+    return {
+      ticketId: notification._id,
+      subject: subject.trim(),
+      category: category || 'General',
+      status: 'Submitted',
+      submittedAt: new Date(),
+    };
+  }
 }
+
 

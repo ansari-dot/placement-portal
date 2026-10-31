@@ -371,15 +371,21 @@ export const internshipSchema = z.object({
       'Joined',
       'Waiting to Join',
       'Completed',
+      'Placement Completed',
       'Cancelled',
       'On Hold',
       'Declined',
       'Withdrawn',
+      'Student Withdraw',
       'Placement Started',
+      'Appointment Successful',
       'Not Suitable Site',
       'Industry Rejected',
       'Student Missed Appointment',
+      'No Show',
+      'Confirmed',
     ])
+    .or(z.string().trim())
     .optional()
     .default('Active'),
 

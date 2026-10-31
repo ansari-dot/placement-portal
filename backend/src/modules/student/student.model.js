@@ -569,6 +569,9 @@ studentSchema.virtual("source").get(function () {
 
 studentSchema.index({ studentType: 1, placementStatus: 1 });
 studentSchema.index({ assignedRto: 1 });
+studentSchema.index({ institute: 1 });
+studentSchema.index({ rtoId: 1 });
+
 
 // Ensure virtuals are included in JSON output
 studentSchema.set("toJSON", {

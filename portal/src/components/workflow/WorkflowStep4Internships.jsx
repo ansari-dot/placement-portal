@@ -23,7 +23,8 @@ export default function WorkflowStep4Internships({
   onDeleteInternship,
   onBulkDeleteInternships,
   onDeleteAppointment,
-  students = []
+  students = [],
+  initialSearch = '',
 }) {
   const [newIntStudentId, setNewIntStudentId] = useState('');
   const [newIntCompany, setNewIntCompany] = useState('');
@@ -34,7 +35,13 @@ export default function WorkflowStep4Internships({
 
   const [selectedInternship, setSelectedInternship] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch || '');
+
+  useEffect(() => {
+    if (typeof initialSearch === 'string') {
+      setSearchQuery(initialSearch);
+    }
+  }, [initialSearch]);
   const [viewMode, setViewMode] = useState('grid');
   const [selectedRows, setSelectedRows] = useState([]);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
@@ -171,16 +178,9 @@ export default function WorkflowStep4Internships({
 
       if (endDate && !isNaN(endDate.getTime()) && endDate < todayStart) return 'Completed';
 
-      // "Completed" is only valid once end date has actually passed
-      if (storedStatus === 'Completed') {
-        if (endDate && !isNaN(endDate.getTime()) && endDate > now) {
-          // End date still in future — decide based on start date
-          if (startDate && !isNaN(startDate.getTime()) && startDate <= now) {
-            return 'Placement Started';
-          }
-          return 'Waiting to Join';
-        }
-        return 'Completed'; // end date passed → keep Completed
+      // "Completed" or "Placement Completed" is always honoured
+      if (storedStatus === 'Completed' || storedStatus === 'Placement Completed') {
+        return 'Completed';
       }
 
       // 'Confirmed' = appointment confirmed, placement underway — show based on dates
@@ -495,8 +495,16 @@ export default function WorkflowStep4Internships({
     return matchesSearch && matchesStatus && matchesCompany && matchesStatusTab;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredInternships.length / pageSize));
-  const paginatedInternships = filteredInternships.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const sortedFilteredInternships = useMemo(() => {
+    return [...filteredInternships].sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || a.start || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || b.start || 0).getTime();
+      return tB - tA;
+    });
+  }, [filteredInternships]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedFilteredInternships.length / pageSize));
+  const paginatedInternships = sortedFilteredInternships.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const allPageSelected = paginatedInternships.length > 0 && paginatedInternships.every(i => selectedRows.includes(i.intId || i.id));
   const isIndeterminate = !allPageSelected && paginatedInternships.some(i => selectedRows.includes(i.intId || i.id));
@@ -1176,7 +1184,7 @@ export default function WorkflowStep4Internships({
                     const endDate = item.end ? new Date(item.end) : null;
                     const isEndPassed = endDate && !isNaN(endDate.getTime()) && endDate <= now;
 
-                    if (item.status === 'Completed' || isEndPassed) {
+                    if (item.status === 'Completed' || item.status === 'Placement Completed' || isEndPassed) {
                       return { label: 'Completed', color: 'bg-purple-50 text-purple-700 border-purple-200' };
                     }
                     if (hasCommencement && (item.status === 'Placement Started' || item.status === 'Active' || item.status === 'Joined')) {
