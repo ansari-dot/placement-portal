@@ -499,6 +499,43 @@ const studentSchema = new mongoose.Schema(
       },
       default: "Awaiting",
     },
+    // Lifecycle status - centralized, authoritative status across the entire portal
+    lifecycleStatus: {
+      type: String,
+      enum: {
+        values: [
+          "Registered",
+          "Under Review",
+          "Request Pending",
+          "Request Approved",
+          "Request Rejected",
+          "Appointment Scheduled",
+          "Appointment Successful",
+          "Appointment Missed",
+          "Appointment Cancelled",
+          "Placement In Progress",
+          "Placement Completed",
+          "Placement Unsuccessful",
+          "Student Withdrawn",
+          "Student On Hold",
+          "Student Rejected",
+          "Student Inactive",
+        ],
+        message: "Invalid lifecycle status",
+      },
+      default: "Registered",
+    },
+    // Status history for audit trail
+    statusHistory: [
+      {
+        fromStatus: { type: String, required: true },
+        toStatus: { type: String, required: true },
+        reason: { type: String, default: "" },
+        triggeredBy: { type: String, default: "system" },
+        triggeringEvent: { type: String, default: "" },
+        changedAt: { type: Date, default: Date.now },
+      },
+    ],
     appointmentDate: {
       type: String,
       trim: true,
@@ -571,6 +608,7 @@ studentSchema.index({ studentType: 1, placementStatus: 1 });
 studentSchema.index({ assignedRto: 1 });
 studentSchema.index({ institute: 1 });
 studentSchema.index({ rtoId: 1 });
+studentSchema.index({ lifecycleStatus: 1 });
 
 
 // Ensure virtuals are included in JSON output

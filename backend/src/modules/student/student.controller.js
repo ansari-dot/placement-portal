@@ -5,6 +5,7 @@ import {
   processBulkDocuments,
 } from './student.bulk.service.js';
 import { sanitizeStudentDataForRole } from '../../core/utils/rbacSanitizer.js';
+import { reconcileAllStudentStatuses } from './studentStatus.service.js';
 
 export const downloadBulkTemplateController = async (req, res, next) => {
   try {
@@ -480,6 +481,19 @@ export const bulkDeleteStudentsController = async (req, res, next) => {
       success: true,
       message: `Deleted ${result.deletedCount} student(s)`,
       deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reconcileStudentStatusesController = async (req, res, next) => {
+  try {
+    const result = await reconcileAllStudentStatuses();
+    res.status(200).json({
+      success: true,
+      message: 'Student status reconciliation completed',
+      data: result,
     });
   } catch (error) {
     next(error);

@@ -14,6 +14,7 @@ import {
   bulkAssignRtoController,
   bulkUpdateStatusController,
   bulkDeleteStudentsController,
+  reconcileStudentStatusesController,
 } from './student.controller.js';
 import multer from 'multer';
 import { requireRoles } from '../../core/guards/roles.guard.js';
@@ -44,6 +45,9 @@ router.post('/bulk/documents', canManage, docsUpload.array('files', 500), bulkUp
 router.post('/bulk/assign-rto', canManage, bulkAssignRtoController);
 router.patch('/bulk/status', canManage, bulkUpdateStatusController);
 router.post('/bulk/delete', canManage, bulkDeleteStudentsController);
+
+// ===== Status reconciliation (Admin only) =====
+router.post('/reconcile-statuses', requireRoles('Administrator', 'Admin'), reconcileStudentStatusesController);
 
 const canCreateStudent = requireRoles('Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'RTO Manager', 'RTO');
 

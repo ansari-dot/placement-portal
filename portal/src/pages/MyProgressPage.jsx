@@ -53,7 +53,7 @@ export default function MyProgressPage() {
         <div className="bg-white border-b border-slate-200 shrink-0">
           <div className="max-w-[1600px] mx-auto px-6">
             <nav className="flex items-center gap-1" aria-label="Progress tabs">
-              {visibleTabs.map(({ key, label, icon: Icon }) => {
+              {TABS.map(({ key, label, icon: Icon }) => {
                 const active = activeTab === key;
                 return (
                   <button

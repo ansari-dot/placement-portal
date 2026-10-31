@@ -12,6 +12,12 @@ import {
   NotFoundError,
   ForbiddenError,
 } from '../../core/errors/AppError.js';
+import {
+  STUDENT_LIFECYCLE_STATUSES,
+  calculateLifecycleStatus,
+  updateStudentLifecycleStatus,
+  getStatusConfig,
+} from './studentStatus.service.js';
 
 const STUDENT_ID_PREFIX = 'STU';
 
@@ -144,6 +150,21 @@ export class StudentService {
 
     const student = await StudentModel.create(studentData);
 
+    // Set initial lifecycle status
+    try {
+      await updateStudentLifecycleStatus(
+        student._id,
+        STUDENT_LIFECYCLE_STATUSES.REGISTERED,
+        {
+          reason: 'Student registration completed',
+          triggeredBy: 'system',
+          triggeringEvent: 'student_created',
+        }
+      );
+    } catch (statusErr) {
+      console.error('[StudentService] Failed to set initial lifecycle status:', statusErr.message);
+    }
+
     if (silent) return student;
 
     try {
@@ -226,86 +247,105 @@ export class StudentService {
     const filter = await this.buildRbacFilter(user, coordinatorIdQuery);
     const rawStudents = await StudentModel.find(filter).sort({ createdAt: -1 });
 
+    // Fetch workflow data once for all students
+    let workflows = [];
+    try {
+      workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+    } catch (wfErr) {
+      console.error('[StudentService] Failed to fetch workflow data for status calculation:', wfErr.message);
+    }
+    const allRequests = workflows.flatMap(wf => wf.requests || []);
+    const allAppointments = workflows.flatMap(wf => wf.appointments || []);
+    const allInternships = workflows.flatMap(wf => wf.internships || []);
+
     // Derive live dynamic statuses from workflows so student status is never stale
     try {
-      const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
-      if (workflows && workflows.length > 0) {
-        const allAppts = workflows.flatMap((wf) => wf.appointments || []);
-        const allInts = workflows.flatMap((wf) => wf.internships || []);
+      const allAppts = workflows.flatMap((wf) => wf.appointments || []);
+      const allInts = workflows.flatMap((wf) => wf.internships || []);
 
-        const apptsByStudent = new Map();
-        allAppts.forEach((a) => {
-          const keys = [a.studentId, String(a._id || ''), a.student?.trim().toLowerCase()].filter(Boolean);
-          keys.forEach((k) => {
-            if (!apptsByStudent.has(k)) apptsByStudent.set(k, []);
-            apptsByStudent.get(k).push(a);
-          });
+      const apptsByStudent = new Map();
+      allAppts.forEach((a) => {
+        const keys = [a.studentId, String(a._id || ''), a.student?.trim().toLowerCase()].filter(Boolean);
+        keys.forEach((k) => {
+          if (!apptsByStudent.has(k)) apptsByStudent.set(k, []);
+          apptsByStudent.get(k).push(a);
         });
+      });
 
-        const intsByStudent = new Map();
-        allInts.forEach((i) => {
-          const keys = [i.studentId, String(i._id || ''), i.student?.trim().toLowerCase()].filter(Boolean);
-          keys.forEach((k) => {
-            if (!intsByStudent.has(k)) intsByStudent.set(k, []);
-            intsByStudent.get(k).push(i);
-          });
+      const intsByStudent = new Map();
+      allInts.forEach((i) => {
+        const keys = [i.studentId, String(i._id || ''), i.student?.trim().toLowerCase()].filter(Boolean);
+        keys.forEach((k) => {
+          if (!intsByStudent.has(k)) intsByStudent.set(k, []);
+          intsByStudent.get(k).push(i);
         });
+      });
 
-        const now = new Date();
-        rawStudents.forEach((s) => {
-          const sFullName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
-          const sName = (s.name || sFullName).trim().toLowerCase();
-          const keys = [s.studentId, String(s._id || ''), sName, sFullName].filter(Boolean);
+      const now = new Date();
+      rawStudents.forEach((s) => {
+        const sFullName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
+        const sName = (s.name || sFullName).trim().toLowerCase();
+        const keys = [s.studentId, String(s._id || ''), sName, sFullName].filter(Boolean);
 
-          const studentAppts = keys.flatMap((k) => apptsByStudent.get(k) || []);
-          const studentInts = keys.flatMap((k) => intsByStudent.get(k) || []);
+        const studentAppts = keys.flatMap((k) => apptsByStudent.get(k) || []);
+        const studentInts = keys.flatMap((k) => intsByStudent.get(k) || []);
 
-          if (studentInts.length > 0 || studentAppts.length > 0) {
-            if (
-              studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
-              studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status))
-            ) {
-              s.placementStatus = 'Placement Completed';
-            } else if (
-              studentInts.some((i) => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
-              studentAppts.some(
-                (a) =>
-                  !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
-                  (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
-                  a.commencementDate &&
-                  new Date(a.commencementDate) <= now
-              )
-            ) {
-              s.placementStatus = 'Placement Started';
-            } else if (
-              studentAppts.some(
-                (a) =>
-                  !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
-                  a.appointmentOutcome === 'successful' &&
-                  !a.commencementDate
-              )
-            ) {
-              s.placementStatus = 'Appointment Successful';
-            } else if (studentAppts.some((a) => ['Scheduled', 'Rescheduled'].includes(a.status))) {
-              s.placementStatus = 'Appointment Scheduled';
-            }
+        if (studentInts.length > 0 || studentAppts.length > 0) {
+          if (
+            studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
+            studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status))
+          ) {
+            s.placementStatus = 'Placement Completed';
+          } else if (
+            studentInts.some((i) => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
+            studentAppts.some(
+              (a) =>
+                !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
+                (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
+                a.commencementDate &&
+                new Date(a.commencementDate) <= now
+            )
+          ) {
+            s.placementStatus = 'Placement Started';
+          } else if (
+            studentAppts.some(
+              (a) =>
+                !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
+                a.appointmentOutcome === 'successful' &&
+                !a.commencementDate
+            )
+          ) {
+            s.placementStatus = 'Appointment Successful';
+          } else if (studentAppts.some((a) => ['Scheduled', 'Rescheduled'].includes(a.status))) {
+            s.placementStatus = 'Appointment Scheduled';
+          }
 
-            const latestAppt = studentAppts.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
-            if (latestAppt) {
-              if (!s.appointmentDate && latestAppt.date) s.appointmentDate = latestAppt.date;
-              if (!s.appointmentTime && latestAppt.time) s.appointmentTime = latestAppt.time;
-              if (!s.commencementDate && latestAppt.commencementDate) s.commencementDate = latestAppt.commencementDate;
-            }
+          const latestAppt = studentAppts.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
+          if (latestAppt) {
+            if (!s.appointmentDate && latestAppt.date) s.appointmentDate = latestAppt.date;
+            if (!s.appointmentTime && latestAppt.time) s.appointmentTime = latestAppt.time;
+            if (!s.commencementDate && latestAppt.commencementDate) s.commencementDate = latestAppt.commencementDate;
+          }
 
-            const latestInt = studentInts.sort((a, b) => new Date(b.start || b.startDate || 0) - new Date(a.start || a.startDate || 0))[0];
-            if (latestInt) {
-              if (!s.commencementDate && (latestInt.start || latestInt.startDate)) {
-                s.commencementDate = latestInt.start || latestInt.startDate;
-              }
+          const latestInt = studentInts.sort((a, b) => new Date(b.start || b.startDate || 0) - new Date(a.start || a.startDate || 0))[0];
+          if (latestInt) {
+            if (!s.commencementDate && (latestInt.start || latestInt.startDate)) {
+              s.commencementDate = latestInt.start || latestInt.startDate;
             }
           }
-        });
-      }
+        }
+
+        // Calculate lifecycle status from workflow data
+        try {
+          s.lifecycleStatus = calculateLifecycleStatus(s, {
+            requests: allRequests,
+            appointments: allAppointments,
+            internships: allInternships,
+          });
+        } catch (lifecycleErr) {
+          console.error('[StudentService] Failed to calculate lifecycle status for student:', s.studentId, lifecycleErr.message);
+        }
+      });
     } catch (_) {
       // Non-blocking fallback
     }
@@ -652,6 +692,30 @@ export class StudentService {
         const studentDbId = String(student._id || student.id || '').trim();
         const studentName = `${student.firstName || ''} ${student.lastName || ''}`.trim();
         const isCompleted = ['Placement Completed', 'Completed'].includes(studentData.placementStatus);
+
+        // Update lifecycle status based on workflow data
+        try {
+          const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+          const correctLifecycleStatus = calculateLifecycleStatus(student, {
+            requests: workflows.flatMap(wf => wf.requests || []),
+            appointments: workflows.flatMap(wf => wf.appointments || []),
+            internships: workflows.flatMap(wf => wf.internships || []),
+          });
+          
+          if (student.lifecycleStatus !== correctLifecycleStatus) {
+            await updateStudentLifecycleStatus(
+              student._id,
+              correctLifecycleStatus,
+              {
+                reason: 'Automated lifecycle status update based on workflow data',
+                triggeredBy: 'system',
+                triggeringEvent: 'workflow_data_sync',
+              }
+            );
+          }
+        } catch (lifecycleErr) {
+          console.error('[StudentService] Failed to update lifecycle status:', lifecycleErr.message);
+        }
 
         const stuMatchConditions = [
           ...(studentBizId ? [{ studentId: studentBizId }, { studentId: new RegExp(`^${studentBizId}$`, 'i') }] : []),

@@ -8,6 +8,11 @@ import StudentModel from '../student/student.model.js';
 import NotificationModel from '../notification/notification.model.js';
 import { sendPlacementStartedEmail, sendPlacementOutcomeEmail } from "../email/email.service.js";
 import { getStudentQueryScope } from "../../core/utils/rbacScope.js";
+import {
+  STUDENT_LIFECYCLE_STATUSES,
+  calculateLifecycleStatus,
+  updateStudentLifecycleStatus,
+} from '../student/studentStatus.service.js';
 
 // ===== ID Generators =====
 export const generateReqId = async () => {
@@ -125,7 +130,7 @@ export const createInternshipRequest = async (workflowId, requestData) => {
     workflow.requests.push(request);
     await workflow.save({ validateBeforeSave: false });
 
-    // ── Set student placementStatus → "In Progress" ───────────────────────
+    // ── Update student lifecycleStatus → "Request Pending" ───────────────
     try {
         const stuQuery = [];
         if (requestData.studentId) {
@@ -135,14 +140,29 @@ export const createInternshipRequest = async (workflowId, requestData) => {
             }
         }
         if (stuQuery.length > 0) {
-            await StudentModel.findOneAndUpdate(
-                { $or: stuQuery },
-                { placementStatus: "In Progress" },
-                { runValidators: false }
-            );
+            const student = await StudentModel.findOne({ $or: stuQuery });
+            if (student) {
+                // Calculate correct lifecycle status based on workflow data
+                const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+                const correctStatus = calculateLifecycleStatus(student, {
+                    requests: workflows.flatMap(wf => wf.requests || []),
+                    appointments: workflows.flatMap(wf => wf.appointments || []),
+                    internships: workflows.flatMap(wf => wf.internships || []),
+                });
+                
+                await updateStudentLifecycleStatus(
+                    student._id,
+                    correctStatus,
+                    {
+                        reason: 'Placement request submitted',
+                        triggeredBy: 'system',
+                        triggeringEvent: 'request_created',
+                    }
+                );
+            }
         }
     } catch (psErr) {
-        console.warn("[Workflow] placementStatus→InProgress update skipped:", psErr.message);
+        console.warn("[Workflow] lifecycleStatus→RequestPending update skipped:", psErr.message);
     }
     // ─────────────────────────────────────────────────────────────────────
 
@@ -246,18 +266,20 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
             if (mongoose.Types.ObjectId.isValid(matchedRequest.studentId)) {
                 studentQuery.push({ _id: matchedRequest.studentId });
             }
+            
+            // Update lifecycle status to "Request Pending" if not already in a more advanced state
             await StudentModel.findOneAndUpdate(
                 {
                     $and: [
                         { $or: studentQuery },
-                        { placementStatus: { $in: ["Awaiting", "In Progress"] } },
+                        { lifecycleStatus: { $in: ["Registered", "Under Review"] } },
                     ],
                 },
-                { placementStatus: "Industry Contacted" },
+                { lifecycleStatus: "Request Pending" },
                 { runValidators: false }
             );
         } catch (statusErr) {
-            console.warn("[Workflow] placementStatus→IndustryContacted update skipped:", statusErr.message);
+            console.warn("[Workflow] lifecycleStatus→RequestPending update skipped:", statusErr.message);
         }
     }
 
@@ -468,31 +490,21 @@ export const createAppointment = async (workflowId, appointmentData) => {
                 });
                 if (updatedStudent) await studentDoc.save();
             }
+            
+            // Update lifecycle status to "Appointment Scheduled"
+            await updateStudentLifecycleStatus(
+                studentDoc._id,
+                STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_SCHEDULED,
+                {
+                    reason: 'Appointment scheduled',
+                    triggeredBy: 'system',
+                    triggeringEvent: 'appointment_created',
+                }
+            );
         }
     } catch (syncErr) {
         console.warn('Sync student contactedIndustries skipped:', syncErr.message);
     }
-
-    // ── Set student placementStatus → "Appointment Scheduled" ────────────
-    try {
-        const stuQuery = [];
-        if (appointment.studentId) {
-            stuQuery.push({ studentId: appointment.studentId });
-            if (mongoose.Types.ObjectId.isValid(appointment.studentId)) {
-                stuQuery.push({ _id: appointment.studentId });
-            }
-        }
-        if (stuQuery.length > 0) {
-            await StudentModel.findOneAndUpdate(
-                { $or: stuQuery },
-                { placementStatus: "Appointment Scheduled" },
-                { runValidators: false }
-            );
-        }
-    } catch (psErr) {
-        console.warn("[Workflow] placementStatus→AppointmentScheduled update skipped:", psErr.message);
-    }
-    // ─────────────────────────────────────────────────────────────────────
 
     try {
         await NotificationModel.create({
@@ -620,9 +632,18 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
                         }
                     });
                 }
-                // Set placementStatus → "Placement Started" — a confirmed successful appointment
-                // means the placement has started. This is the single authoritative write;
-                // updateInternship will later set it to "Placement Completed" when the end date arrives.
+                // Update lifecycle status to "Placement In Progress"
+                await updateStudentLifecycleStatus(
+                    studentDoc._id,
+                    STUDENT_LIFECYCLE_STATUSES.PLACEMENT_IN_PROGRESS,
+                    {
+                        reason: 'Placement started - confirmed successful appointment',
+                        triggeredBy: 'system',
+                        triggeringEvent: 'appointment_confirmed',
+                    }
+                );
+                
+                // Also update placementStatus for backward compatibility
                 studentDoc.placementStatus = 'Placement Started';
                 await studentDoc.save();
             } catch (saveErr) {
@@ -958,7 +979,7 @@ export const createInternship = async (workflowId, internshipData) => {
     workflow.internships.push(internship);
     await workflow.save({ validateBeforeSave: false });
 
-    // ── Set student placementStatus from created internship ──────────────
+    // ── Update student lifecycleStatus from created internship ──────────
     try {
         const studentId = internshipData.studentId;
         const stuQuery = [];
@@ -973,20 +994,29 @@ export const createInternship = async (workflowId, internshipData) => {
             }
         }
         if (stuQuery.length > 0) {
-            const status = internshipData.status || 'Placement Started';
-            const newPs = ['Completed', 'Placement Completed'].includes(status) ? 'Placement Completed'
-                : ['Withdrawn', 'Student Withdraw'].includes(status) ? 'Student Withdraw'
-                    : status === 'Industry Rejected' ? 'Industry Rejected'
-                        : status === 'Student Missed Appointment' ? 'Student Missed Appointment'
-                            : 'Placement Started';
-            await StudentModel.findOneAndUpdate(
-                { $or: stuQuery },
-                { placementStatus: newPs },
-                { runValidators: false }
-            );
+            const student = await StudentModel.findOne({ $or: stuQuery });
+            if (student) {
+                // Calculate correct lifecycle status based on workflow data
+                const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+                const correctStatus = calculateLifecycleStatus(student, {
+                    requests: workflows.flatMap(wf => wf.requests || []),
+                    appointments: workflows.flatMap(wf => wf.appointments || []),
+                    internships: workflows.flatMap(wf => wf.internships || []),
+                });
+                
+                await updateStudentLifecycleStatus(
+                    student._id,
+                    correctStatus,
+                    {
+                        reason: 'Internship placement created',
+                        triggeredBy: 'system',
+                        triggeringEvent: 'internship_created',
+                    }
+                );
+            }
         }
     } catch (psErr) {
-        console.warn('[Workflow] placementStatus update in createInternship skipped:', psErr.message);
+        console.warn('[Workflow] lifecycleStatus update in createInternship skipped:', psErr.message);
     }
 
     try {
