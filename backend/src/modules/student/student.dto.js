@@ -465,4 +465,41 @@ export const studentSchema = z.object({
     .string()
     .optional()
     .default(''),
+
+  // ===== Lifecycle Status (System-managed) =====
+  lifecycleStatus: z
+    .enum([
+      'Registered',
+      'Under Review',
+      'Request Pending',
+      'Request Approved',
+      'Request Rejected',
+      'Appointment Scheduled',
+      'Appointment Successful',
+      'Appointment Missed',
+      'Appointment Cancelled',
+      'Placement In Progress',
+      'Placement Completed',
+      'Placement Unsuccessful',
+      'Student Withdrawn',
+      'Student On Hold',
+      'Student Rejected',
+      'Student Inactive',
+    ])
+    .optional()
+    .default('Registered'),
+
+  statusHistory: z
+    .array(
+      z.object({
+        fromStatus: z.string(),
+        toStatus: z.string(),
+        reason: z.string().optional(),
+        triggeredBy: z.string().optional(),
+        triggeringEvent: z.string().optional(),
+        changedAt: z.union([z.string(), z.date()]).optional(),
+      })
+    )
+    .optional()
+    .default([]),
 });

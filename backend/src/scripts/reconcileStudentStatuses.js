@@ -1,13 +1,13 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import StudentModel from './student.model.js';
-import WorkflowModel from '../workflow/workflow.model.js';
+import StudentModel from '../modules/student/student.model.js';
+import WorkflowModel from '../modules/workflow/workflow.model.js';
 import {
   STUDENT_LIFECYCLE_STATUSES,
   calculateLifecycleStatus,
   updateStudentLifecycleStatus,
   STATUS_CONFIG,
-} from './studentStatus.service.js';
+} from '../modules/student/studentStatus.service.js';
 
 dotenv.config();
 

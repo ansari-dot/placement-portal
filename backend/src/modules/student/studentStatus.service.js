@@ -452,7 +452,7 @@ export const reconcileAllStudentStatuses = async () => {
   };
   
   // Fetch all workflow data once
-  const WorkflowModel = (await import('./workflow.model.js')).default;
+  const WorkflowModel = (await import('../workflow/workflow.model.js')).default;
   const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
   const allRequests = workflows.flatMap(wf => wf.requests || []);
   const allAppointments = workflows.flatMap(wf => wf.appointments || []);
