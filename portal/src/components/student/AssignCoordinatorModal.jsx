@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Search, UserCheck, Loader2, Users, CheckCircle2, UserX, History, Clock } from 'lucide-react';
-import { fetchUsers } from '../../api/userApi';
+import { fetchCoordinators } from '../../api/userApi';
 import api from '../../api/axios';
 
 const ROLE_COLORS = {
@@ -55,12 +55,11 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
     setLoading(true);
     setError('');
     try {
-      const res = await fetchUsers({ status: 'Active' });
+      const res = await fetchCoordinators({ status: 'Active' });
       const list = res?.data ?? [];
-      // Show ALL active users — any new user added to the portal appears here automatically
       setUsers(list);
     } catch (err) {
-      setError('Could not load users. Please try again.');
+      setError('Could not load coordinators. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -239,7 +238,7 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
             <div className="flex flex-col items-center justify-center py-10 text-slate-400">
               <Users className="w-8 h-8 mb-2 opacity-40" />
               <p className="text-xs font-medium">
-                {search ? 'No users match your search' : 'No active users found'}
+                {search ? 'No coordinators match your search' : 'No coordinators found'}
               </p>
               {search && (
                 <button onClick={() => setSearch('')} className="mt-1 text-[11px] text-blue-500 hover:underline">

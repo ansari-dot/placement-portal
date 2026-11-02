@@ -13,6 +13,7 @@ import {
   updateUserStatusController,
   reactivateUserController,
   getOnboardingEligibleUsersController,
+  getCoordinatorsController,
 } from './user.controller.js';
 import { authenticate, softAuth } from '../../core/guards/auth.guard.js';
 import { requireAdmin } from '../../core/guards/roles.guard.js';
@@ -23,6 +24,7 @@ const router = express.Router();
 
 router.get('/score-stats', softAuth, getScoreStatsController);
 router.get('/onboarding-eligible', authenticate, getOnboardingEligibleUsersController);
+router.get('/coordinators', authenticate, getCoordinatorsController);
 
 router.use(authenticate, requireAdmin);
 

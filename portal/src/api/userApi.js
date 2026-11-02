@@ -50,3 +50,8 @@ export const fetchOnboardingEligibleUsers = async () => {
   return response.data;
 };
 
+export const fetchCoordinators = async (params) => {
+  const response = await api.get('/users/coordinators', { params });
+  return response.data;
+};
+

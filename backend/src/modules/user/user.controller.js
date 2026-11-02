@@ -164,3 +164,16 @@ export const getOnboardingEligibleUsersController = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getCoordinatorsController = async (req, res, next) => {
+  try {
+    const { search, status } = req.query;
+    const users = await UserService.getCoordinators({ search, status });
+    res.status(200).json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -657,4 +657,33 @@ export class UserService {
       .sort({ name: 1 })
       .lean();
   }
+
+  static async getCoordinators(queryParams = {}) {
+    const { search, status } = queryParams;
+    const query = { role: 'Coordinator' };
+
+    if (status && status !== 'All') query.status = status;
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const users = await UserModel.find(query)
+      .select('_id name email role department status isOnline lastActive')
+      .sort({ name: 1 })
+      .lean();
+
+    const onlineThresholdMs = 3 * 60 * 1000;
+    const now = Date.now();
+
+    return users.map(u => {
+      const uObj = { ...u };
+      const lastActiveTime = uObj.lastActive ? new Date(uObj.lastActive).getTime() : 0;
+      uObj.isOnline = Boolean(uObj.isOnline) && (now - lastActiveTime < onlineThresholdMs);
+      delete uObj.lastActive;
+      return uObj;
+    });
+  }
 }
