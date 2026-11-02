@@ -5,7 +5,7 @@ import { checkAndSendPlacementAlerts } from './src/modules/email/email.service.j
 
 dotenv.config();
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 
 // ─── Placement Alert Scheduler ─────────────────────────────────────────────
 // Runs once on startup (after 30s to allow DB to settle), then every 24 hours.
