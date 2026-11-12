@@ -119,16 +119,87 @@ export const removeStudentFromWorkflow = async (workflowId, studentId) => {
 
 // ===== Internship Requests (Step 2) =====
 export const createInternshipRequest = async (workflowId, requestData) => {
+    const workflow = await WorkflowModel.findById(workflowId);
+    if (!workflow) return null;
+
+    // Deduplication check: check if an existing request already exists for this student
+    const candidateStuId = String(requestData.studentId || '').trim().toLowerCase();
+    const candidateStuName = String(requestData.student || '').trim().toLowerCase();
+
+    let studentBizId = candidateStuId;
+    let studentDbId = '';
+    let studentFullName = candidateStuName;
+
+    try {
+        const studentDoc = await StudentModel.findOne({
+            $or: [
+                ...(candidateStuId ? [{ studentId: candidateStuId }] : []),
+                ...(mongoose.Types.ObjectId.isValid(requestData.studentId) ? [{ _id: requestData.studentId }] : []),
+                ...(candidateStuName ? [{ name: candidateStuName }, { firstName: candidateStuName }] : []),
+            ]
+        }).lean();
+        if (studentDoc) {
+            studentBizId = String(studentDoc.studentId || '').trim().toLowerCase();
+            studentDbId = String(studentDoc._id || '').trim().toLowerCase();
+            studentFullName = String(studentDoc.name || `${studentDoc.firstName || ''} ${studentDoc.lastName || ''}`.trim()).toLowerCase();
+        }
+    } catch (_) {}
+
+    const existingReq = (workflow.requests || []).find((r) => {
+        const rStuId = String(r.studentId || '').trim().toLowerCase();
+        const rStuName = String(r.student || '').trim().toLowerCase();
+        return (
+            (candidateStuId && rStuId && candidateStuId === rStuId) ||
+            (candidateStuName && rStuName && candidateStuName === rStuName) ||
+            (studentBizId && rStuId && studentBizId === rStuId) ||
+            (studentDbId && rStuId && studentDbId === rStuId) ||
+            (studentFullName && rStuName && studentFullName === rStuName)
+        );
+    });
+
+    if (existingReq) {
+        // Update the existing request instead of creating a duplicate subdocument
+        return await updateInternshipRequest(workflowId, existingReq._id || existingReq.reqId || existingReq.id, requestData);
+    }
+
     if (!requestData.reqId) {
         requestData.reqId = await generateReqId();
     }
     const request = await InternshipRequestModel.create(requestData);
 
-    const workflow = await WorkflowModel.findById(workflowId);
-    if (!workflow) return null;
-
     workflow.requests.push(request);
     await workflow.save({ validateBeforeSave: false });
+
+    // Sync student status, priority, and placementStatus
+    if (requestData.priority && requestData.studentId) {
+        try {
+            const stuUpdate = { internshipPriority: requestData.priority };
+            if (requestData.priority === 'Inactive') {
+                stuUpdate.status = 'Inactive';
+                stuUpdate.placementStatus = 'N/A';
+            } else if (requestData.priority === 'Snooze') {
+                stuUpdate.snoozed = true;
+                stuUpdate.placementStatus = 'N/A';
+            } else if (['Normal', 'Urgent'].includes(requestData.priority)) {
+                stuUpdate.status = 'Active';
+                stuUpdate.snoozed = false;
+                stuUpdate.snoozedAt = null;
+                stuUpdate.snoozeUntil = null;
+                stuUpdate.snoozeReason = '';
+                stuUpdate.placementStatus = 'In Progress';
+            }
+            const studentQuery = [{ studentId: requestData.studentId }];
+            if (mongoose.Types.ObjectId.isValid(requestData.studentId)) {
+                studentQuery.push({ _id: requestData.studentId });
+            }
+            if (requestData.student) {
+                studentQuery.push({ name: requestData.student });
+            }
+            await StudentModel.updateMany({ $or: studentQuery }, { $set: stuUpdate }, { runValidators: false });
+        } catch (e) {
+            console.warn("Failed to sync StudentModel on createInternshipRequest:", e.message);
+        }
+    }
 
     // ── Update student lifecycleStatus → "Request Pending" ───────────────
     try {
@@ -328,6 +399,36 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
         }
     } catch (dbErr) {
         console.warn("InternshipRequestModel sync skipped:", dbErr.message);
+    }
+
+    if (otherFields.priority && matchedRequest.studentId) {
+        try {
+            const studentQuery = [{ studentId: matchedRequest.studentId }];
+            if (mongoose.Types.ObjectId.isValid(matchedRequest.studentId)) {
+                studentQuery.push({ _id: matchedRequest.studentId });
+            }
+            if (matchedRequest.student) {
+                studentQuery.push({ name: matchedRequest.student });
+            }
+            const stuUpdate = { internshipPriority: otherFields.priority };
+            if (otherFields.priority === 'Inactive') {
+                stuUpdate.status = 'Inactive';
+                stuUpdate.placementStatus = 'N/A';
+            } else if (otherFields.priority === 'Snooze') {
+                stuUpdate.snoozed = true;
+                stuUpdate.placementStatus = 'N/A';
+            } else if (['Normal', 'Urgent'].includes(otherFields.priority)) {
+                stuUpdate.status = 'Active';
+                stuUpdate.snoozed = false;
+                stuUpdate.snoozedAt = null;
+                stuUpdate.snoozeUntil = null;
+                stuUpdate.snoozeReason = '';
+                stuUpdate.placementStatus = 'In Progress';
+            }
+            await StudentModel.updateMany({ $or: studentQuery }, { $set: stuUpdate }, { runValidators: false });
+        } catch (e) {
+            console.warn("Failed to sync StudentModel on updateInternshipRequest:", e.message);
+        }
     }
 
     return workflow.requests[requestIndex];
@@ -1519,7 +1620,7 @@ export const getWorkflowDashboardData = async (user) => {
         InternshipModel.find().sort({ createdAt: -1 }),
         WorkflowModel.find().sort({ updatedAt: -1 }).limit(5),
         WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean(),
-        StudentModel.find(studentScope, { _id: 1, studentId: 1, firstName: 1, lastName: 1, name: 1, placementStatus: 1, status: 1 }).lean(),
+        StudentModel.find(studentScope, { _id: 1, studentId: 1, firstName: 1, lastName: 1, name: 1, placementStatus: 1, status: 1, snoozed: 1, internshipPriority: 1 }).lean(),
     ]);
 
     // Embedded workflow records are authoritative.
@@ -1591,6 +1692,16 @@ export const getWorkflowDashboardData = async (user) => {
         const appts = keys.flatMap(k => apptsByStudent[k] || []);
         const ints = keys.flatMap(k => internshipsByStudent[k] || []);
         const reqs = keys.flatMap(k => requestsByStudent[k] || []);
+
+        const latestReq = reqs[0];
+        const isSnoozedOrInactive =
+            stu.snoozed === true ||
+            stu.internshipPriority === 'Snooze' ||
+            stu.internshipPriority === 'Inactive' ||
+            stu.status === 'Inactive' ||
+            (latestReq && (latestReq.priority === 'Snooze' || latestReq.priority === 'Inactive'));
+
+        if (isSnoozedOrInactive) return 'N/A';
 
         const uniqueAppts = [...new Map(appts.map(a => [String(a._id || a.apptId || a.id), a])).values()];
         const uniqueInts = [...new Map(ints.map(i => [String(i._id || i.intId || i.id), i])).values()];

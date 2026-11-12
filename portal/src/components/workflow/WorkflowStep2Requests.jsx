@@ -571,14 +571,55 @@ export default function WorkflowStep2Requests({
             snoozedAt: new Date().toISOString(),
             snoozeUntil,
             snoozeReason: changePriorityNote.trim(),
+            internshipPriority: 'Snooze',
+            placementStatus: 'N/A',
+          });
+          await updateStudent(studentId, {
+            internshipPriority: 'Snooze',
+            placementStatus: 'N/A',
+          });
+        } else if (changePriority === 'Inactive') {
+          await snoozeStudent(studentId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '' });
+          await updateStudent(studentId, {
+            status: 'Inactive',
+            internshipPriority: 'Inactive',
+            placementStatus: 'N/A',
           });
         } else {
           await snoozeStudent(studentId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '' });
+          await updateStudent(studentId, {
+            status: 'Active',
+            internshipPriority: changePriority,
+            placementStatus: 'In Progress',
+          });
         }
-        await updateStudent(studentId, {
-          internshipPriority: changePriority === 'Inactive' ? 'Inactive' : '',
-          placementStatus: returnedToStep1 ? 'Awaiting' : 'In Progress',
-        });
+
+        const candidateKeys = [
+          studentId,
+          item.studentId,
+          item.student,
+          item.student ? item.student.trim().toLowerCase() : '',
+        ].filter(Boolean);
+
+        try {
+          const existingSnoozed = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
+          if (changePriority === 'Snooze') {
+            const durationDays = { '7_days': 7, '14_days': 14, '30_days': 30 }[changeSnoozeDuration];
+            const snoozeUntil = durationDays ? getSnoozeUntil(durationDays) : null;
+            const entry = {
+              id: studentId,
+              studentId: item.studentId || studentId,
+              name: item.student,
+              snoozedAt: new Date().toISOString(),
+              snoozeUntil,
+              reason: changePriorityNote.trim(),
+            };
+            candidateKeys.forEach(k => { existingSnoozed[k] = entry; });
+          } else {
+            candidateKeys.forEach(k => { delete existingSnoozed[k]; });
+          }
+          localStorage.setItem('portal_snoozed_students', JSON.stringify(existingSnoozed));
+        } catch (_) {}
       }
 
       await onRefreshStudents?.();

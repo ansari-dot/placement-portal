@@ -292,6 +292,8 @@ export const studentSchema = z.object({
   snoozedAt: z.any().nullable().optional().default(null),
   snoozeUntil: z.any().nullable().optional().default(null),
   snoozeReason: z.string().optional().default(''),
+  internshipPriority: z.enum(['Normal', 'Urgent', 'Inactive', 'Snooze', '']).optional(),
+  placementStatus: z.string().optional(),
   isOnline: z.boolean().optional().default(false),
   lastActive: z.any().optional(),
   lastSeen: z.any().optional(),

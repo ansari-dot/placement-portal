@@ -7,6 +7,7 @@ import {
   bulkPaymentReceivedController,
   downloadInvoicePDFController,
   retrySendInvoiceEmailController,
+  importStudentsController,
 } from './payment.controller.js';
 import { authenticate } from '../../core/guards/auth.guard.js';
 import { requireRoles } from '../../core/guards/roles.guard.js';
@@ -27,6 +28,7 @@ const canViewPayments = requireRoles('Administrator', 'Admin', 'Coordinator', 'P
 
 router.get('/', canViewPayments, getPaymentsController);
 router.get('/totals', canViewPayments, getPaymentTotalsController);
+router.post('/import', canManagePayments, importStudentsController);
 router.patch('/:id/status', canManagePayments, validateBody(updatePaymentStatusSchema), updatePaymentStatusController);
 router.post('/bulk-invoice', canManagePayments, validateBody(bulkInvoiceSchema), bulkGenerateInvoiceController);
 router.post('/bulk-payment-received', canManagePayments, validateBody(bulkPaymentReceivedSchema), bulkPaymentReceivedController);

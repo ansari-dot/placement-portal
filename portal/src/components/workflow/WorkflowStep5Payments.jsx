@@ -19,7 +19,9 @@ import {
   Download,
   X,
   Edit2,
+  UserPlus,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
   fetchPayments,
@@ -40,6 +42,8 @@ const PLACEMENT_STATUSES = [
   'Student Missed Appointment',
   'Placement Started',
   'Placement Completed',
+  'Snooze',
+  'Inactive',
 ];
 
 const PAYMENT_STATUSES = [
@@ -78,6 +82,11 @@ const getPlacementStatusBadge = (status) => {
       return 'bg-orange-50 text-orange-700 border-orange-200';
     case 'Cancelled':
       return 'bg-slate-100 text-slate-600 border-slate-200';
+    case 'Inactive':
+      return 'bg-purple-50 text-purple-700 border-purple-200';
+    case 'Snooze':
+    case 'Snoozed':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
     default:
       return 'bg-slate-100 text-slate-500 border-slate-200';
   }
@@ -113,7 +122,8 @@ const formatDate = (dateString) => {
   }
 };
 
-export default function WorkflowStep5Payments({ initialSearch = '' }) {
+export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoozedMap = null }) {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState([]);
   const [totals, setTotals] = useState({
     total100Price: 0,
@@ -417,24 +427,45 @@ export default function WorkflowStep5Payments({ initialSearch = '' }) {
     setSelectedIds([]);
   };
 
+  // Helper to determine placement status display in payment section
+  const getDisplayPlacementStatus = useCallback((p) => {
+    if (p.placementStatus === 'Snooze' || p.placementStatus === 'Inactive') {
+      return p.placementStatus;
+    }
+    if (inactiveSnoozedMap && inactiveSnoozedMap.size > 0) {
+      const keys = [p.student, p.studentId, p.studentName]
+        .filter(Boolean)
+        .map((k) => String(k).trim().toLowerCase());
+      for (const k of keys) {
+        if (inactiveSnoozedMap.has(k)) {
+          return inactiveSnoozedMap.get(k);
+        }
+      }
+    }
+    return p.placementStatus || '—';
+  }, [inactiveSnoozedMap]);
+
+  // Payments are NEVER filtered out when students become inactive or snoozed
+  const activePayments = payments;
+
   // Compute payment status metrics for top cards
   const metrics = useMemo(() => {
-    const total = payments.length;
-    const pending = payments.filter((p) => (p.paymentStatus || 'Pending') === 'Pending').length;
-    const invoiceSent = payments.filter((p) => p.paymentStatus === 'Invoice Generated' || p.paymentStatus === 'Invoice Sent').length;
-    const received30 = payments.filter((p) => p.paymentStatus === '30% Received').length;
-    const fullReceived = payments.filter((p) => p.paymentStatus === 'Full Payment Received').length;
+    const total = activePayments.length;
+    const pending = activePayments.filter((p) => (p.paymentStatus || 'Pending') === 'Pending').length;
+    const invoiceSent = activePayments.filter((p) => p.paymentStatus === 'Invoice Generated' || p.paymentStatus === 'Invoice Sent').length;
+    const received30 = activePayments.filter((p) => p.paymentStatus === '30% Received').length;
+    const fullReceived = activePayments.filter((p) => p.paymentStatus === 'Full Payment Received').length;
     return { total, pending, invoiceSent, received30, fullReceived };
-  }, [payments]);
+  }, [activePayments]);
 
   // Sort payments with most recently updated / created student at the top
   const sortedPayments = useMemo(() => {
-    return [...payments].sort((a, b) => {
+    return [...activePayments].sort((a, b) => {
       const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
       const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
       return tB - tA;
     });
-  }, [payments]);
+  }, [activePayments]);
 
   const isAllSelected = sortedPayments.length > 0 && selectedIds.length === sortedPayments.length;
 
@@ -456,6 +487,14 @@ export default function WorkflowStep5Payments({ initialSearch = '' }) {
           </div>
         </div>
         <div className="flex items-center space-x-3 shrink-0">
+          <button
+            onClick={() => navigate('/workflow?step=1&mode=paymentImport')}
+            className="flex items-center space-x-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
+            title="Import students into Payment (advance payments, unscheduled appointments)"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Import Student</span>
+          </button>
           <button
             onClick={handleRepairRto}
             disabled={repairing || loading}
@@ -641,7 +680,7 @@ export default function WorkflowStep5Payments({ initialSearch = '' }) {
               onChange={handleSelectAll}
               className="w-4 h-4 rounded border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
-            <span className="text-xs font-semibold">Select All ({payments.length})</span>
+            <span className="text-xs font-semibold">Select All ({sortedPayments.length})</span>
           </label>
           {selectedIds.length > 0 && (
             <span className="text-xs bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2.5 py-0.5 rounded-full font-medium">
@@ -701,7 +740,7 @@ export default function WorkflowStep5Payments({ initialSearch = '' }) {
             <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
             <p className="text-xs font-semibold">Loading payments data...</p>
           </div>
-        ) : payments.length === 0 ? (
+        ) : sortedPayments.length === 0 ? (
           <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center space-y-3">
             <Info className="w-10 h-10 text-slate-300" />
             <p className="text-sm font-semibold text-slate-700">No chargeable students found</p>
@@ -788,10 +827,10 @@ export default function WorkflowStep5Payments({ initialSearch = '' }) {
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getPlacementStatusBadge(
-                            p.placementStatus
+                            getDisplayPlacementStatus(p)
                           )}`}
                         >
-                          {p.placementStatus}
+                          {getDisplayPlacementStatus(p)}
                         </span>
                       </td>
 

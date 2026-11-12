@@ -660,7 +660,7 @@ export class UserService {
 
   static async getCoordinators(queryParams = {}) {
     const { search, status } = queryParams;
-    const query = { role: { $in: ['Coordinator', 'Administrator'] } };
+    const query = { role: { $in: ['Coordinator', 'Administrator', 'Admin'] } };
 
     if (status && status !== 'All') query.status = status;
     if (search) {

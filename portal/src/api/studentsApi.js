@@ -50,13 +50,18 @@ export const deleteStudent = async (id) => {
 };
 
 // Snooze a student — persists snoozed state to the database
-export const snoozeStudent = async (id, { snoozed, snoozedAt, snoozeUntil, snoozeReason }) => {
-  const response = await api.put(`/students/${id}`, {
+export const snoozeStudent = async (id, { snoozed, snoozedAt, snoozeUntil, snoozeReason, internshipPriority }) => {
+  const payload = {
     snoozed,
     snoozedAt: snoozedAt ?? null,
     snoozeUntil: snoozeUntil ?? null,
     snoozeReason: snoozeReason ?? '',
-  });
+  };
+  if (internshipPriority !== undefined) {
+    payload.internshipPriority = internshipPriority;
+  }
+  const response = await api.put(`/students/${id}`, payload);
+  notifyPlacementDataChanged();
   return response.data;
 };
 

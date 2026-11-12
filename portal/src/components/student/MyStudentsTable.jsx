@@ -5,7 +5,7 @@ import { Download, Columns, Users, UserCheck, Moon, X, Building2, Calendar, File
 import { toast } from 'react-toastify';
 import { defaultStudents, emptyFilters, parseDate, btnSecondary } from './studentData';
 import { downloadStudentsCSV } from './csvUtils';
-import { fetchStudents, deleteStudent } from '../../api/studentsApi';
+import { fetchStudents, deleteStudent, snoozeStudent } from '../../api/studentsApi';
 import { fetchUsers } from '../../api/userApi';
 import {
   fetchWorkflows,
@@ -68,20 +68,24 @@ const mapBackendStudent = (s) => ({
   // Online status from backend (real-time)
   isOnline: s.isOnline === true,
   lastActive: s.lastActive || null,
+  snoozed: s.snoozed === true,
+  snoozedAt: s.snoozedAt || null,
+  snoozeUntil: s.snoozeUntil || null,
+  snoozeReason: s.snoozeReason || '',
+  internshipPriority: s.internshipPriority || '',
 });
 
 /**
- * Build a map of studentId → priority from backend workflow.requests only.
- * localStorage is NOT used here — backend is the single source of truth.
+ * Build a map of student identifiers → priority from backend workflow.requests.
  */
 function buildWorkflowRequestMap(workflowRequests) {
   const map = {};
 
-  // Only use backend data — index by studentId
   if (Array.isArray(workflowRequests)) {
     workflowRequests.forEach((req) => {
       const priority = req.priority || 'Normal';
       if (req.studentId) { map[req.studentId] = priority; map[norm(req.studentId)] = priority; }
+      if (req.student)   { map[req.student] = priority;   map[norm(req.student)] = priority; }
       if (req.id)        map[req.id] = priority;
       if (req._id)       map[String(req._id)] = priority;
     });
@@ -134,6 +138,9 @@ export default function MyStudentsTable() {
   const [snoozeReason, setSnoozeReason] = useState('');
   const [isSubmittingGen, setIsSubmittingGen] = useState(false);
 
+  // ─── Student Tabs: All (Active) / Inactive / Snooze ───────────────────
+  const [activeMainTab, setActiveMainTab] = useState('all'); // 'all' | 'inactive' | 'snooze'
+
   // Snoozed students — persisted in localStorage
   const [snoozedStudentIds, setSnoozedStudentIds] = useState(() => {
     try {
@@ -177,8 +184,10 @@ export default function MyStudentsTable() {
     if (!genTargetStudent) return;
 
     const stuId = genTargetStudent.id || genTargetStudent.dbId || genTargetStudent.studentId;
+    const targetDbId = genTargetStudent.dbId || genTargetStudent.id;
+    const stuName = genTargetStudent.name;
 
-    // ── Snooze path (localStorage only, no backend request) ──
+    // ── Snooze path ──
     if (genPriority === 'Snooze') {
       const durationLabels = {
         '7_days': '7 Days',
@@ -186,34 +195,120 @@ export default function MyStudentsTable() {
         '30_days': '30 Days',
         'indefinite': 'Indefinite',
       };
+      const durationDays = {
+        '7_days': 7,
+        '14_days': 14,
+        '30_days': 30,
+        'indefinite': null,
+      }[snoozeDuration] || null;
+      const snoozeUntil = durationDays ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString() : null;
+      const snoozedAt = new Date().toISOString();
+
       const newEntry = {
         id: stuId,
         studentId: genTargetStudent.studentId || genTargetStudent.id || stuId,
-        name: genTargetStudent.name,
+        name: stuName,
         email: genTargetStudent.email,
         rto: genTargetStudent.rto || 'RTO',
-        snoozedAt: new Date().toISOString(),
+        snoozedAt,
+        snoozeUntil,
         duration: snoozeDuration,
         durationLabel: durationLabels[snoozeDuration] || '7 Days',
         reason: snoozeReason || 'Deferred from placement workflow',
         rawStudent: genTargetStudent,
       };
+
       try {
         const existing = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
-        existing[stuId] = newEntry;
-        // Store under all known keys so the badge appears regardless of which id is used
-        [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId]
+        [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId, norm(stuName)]
           .filter(Boolean)
           .forEach((k) => { existing[k] = newEntry; });
         localStorage.setItem('portal_snoozed_students', JSON.stringify(existing));
         setSnoozedStudentIds(existing);
       } catch (_) {}
-      toast.info(`Student ${genTargetStudent.name} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
+
+      // Persist to backend database
+      if (targetDbId) {
+        try {
+          await snoozeStudent(targetDbId, {
+            snoozed: true,
+            snoozedAt,
+            snoozeUntil,
+            snoozeReason: snoozeReason || 'Deferred from placement workflow',
+            internshipPriority: 'Snooze',
+          });
+          await updateStudent(targetDbId, { internshipPriority: 'Snooze' });
+        } catch (e) {
+          console.error('Failed to persist snooze to DB:', e);
+        }
+      }
+
+      // Update local workflow map
+      const updatedMap = { ...workflowRequestMap };
+      [stuId, genTargetStudent.studentId, targetDbId, norm(stuName)].filter(Boolean).forEach(k => {
+        updatedMap[k] = 'Snooze';
+      });
+      setWorkflowRequestMap(updatedMap);
+
+      // Update student in local state: placementStatus -> 'N/A'
+      setStudents((prev) => prev.map((s) =>
+        (s.id === genTargetStudent.id || s.dbId === genTargetStudent.dbId)
+          ? { ...s, snoozed: true, internshipPriority: 'Snooze', placementStatus: 'N/A' }
+          : s
+      ));
+
+      toast.info(`Student ${stuName} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setGenTargetStudent(null);
       return;
     }
 
-    // ── Normal / Urgent path — create backend request ──
+    // ── Inactive path ──
+    if (genPriority === 'Inactive') {
+      setIsSubmittingGen(true);
+      try {
+        if (targetDbId) {
+          await updateStudent(targetDbId, { status: 'Inactive', internshipPriority: 'Inactive' });
+          if (isStudentSnoozed(genTargetStudent)) {
+            await snoozeStudent(targetDbId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '' });
+          }
+        }
+
+        // Clear snooze in localStorage
+        try {
+          const existing = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
+          [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId, norm(stuName)]
+            .filter(Boolean)
+            .forEach((k) => delete existing[k]);
+          localStorage.setItem('portal_snoozed_students', JSON.stringify(existing));
+          setSnoozedStudentIds(existing);
+        } catch (_) {}
+
+        // Update local workflow map
+        const updatedMap = { ...workflowRequestMap };
+        [stuId, genTargetStudent.studentId, targetDbId, norm(stuName)].filter(Boolean).forEach(k => {
+          updatedMap[k] = 'Inactive';
+        });
+        setWorkflowRequestMap(updatedMap);
+
+        // Update student in local state: status -> 'Inactive', placementStatus -> 'N/A'
+        setStudents((prev) => prev.map((s) =>
+          (s.id === genTargetStudent.id || s.dbId === genTargetStudent.dbId)
+            ? { ...s, status: 'Inactive', snoozed: false, internshipPriority: 'Inactive', placementStatus: 'N/A' }
+            : s
+        ));
+
+        toast.info(`Student ${stuName} marked as Inactive`);
+        setGenTargetStudent(null);
+      } catch (err) {
+        console.error('Failed to mark student inactive:', err);
+        toast.error(err?.response?.data?.message || 'Failed to update student');
+      } finally {
+        setIsSubmittingGen(false);
+      }
+      return;
+    }
+
+    // ── Normal / Urgent path — generate request and navigate to Step 2 ──
     try {
       setIsSubmittingGen(true);
 
@@ -221,7 +316,6 @@ export default function MyStudentsTable() {
       let wfRequests = [...activeWorkflowRequests];
 
       if (!wfId) {
-        // Try fetching again first
         const wfListRes = await fetchWorkflows();
         const wfList = wfListRes?.data ?? wfListRes ?? [];
         const wfArray = Array.isArray(wfList) ? wfList : [];
@@ -238,13 +332,33 @@ export default function MyStudentsTable() {
       }
 
       const resolvedStuId = genTargetStudent.studentId || genTargetStudent.id || genTargetStudent.dbId || String(genTargetStudent._id || '');
-      const stuName = genTargetStudent.name;
 
-      // Auto-add student to workflow's students array if not already present
-      const targetDbId = genTargetStudent.dbId || genTargetStudent.id;
       if (targetDbId) {
         try { await addStudentsToWorkflow(wfId, [targetDbId]); } catch (_) {}
+        await updateStudent(targetDbId, { status: 'Active', internshipPriority: genPriority, placementStatus: 'In Progress' });
+        if (isStudentSnoozed(genTargetStudent)) {
+          await snoozeStudent(targetDbId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '', internshipPriority: genPriority, placementStatus: 'In Progress' });
+        }
       }
+
+      // Clear snooze in localStorage and state
+      const keysToDelete = [
+        genTargetStudent.studentId,
+        genTargetStudent.id,
+        genTargetStudent.dbId,
+        stuName,
+        norm(stuName),
+        norm(genTargetStudent.studentId),
+        norm(genTargetStudent.id),
+        norm(genTargetStudent.dbId),
+      ].filter(Boolean);
+
+      try {
+        const existing = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
+        keysToDelete.forEach((k) => delete existing[k]);
+        localStorage.setItem('portal_snoozed_students', JSON.stringify(existing));
+        setSnoozedStudentIds(existing);
+      } catch (_) {}
 
       const requestData = {
         title: `${genTargetStudent.course || 'Internship'} Placement`,
@@ -254,20 +368,21 @@ export default function MyStudentsTable() {
         rto: genTargetStudent.rto || 'TBD',
         priority: genPriority,
         status: 'New',
+        returnedToStep1: false,
       };
       const created = await createInternshipRequest(wfId, requestData);
 
       // Update in-memory workflow request map immediately
       setActiveWorkflowId(wfId);
       const newReq = created?.data ?? created ?? requestData;
-      const newRequests = [...wfRequests, newReq];
+      const newRequests = [...wfRequests.filter(r => norm(r.studentId) !== norm(resolvedStuId) && norm(r.student) !== norm(stuName)), newReq];
       setActiveWorkflowRequests(newRequests);
       setWorkflowRequestMap(buildWorkflowRequestMap(newRequests));
 
-      // Update local student placementStatus
+      // Update local student: placementStatus -> 'In Progress'
       setStudents(prev => prev.map(s =>
         (s.id === genTargetStudent.id || s.dbId === genTargetStudent.dbId)
-          ? { ...s, placementStatus: 'In Progress' }
+          ? { ...s, status: 'Active', snoozed: false, internshipPriority: genPriority, placementStatus: 'In Progress' }
           : s
       ));
 
@@ -287,18 +402,24 @@ export default function MyStudentsTable() {
     if (!genTargetStudent) return;
 
     const stuName = genTargetStudent.name;
+    const targetDbId = genTargetStudent.dbId || genTargetStudent.id;
+    const stuId = genTargetStudent.studentId || genTargetStudent.id || genTargetStudent.dbId || '';
 
-    // ── Snooze path (localStorage only, identical to Workflow Step 1) ──
+    // ── Snooze path ──
     if (genPriority === 'Snooze') {
-      const stuId = genTargetStudent.studentId || genTargetStudent.id || genTargetStudent.dbId || '';
       const durationLabels = { '7_days': '7 Days', '14_days': '14 Days', '30_days': '30 Days', 'indefinite': 'Indefinite' };
+      const durationDays = { '7_days': 7, '14_days': 14, '30_days': 30, 'indefinite': null }[snoozeDuration] || null;
+      const snoozeUntil = durationDays ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString() : null;
+      const snoozedAt = new Date().toISOString();
+
       const newEntry = {
         id: stuId,
         studentId: genTargetStudent.studentId || genTargetStudent.id || stuId,
         name: stuName,
         email: genTargetStudent.email,
         rto: genTargetStudent.rto || 'RTO',
-        snoozedAt: new Date().toISOString(),
+        snoozedAt,
+        snoozeUntil,
         duration: snoozeDuration,
         durationLabel: durationLabels[snoozeDuration] || '7 Days',
         reason: snoozeReason || 'Deferred from placement workflow',
@@ -306,23 +427,129 @@ export default function MyStudentsTable() {
       };
       try {
         const existing = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
-        // Store under ALL known keys so Step 1 finds it regardless of which id it uses
-        [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId]
+        [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId, norm(stuName)]
           .filter(Boolean)
           .forEach((k) => { existing[k] = newEntry; });
         localStorage.setItem('portal_snoozed_students', JSON.stringify(existing));
         setSnoozedStudentIds(existing);
       } catch (_) {}
+
+      // Persist to backend database
+      if (targetDbId) {
+        try {
+          await snoozeStudent(targetDbId, {
+            snoozed: true,
+            snoozedAt,
+            snoozeUntil,
+            snoozeReason: snoozeReason || 'Deferred from placement workflow',
+            internshipPriority: 'Snooze',
+          });
+          await updateStudent(targetDbId, { internshipPriority: 'Snooze' });
+        } catch (e) {
+          console.error('Failed to persist snooze to DB:', e);
+        }
+      }
+
+      // If active workflow has this student's request, update it to Snooze & returnedToStep1
+      if (activeWorkflowId) {
+        const stuKeys = [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId, norm(stuName)].filter(Boolean).map(norm);
+        const matchingReq = (activeWorkflowRequests || []).find((r) =>
+          (r.studentId && stuKeys.includes(norm(r.studentId))) ||
+          (r.student && stuKeys.includes(norm(r.student)))
+        );
+        if (matchingReq) {
+          const reqId = String(matchingReq._id || matchingReq.reqId || matchingReq.id || '');
+          if (reqId) {
+            updateInternshipRequest(activeWorkflowId, reqId, { priority: 'Snooze', returnedToStep1: true, status: 'On Hold' }).catch(() => {});
+          }
+        }
+      }
+
+      // Update local workflow map
+      const updatedMap = { ...workflowRequestMap };
+      [stuId, genTargetStudent.studentId, targetDbId, norm(stuName)].filter(Boolean).forEach(k => {
+        updatedMap[k] = 'Snooze';
+      });
+      setWorkflowRequestMap(updatedMap);
+
+      // Update student in local state: placementStatus -> 'N/A'
+      setStudents((prev) => prev.map((s) =>
+        (s.id === genTargetStudent.id || s.dbId === genTargetStudent.dbId)
+          ? { ...s, snoozed: true, internshipPriority: 'Snooze', placementStatus: 'N/A' }
+          : s
+      ));
+
       toast.info(`Student ${stuName} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setGenTargetStudent(null);
       return;
     }
 
-    // ── Normal / Urgent — re-fetch fresh workflow, find request by studentId, update priority ──
+    // ── Inactive path ──
+    if (genPriority === 'Inactive') {
+      setIsSubmittingGen(true);
+      try {
+        if (targetDbId) {
+          await updateStudent(targetDbId, { status: 'Inactive', internshipPriority: 'Inactive' });
+          if (isStudentSnoozed(genTargetStudent)) {
+            await snoozeStudent(targetDbId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '' });
+          }
+        }
+
+        // Clear snooze in localStorage
+        try {
+          const existing = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
+          [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId, norm(stuName)]
+            .filter(Boolean)
+            .forEach((k) => delete existing[k]);
+          localStorage.setItem('portal_snoozed_students', JSON.stringify(existing));
+          setSnoozedStudentIds(existing);
+        } catch (_) {}
+
+        // If active workflow has this student's request, update it to Inactive & returnedToStep1
+        if (activeWorkflowId) {
+          const stuKeys = [genTargetStudent.studentId, genTargetStudent.id, genTargetStudent.dbId, norm(stuName)].filter(Boolean).map(norm);
+          const matchingReq = (activeWorkflowRequests || []).find((r) =>
+            (r.studentId && stuKeys.includes(norm(r.studentId))) ||
+            (r.student && stuKeys.includes(norm(r.student)))
+          );
+          if (matchingReq) {
+            const reqId = String(matchingReq._id || matchingReq.reqId || matchingReq.id || '');
+            if (reqId) {
+              await updateInternshipRequest(activeWorkflowId, reqId, { priority: 'Inactive', returnedToStep1: true, status: 'On Hold' });
+            }
+          }
+        }
+
+        // Update local workflow map
+        const updatedMap = { ...workflowRequestMap };
+        [stuId, genTargetStudent.studentId, targetDbId, norm(stuName)].filter(Boolean).forEach(k => {
+          updatedMap[k] = 'Inactive';
+        });
+        setWorkflowRequestMap(updatedMap);
+
+        // Update student in local state: status -> 'Inactive', placementStatus -> 'N/A'
+        setStudents((prev) => prev.map((s) =>
+          (s.id === genTargetStudent.id || s.dbId === genTargetStudent.dbId)
+            ? { ...s, status: 'Inactive', snoozed: false, internshipPriority: 'Inactive', placementStatus: 'N/A' }
+            : s
+        ));
+
+        toast.info(`Student ${stuName} marked as Inactive`);
+        setGenTargetStudent(null);
+      } catch (err) {
+        console.error('Failed to mark student inactive:', err);
+        toast.error(err?.response?.data?.message || 'Failed to update priority');
+      } finally {
+        setIsSubmittingGen(false);
+      }
+      return;
+    }
+
+    // ── Normal / Urgent path — update existing request priority and restore active state ──
     try {
       setIsSubmittingGen(true);
 
-      // Re-fetch to get the latest requests with their real _id values
+      // Re-fetch to get the latest requests
       let wfId = activeWorkflowId;
       const wfListRes = await fetchWorkflows();
       const wfList = wfListRes?.data ?? wfListRes ?? [];
@@ -330,50 +557,88 @@ export default function MyStudentsTable() {
       if (!wfId) wfId = wfArray[0]?.id || wfArray[0]?._id;
 
       if (!wfId) {
-        toast.error('No workflow found. Please generate a placement request first.');
+        toast.error('No workflow found.');
         return;
       }
 
       const wfRes = await fetchWorkflowById(wfId);
       const freshRequests = (wfRes?.data ?? wfRes)?.requests ?? [];
 
-      // Build all studentId variants for this student
       const stuKeys = [
         genTargetStudent.studentId,
         genTargetStudent.id,
         genTargetStudent.dbId,
+        norm(stuName),
       ].filter(Boolean).map(norm);
 
       const matchingReq = freshRequests.find(
-        (r) => r.studentId && stuKeys.includes(norm(r.studentId))
+        (r) =>
+          (r.studentId && stuKeys.includes(norm(r.studentId))) ||
+          (r.student && stuKeys.includes(norm(r.student)))
       );
 
-      if (!matchingReq) {
-        toast.error(`No placement request found for ${stuName}.`);
-        return;
+      if (matchingReq) {
+        const reqId = String(matchingReq._id || matchingReq.reqId || matchingReq.id || '');
+        if (reqId) {
+          await updateInternshipRequest(wfId, reqId, { priority: genPriority, returnedToStep1: false, status: 'New' });
+        }
+      } else {
+        const requestData = {
+          title: `${genTargetStudent.course || 'Internship'} Placement`,
+          student: stuName,
+          studentId: genTargetStudent.studentId || genTargetStudent.id || stuId,
+          company: 'Pending Assignment',
+          rto: genTargetStudent.rto || 'TBD',
+          priority: genPriority,
+          status: 'New',
+          returnedToStep1: false,
+        };
+        await createInternshipRequest(wfId, requestData);
       }
 
-      const reqId = String(matchingReq._id || matchingReq.reqId || '');
-      if (!reqId) {
-        toast.error('Could not identify the placement request record. Please refresh and try again.');
-        return;
+      // Update student model in backend
+      if (targetDbId) {
+        await updateStudent(targetDbId, { status: 'Active', internshipPriority: genPriority, placementStatus: 'In Progress' });
+        if (isStudentSnoozed(genTargetStudent)) {
+          await snoozeStudent(targetDbId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '', internshipPriority: genPriority, placementStatus: 'In Progress' });
+        }
       }
 
-      await updateInternshipRequest(wfId, reqId, { priority: genPriority });
+      // Clear snooze in localStorage and state across all student identifiers
+      const keysToDelete = [
+        genTargetStudent.studentId,
+        genTargetStudent.id,
+        genTargetStudent.dbId,
+        stuName,
+        norm(stuName),
+        norm(genTargetStudent.studentId),
+        norm(genTargetStudent.id),
+        norm(genTargetStudent.dbId),
+      ].filter(Boolean);
+
+      try {
+        const existing = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
+        keysToDelete.forEach((k) => delete existing[k]);
+        localStorage.setItem('portal_snoozed_students', JSON.stringify(existing));
+        setSnoozedStudentIds(existing);
+      } catch (_) {}
 
       // Update in-memory state
       setActiveWorkflowId(wfId);
-      const updatedRequests = freshRequests.map((r) =>
-        String(r._id) === reqId || String(r.reqId) === reqId ? { ...r, priority: genPriority } : r
-      );
+      const updatedRequests = freshRequests.map((r) => {
+        const rKeys = [norm(r.studentId), norm(r.student)];
+        return stuKeys.some(k => rKeys.includes(k)) ? { ...r, priority: genPriority, returnedToStep1: false } : r;
+      });
       setActiveWorkflowRequests(updatedRequests);
-      setWorkflowRequestMap(buildWorkflowRequestMap(updatedRequests));
+      const updatedMap = buildWorkflowRequestMap(updatedRequests);
+      keysToDelete.forEach((k) => { updatedMap[k] = genPriority; });
+      setWorkflowRequestMap(updatedMap);
 
-      // Update student placement status in table
+      // Restore active student in state
       setStudents((prev) =>
         prev.map((s) =>
           s.id === genTargetStudent.id || s.dbId === genTargetStudent.dbId
-            ? { ...s, placementStatus: 'In Progress' }
+            ? { ...s, status: 'Active', snoozed: false, internshipPriority: genPriority, placementStatus: 'In Progress' }
             : s
         )
       );
@@ -390,7 +655,10 @@ export default function MyStudentsTable() {
 
   useEffect(() => {
     fetchUsers({ status: 'Active' })
-      .then((res) => { setCoordinators(res?.data ?? []); })
+      .then((res) => {
+        const list = res?.data ?? [];
+        setCoordinators(list.filter(u => ['Coordinator', 'Administrator', 'Admin'].includes(u.role)));
+      })
       .catch(() => {});
   }, []);
 
@@ -415,6 +683,34 @@ export default function MyStudentsTable() {
   // Load workflow data for dual-source placement request detection
   useEffect(() => { loadWorkflowData(); }, [loadWorkflowData]);
 
+  // Sync snoozed students from backend data
+  useEffect(() => {
+    const fromStudents = {};
+    (students || []).forEach((s) => {
+      if (s.snoozed || s.internshipPriority === 'Snooze') {
+        const item = {
+          id: s.id,
+          studentId: s.studentId || s.id,
+          name: s.name,
+          email: s.email,
+          rto: s.rto,
+          snoozedAt: s.snoozedAt || new Date().toISOString(),
+          snoozeUntil: s.snoozeUntil,
+          reason: s.snoozeReason || 'Deferred',
+          rawStudent: s,
+        };
+        fromStudents[s.id] = item;
+        if (s.dbId) fromStudents[s.dbId] = item;
+        if (s.studentId) fromStudents[s.studentId] = item;
+        if (s.name) fromStudents[norm(s.name)] = item;
+      }
+    });
+    setSnoozedStudentIds(fromStudents);
+    try {
+      localStorage.setItem('portal_snoozed_students', JSON.stringify(fromStudents));
+    } catch (_) {}
+  }, [students]);
+
   const [filters, setFilters] = useState(emptyFilters);
 
   const courseOptions = useMemo(() => [...new Set(students.map(s => s.course).filter(Boolean))].sort(), [students]);
@@ -422,11 +718,115 @@ export default function MyStudentsTable() {
   const updateFilter = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setCurrentPage(1); };
   const clearFilters = () => { setFilters(emptyFilters); setCurrentPage(1); };
 
+  const isStudentSnoozed = (s) => {
+    if (!s) return false;
+    const sName = s.name ? norm(s.name) : '';
+    const livePriority =
+      workflowRequestMap[s.id] ||
+      workflowRequestMap[s.studentId] ||
+      workflowRequestMap[s.dbId] ||
+      (s.studentId && workflowRequestMap[norm(s.studentId)]) ||
+      (s.id && workflowRequestMap[norm(s.id)]) ||
+      (sName && workflowRequestMap[sName]);
+
+    // Active (Normal / Urgent) overrides Snooze
+    if (livePriority === 'Normal' || livePriority === 'Urgent') return false;
+    if (s.internshipPriority === 'Normal' || s.internshipPriority === 'Urgent') return false;
+    // Inactive takes precedence or is separate
+    if (livePriority === 'Inactive' || s.internshipPriority === 'Inactive' || s.status === 'Inactive') return false;
+
+    return Boolean(
+      snoozedStudentIds[s.id] ||
+      snoozedStudentIds[s.studentId] ||
+      snoozedStudentIds[s.dbId] ||
+      (sName && snoozedStudentIds[sName]) ||
+      s.snoozed ||
+      s.internshipPriority === 'Snooze' ||
+      livePriority === 'Snooze'
+    );
+  };
+
+  const isStudentInactive = (s) => {
+    if (!s) return false;
+    const sName = s.name ? norm(s.name) : '';
+    const livePriority =
+      workflowRequestMap[s.id] ||
+      workflowRequestMap[s.studentId] ||
+      workflowRequestMap[s.dbId] ||
+      (s.studentId && workflowRequestMap[norm(s.studentId)]) ||
+      (s.id && workflowRequestMap[norm(s.id)]) ||
+      (sName && workflowRequestMap[sName]);
+
+    // Active (Normal / Urgent) overrides Inactive
+    if (livePriority === 'Normal' || livePriority === 'Urgent') return false;
+    if (s.internshipPriority === 'Normal' || s.internshipPriority === 'Urgent') return false;
+
+    return Boolean(
+      s.status === 'Inactive' ||
+      s.internshipPriority === 'Inactive' ||
+      livePriority === 'Inactive'
+    );
+  };
+
+  // Compute students scoped by user role (used for tab counts)
+  const roleScopedStudents = useMemo(() => {
+    const currentUserId = authUser?._id || authUser?.id;
+    const currentUserName = authUser?.name;
+
+    return students.filter(s => {
+      if (isRtoManager) {
+        // RTO Managers see all students scoped to their RTO
+      } else if (!isAdmin) {
+        const isAssignedToMe =
+          (s.assignedCoordinator && currentUserId && norm(s.assignedCoordinator) === norm(currentUserId)) ||
+          (s.assignedCoordinatorName && currentUserName && norm(s.assignedCoordinatorName) === norm(currentUserName));
+        if (!isAssignedToMe) return false;
+      } else {
+        if (selectedCoordinator === 'unassigned') {
+          if (s.assignedCoordinator || s.assignedCoordinatorName) return false;
+        } else if (selectedCoordinator !== 'All') {
+          const selectedCoord = coordinators.find(c => (c._id || c.id) === selectedCoordinator);
+          const coordId = selectedCoord?._id || selectedCoord?.id || selectedCoordinator;
+          const coordName = selectedCoord?.name;
+          const isMatch =
+            (s.assignedCoordinator && norm(s.assignedCoordinator) === norm(coordId)) ||
+            (s.assignedCoordinatorName && coordName && norm(s.assignedCoordinatorName) === norm(coordName));
+          if (!isMatch) return false;
+        } else {
+          if (!s.assignedCoordinator && !s.assignedCoordinatorName) return false;
+        }
+      }
+      return true;
+    });
+  }, [students, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators]);
+
+  const activeStudentsCount = useMemo(() => (
+    roleScopedStudents.filter(s => !isStudentSnoozed(s) && !isStudentInactive(s)).length
+  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap]);
+
+  const inactiveStudentsCount = useMemo(() => (
+    roleScopedStudents.filter(s => isStudentInactive(s) && !isStudentSnoozed(s)).length
+  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap]);
+
+  const snoozedCount = useMemo(() => (
+    roleScopedStudents.filter(s => isStudentSnoozed(s)).length
+  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap]);
+
   const filteredStudents = useMemo(() => {
     const currentUserId = authUser?._id || authUser?.id;
     const currentUserName = authUser?.name;
 
     return students.filter(s => {
+      // ── Tab filter ──
+      if (activeMainTab === 'snooze') {
+        if (!isStudentSnoozed(s)) return false;
+      } else if (activeMainTab === 'inactive') {
+        if (!isStudentInactive(s) || isStudentSnoozed(s)) return false;
+      } else {
+        // 'all' / Active tab: hide snoozed and inactive students!
+        if (isStudentSnoozed(s) || isStudentInactive(s)) return false;
+      }
+
       // ── Role-based and Coordinator filter ──
       if (isRtoManager) {
         // RTO Managers see all students scoped to their RTO (already scoped by backend)
@@ -493,7 +893,7 @@ export default function MyStudentsTable() {
       }
       return true;
     });
-  }, [students, filters, urlSearch, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
+  }, [students, activeMainTab, filters, urlSearch, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
 
   const sortedStudents = useMemo(() => {
     if (!sortField) return filteredStudents;
@@ -605,11 +1005,16 @@ export default function MyStudentsTable() {
       let currentPriority = 'Normal';
       for (const key of stuKeys) {
         const val = workflowRequestMap[key];
-        if (val && ['Urgent', 'Normal', 'Inactive'].includes(val)) {
+        if (val && ['Urgent', 'Normal', 'Inactive', 'Snooze'].includes(val)) {
           currentPriority = val;
           break;
         }
       }
+      if (student.internshipPriority && ['Urgent', 'Normal', 'Inactive', 'Snooze'].includes(student.internshipPriority)) {
+        currentPriority = student.internshipPriority;
+      }
+      if (isStudentSnoozed(student)) currentPriority = 'Snooze';
+      else if (isStudentInactive(student)) currentPriority = 'Inactive';
 
       setIsChangingPlacement(true);
       setGenTargetStudent(student);
@@ -631,12 +1036,72 @@ export default function MyStudentsTable() {
       setSnoozeReason('');
 
     } else if (action === 'unsnooze') {
-      // Remove from snoozed list immediately
       const stuId = student.id || student.studentId || student.dbId;
+      const targetDbId = student.dbId || student.id;
+      const stuName = student.name;
+
+      const keysToDelete = [
+        student.studentId,
+        student.id,
+        student.dbId,
+        student.name,
+        stuName,
+        norm(stuName),
+        norm(student.studentId),
+        norm(student.id),
+        norm(student.dbId),
+      ].filter(Boolean);
+
+      // Remove from snoozed list immediately
       const updated = { ...snoozedStudentIds };
-      [student.studentId, student.id, student.dbId].filter(Boolean).forEach(k => delete updated[k]);
+      keysToDelete.forEach(k => delete updated[k]);
       setSnoozedStudentIds(updated);
       try { localStorage.setItem('portal_snoozed_students', JSON.stringify(updated)); } catch (_) {}
+
+      // If backend student exists, persist un-snooze and restore Active status
+      if (targetDbId) {
+        snoozeStudent(targetDbId, {
+          snoozed: false,
+          snoozedAt: null,
+          snoozeUntil: null,
+          snoozeReason: '',
+          internshipPriority: 'Normal',
+          placementStatus: 'In Progress',
+        }).catch((err) => {
+          console.error('Failed to un-snooze student in DB:', err);
+        });
+        updateStudent(targetDbId, { status: 'Active', internshipPriority: 'Normal', placementStatus: 'In Progress' }).catch(() => {});
+      }
+
+      // If active workflow has this student's request, restore to Normal & returnedToStep1: false
+      if (activeWorkflowId) {
+        const stuKeys = [student.id, student.studentId, student.dbId, norm(stuName)].filter(Boolean).map(norm);
+        const matchingReq = (activeWorkflowRequests || []).find((r) =>
+          (r.studentId && stuKeys.includes(norm(r.studentId))) ||
+          (r.student && stuKeys.includes(norm(r.student)))
+        );
+        if (matchingReq) {
+          const reqId = String(matchingReq._id || matchingReq.reqId || matchingReq.id || '');
+          if (reqId) {
+            updateInternshipRequest(activeWorkflowId, reqId, { priority: 'Normal', returnedToStep1: false, status: 'New' }).catch(() => {});
+          }
+        }
+      }
+
+      // Update in-memory workflow map
+      const updatedMap = { ...workflowRequestMap };
+      keysToDelete.forEach(k => {
+        updatedMap[k] = 'Normal';
+      });
+      setWorkflowRequestMap(updatedMap);
+
+      // Restore active student in state so they immediately reappear in All tab
+      setStudents((prev) => prev.map((s) =>
+        (s.id === student.id || s.dbId === student.dbId)
+          ? { ...s, snoozed: false, status: 'Active', internshipPriority: 'Normal', placementStatus: 'In Progress' }
+          : s
+      ));
+
       toast.success(`${student.name} restored to active workflow`);
 
     } else if (action === 'delete') {
@@ -661,35 +1126,43 @@ export default function MyStudentsTable() {
   // Helper: look up a student in the dual-source map
   const getStudentHasRequest = (student) => {
     if (!student) return false;
+    const sName = student.name ? norm(student.name) : '';
     const keys = [
       student.id,
       student.studentId,
       student.dbId,
+      sName,
       norm(student.id),
       norm(student.studentId),
       norm(student.dbId),
     ].filter(Boolean);
-    return keys.some((k) => {
+    const hasReq = keys.some((k) => {
       const val = workflowRequestMap[k];
-      return val === 'Normal' || val === 'Urgent' || val === 'Inactive';
+      return val === 'Normal' || val === 'Urgent' || val === 'Inactive' || val === 'Snooze';
     });
+    return hasReq || Boolean(student.internshipPriority) || isStudentSnoozed(student) || isStudentInactive(student);
   };
 
-  // Helper: return the actual priority string ('Normal'|'Urgent'|'Inactive') or null
+  // Helper: return the actual priority string ('Normal'|'Urgent'|'Inactive'|'Snooze') or null
   const getStudentWorkflowPriority = (student) => {
     if (!student) return null;
+    if (isStudentSnoozed(student)) return 'Snooze';
+    if (isStudentInactive(student)) return 'Inactive';
+    const sName = student.name ? norm(student.name) : '';
     const keys = [
       student.id,
       student.studentId,
       student.dbId,
+      sName,
       norm(student.id),
       norm(student.studentId),
       norm(student.dbId),
     ].filter(Boolean);
     for (const k of keys) {
       const val = workflowRequestMap[k];
-      if (val === 'Normal' || val === 'Urgent' || val === 'Inactive') return val;
+      if (val === 'Normal' || val === 'Urgent' || val === 'Inactive' || val === 'Snooze') return val;
     }
+    if (student.internshipPriority) return student.internshipPriority;
     return null;
   };
 
@@ -774,6 +1247,27 @@ export default function MyStudentsTable() {
             </div>
           ) : null}
 
+          {/* ─── Student Tabs: All / Inactive / Snooze ───────────────────────── */}
+          <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
+            {[
+              { key: 'all', label: 'All', count: activeStudentsCount },
+              { key: 'inactive', label: 'Inactive Students', count: inactiveStudentsCount },
+              { key: 'snooze', label: 'Snooze', count: snoozedCount },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => { setActiveMainTab(tab.key); setCurrentPage(1); }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeMainTab === tab.key
+                    ? 'bg-[#0147A6] text-white shadow-xs'
+                    : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+              >
+                {tab.label} <span className="opacity-80">({tab.count})</span>
+              </button>
+            ))}
+          </div>
+
           <StudentFilters
             filters={filters}
             onFilterChange={updateFilter}
@@ -838,9 +1332,9 @@ export default function MyStudentsTable() {
                       canAssign={isAdmin}
                       hasPlacementRequest={getStudentHasRequest(student)}
                       workflowPriority={getStudentWorkflowPriority(student)}
-                      isSnoozed={!!(snoozedStudentIds[student.id] || snoozedStudentIds[student.studentId] || snoozedStudentIds[student.dbId])}
+                      isSnoozed={isStudentSnoozed(student)}
                       isAdmin={isAdmin}
-                      allowGenerate={false}
+                      allowGenerate={isAdmin}
                       allowCreateAppointment={false}
                     />
                   ))}

@@ -57,7 +57,9 @@ export default function AssignCoordinatorModal({ student, onClose, onAssigned })
     try {
       const res = await fetchCoordinators({ status: 'Active' });
       const list = res?.data ?? [];
-      setUsers(list);
+      // Ensure only Coordinator and Administrator roles are shown
+      const eligibleUsers = list.filter(u => u.role === 'Coordinator' || u.role === 'Administrator' || u.role === 'Admin');
+      setUsers(eligibleUsers);
     } catch (err) {
       setError('Could not load coordinators. Please try again.');
     } finally {

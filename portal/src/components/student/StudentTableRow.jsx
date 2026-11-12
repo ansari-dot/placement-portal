@@ -6,6 +6,7 @@ import { formatLastSeen } from '../../utils/presenceUtils';
 
 // ── Placement status config ───────────────────────────────────────────────────
 const PLACEMENT_STATUS_CONFIG = {
+  'N/A':                        { bg: 'bg-slate-100',    text: 'text-slate-500',   border: 'border-slate-200'   },
   'Awaiting':                   { bg: 'bg-slate-100',    text: 'text-slate-600',   border: 'border-slate-200'   },
   'In Progress':                { bg: 'bg-blue-50',      text: 'text-blue-700',    border: 'border-blue-200'    },
   'Industry Contacted':         { bg: 'bg-cyan-50',      text: 'text-cyan-700',    border: 'border-cyan-200'    },
@@ -123,8 +124,20 @@ const renderCell = (student, colKey, { hasPlacementRequest, workflowPriority, is
       );
     }
 
-    case 'placementStatus':
+    case 'placementStatus': {
+      const isSnoozedOrInactive =
+        isSnoozed ||
+        workflowPriority === 'Inactive' ||
+        workflowPriority === 'Snooze' ||
+        student.snoozed ||
+        student.internshipPriority === 'Inactive' ||
+        student.internshipPriority === 'Snooze' ||
+        student.status === 'Inactive';
+      if (isSnoozedOrInactive) {
+        return <PlacementStatusBadge status="N/A" />;
+      }
       return <PlacementStatusBadge status={student.placementStatus} />;
+    }
 
     case 'placementRequest':
       return (

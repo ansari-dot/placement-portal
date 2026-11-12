@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import PaymentModel from './payment.model.js';
 import StudentModel from '../student/student.model.js';
 import RtoModel from '../rto/rto.model.js';
@@ -154,6 +155,7 @@ export const syncChargeableStudents = async () => {
     }
 
     // 1. Auto-sync / derive student placementStatus from live Workflow & Appointment/Internship models
+    let requestsByStudent = new Map();
     try {
       const workflowModule = await import('../workflow/workflow.model.js');
       const WorkflowModel = workflowModule.default;
@@ -177,6 +179,9 @@ export const syncChargeableStudents = async () => {
             placementStatus: 1,
             studentType: 1,
             independentFee: 1,
+            snoozed: 1,
+            internshipPriority: 1,
+            status: 1,
           }
         ).lean(),
       ]);
@@ -189,6 +194,19 @@ export const syncChargeableStudents = async () => {
         ...workflows.flatMap((wf) => wf.internships || []),
         ...standaloneInts,
       ];
+      const allWorkflowRequests = workflows.flatMap((wf) => wf.requests || []);
+
+      allWorkflowRequests.forEach((r) => {
+        const keys = [
+          r.studentId ? String(r.studentId).trim() : null,
+          r._id ? String(r._id).trim() : null,
+          r.student ? String(r.student).trim().toLowerCase() : null,
+        ].filter(Boolean);
+        keys.forEach((k) => {
+          if (!requestsByStudent.has(k)) requestsByStudent.set(k, []);
+          requestsByStudent.get(k).push(r);
+        });
+      });
 
       const apptsByStudent = new Map();
       allWorkflowAppts.forEach((a) => {
@@ -223,6 +241,22 @@ export const syncChargeableStudents = async () => {
         const keyMongo = String(stu._id || '').trim();
         const fullName = `${stu.firstName || ''} ${stu.lastName || ''}`.trim().toLowerCase();
         const keyName = String(stu.name || fullName).trim().toLowerCase();
+
+        const studentReqs = [
+          ...(keyId ? (requestsByStudent.get(keyId) || []) : []),
+          ...(keyMongo ? (requestsByStudent.get(keyMongo) || []) : []),
+          ...(keyName ? (requestsByStudent.get(keyName) || []) : []),
+          ...(fullName ? (requestsByStudent.get(fullName) || []) : []),
+        ];
+        const hasSnoozeReq = studentReqs.some((r) => r.priority === 'Snooze');
+        const hasInactiveReq = studentReqs.some((r) => r.priority === 'Inactive');
+        const isSnoozedOrInactive =
+          stu.snoozed === true ||
+          stu.internshipPriority === 'Snooze' ||
+          stu.internshipPriority === 'Inactive' ||
+          stu.status === 'Inactive' ||
+          hasSnoozeReq ||
+          hasInactiveReq;
 
         const studentAppts = [
           ...(keyId ? (apptsByStudent.get(keyId) || []) : []),
@@ -285,7 +319,7 @@ export const syncChargeableStudents = async () => {
           derivedStatus = 'Not Suitable Site';
         }
 
-        if (derivedStatus && stu.placementStatus !== derivedStatus) {
+        if (!isSnoozedOrInactive && derivedStatus && stu.placementStatus !== derivedStatus) {
           statusSyncOps.push({
             updateOne: {
               filter: { _id: stu._id },
@@ -302,9 +336,15 @@ export const syncChargeableStudents = async () => {
       logger.warn(`[SyncPayments] Dynamic status sync skipped: ${syncErr.message}`);
     }
 
-    // 2. Fetch all eligible students
+    // 2. Fetch all eligible students (chargeable placement status OR students with existing payment records)
+    const existingPaymentStudentIds = allPayments.map((p) => p.student).filter(Boolean);
+    const existingPaymentStudentBizIds = allPayments.map((p) => p.studentId).filter(Boolean);
     const eligibleStudents = await StudentModel.find({
-      placementStatus: { $in: CHARGEABLE_PLACEMENT_STATUSES },
+      $or: [
+        { placementStatus: { $in: CHARGEABLE_PLACEMENT_STATUSES } },
+        { _id: { $in: existingPaymentStudentIds } },
+        { studentId: { $in: existingPaymentStudentBizIds } },
+      ],
     }).lean();
 
     if (!eligibleStudents || eligibleStudents.length === 0) return;
@@ -370,6 +410,8 @@ export const syncChargeableStudents = async () => {
       if (['Student Withdraw', 'Withdrawn'].includes(status)) return 'Student Withdraw';
       if (['Student Missed Appointment', 'No Show'].includes(status)) return 'Student Missed Appointment';
       if (['Not Suitable Site'].includes(status)) return 'Not Suitable Site';
+      if (['Snooze', 'Snoozed'].includes(status)) return 'Snooze';
+      if (['Inactive'].includes(status)) return 'Inactive';
       return status;
     };
 
@@ -422,7 +464,23 @@ export const syncChargeableStudents = async () => {
         withdrawalFeePercentage = pricingRes.withdrawalFeePercentage;
       }
 
-      const canonicalStatus = mapCanonicalStatus(stu.placementStatus);
+      const studentReqs = [
+        ...(stuBizId ? (requestsByStudent.get(stuBizId) || []) : []),
+        ...(stuDbId ? (requestsByStudent.get(stuDbId) || []) : []),
+      ];
+      const hasSnoozeReq = studentReqs.some((r) => r.priority === 'Snooze');
+      const hasInactiveReq = studentReqs.some((r) => r.priority === 'Inactive');
+
+      const isSnoozed = stu.snoozed === true || stu.internshipPriority === 'Snooze' || hasSnoozeReq;
+      const isInactive = stu.internshipPriority === 'Inactive' || stu.status === 'Inactive' || hasInactiveReq;
+
+      let canonicalStatus = mapCanonicalStatus(stu.placementStatus);
+      if (isSnoozed) {
+        canonicalStatus = 'Snooze';
+      } else if (isInactive) {
+        canonicalStatus = 'Inactive';
+      }
+
       const isWithdrawal =
         THIRTY_PERCENT_STATUSES.includes(stu.placementStatus) ||
         THIRTY_PERCENT_STATUSES.includes(canonicalStatus);
@@ -894,6 +952,212 @@ export const syncSingleStudentPayment = async (studentDoc) => {
   );
 };
 
+/**
+ * Service: Manually import students into Payment section before appointment scheduling
+ * Reuses existing RTO course pricing resolution and data mapping, while preventing duplicates.
+ */
+export const importStudentsToPaymentService = async (studentIds = []) => {
+  const ids = (Array.isArray(studentIds) ? studentIds : [studentIds]).filter(Boolean).map(String);
+  if (ids.length === 0) {
+    throw new BadRequestError('Please provide at least one student ID to import into Payment.');
+  }
+
+  // Find students by MongoDB _id or business studentId
+  const validMongoIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const students = await StudentModel.find({
+    $or: [
+      ...(validMongoIds.length > 0 ? [{ _id: { $in: validMongoIds } }] : []),
+      { studentId: { $in: ids } },
+    ],
+  }).lean();
+
+  if (students.length === 0) {
+    throw new NotFoundError('No matching students found to import.');
+  }
+
+  // Duplicate prevention at backend level:
+  const studentDbIds = students.map((s) => s._id);
+  const studentBizIds = students.map((s) => s.studentId).filter(Boolean);
+
+  const existingPayments = await PaymentModel.find({
+    $or: [
+      { student: { $in: studentDbIds } },
+      { studentId: { $in: studentBizIds } },
+    ],
+  }).lean();
+
+  const existingStudentKeys = new Set();
+  existingPayments.forEach((p) => {
+    if (p.student) existingStudentKeys.add(String(p.student));
+    if (p.studentId) existingStudentKeys.add(String(p.studentId));
+  });
+
+  const studentsToImport = students.filter((stu) => {
+    const dbKey = String(stu._id);
+    const bizKey = stu.studentId ? String(stu.studentId) : null;
+    return !existingStudentKeys.has(dbKey) && (!bizKey || !existingStudentKeys.has(bizKey));
+  });
+
+  if (studentsToImport.length === 0) {
+    return {
+      success: true,
+      importedCount: 0,
+      message: 'All selected students are already present in the Payment section.',
+      data: existingPayments,
+    };
+  }
+
+  // Fetch RTOs to resolve pricing schedule
+  const rtos = await RtoModel.find().lean();
+  const rtoMapByName = new Map();
+  const rtoMapByCode = new Map();
+  rtos.forEach((r) => {
+    if (r.name) rtoMapByName.set(r.name.trim().toLowerCase(), r);
+    if (r.code) rtoMapByCode.set(r.code.trim().toLowerCase(), r);
+  });
+
+  // Check workflow requests for any snooze/inactive priority
+  const workflowModule = await import('../workflow/workflow.model.js');
+  const WorkflowModel = workflowModule.default;
+  const workflows = await WorkflowModel.find({}, { requests: 1 }).lean();
+  const allReqs = workflows.flatMap((w) => w.requests || []);
+  const reqPriorityByStudent = new Map();
+  allReqs.forEach((r) => {
+    if (r.priority === 'Snooze' || r.priority === 'Inactive') {
+      if (r.studentId) reqPriorityByStudent.set(String(r.studentId).trim(), r.priority);
+      if (r._id) reqPriorityByStudent.set(String(r._id).trim(), r.priority);
+      if (r.student) reqPriorityByStudent.set(String(r.student).trim().toLowerCase(), r.priority);
+    }
+  });
+
+  const mapCanonicalStatus = (status) => {
+    if (!status) return 'Awaiting';
+    if (['Completed', 'Placement Completed'].includes(status)) return 'Placement Completed';
+    if (['Active', 'Joined', 'Waiting to Join', 'Placement Started', 'Confirmed'].includes(status))
+      return 'Placement Started';
+    if (['Appointment Successful', 'Successful'].includes(status)) return 'Appointment Successful';
+    if (['Appointment Scheduled', 'Scheduled'].includes(status)) return 'Appointment Scheduled';
+    if (['Student Withdraw', 'Withdrawn'].includes(status)) return 'Student Withdraw';
+    if (['Student Missed Appointment', 'No Show'].includes(status)) return 'Student Missed Appointment';
+    if (['Not Suitable Site'].includes(status)) return 'Not Suitable Site';
+    if (['Snooze', 'Snoozed'].includes(status)) return 'Snooze';
+    if (['Inactive'].includes(status)) return 'Inactive';
+    return status;
+  };
+
+  const createdPayments = [];
+
+  for (const stu of studentsToImport) {
+    const stuDbId = String(stu._id || stu.id);
+    const stuBizId = stu.studentId ? String(stu.studentId) : '';
+    const stuName =
+      [stu.firstName, stu.middleName, stu.lastName].filter(Boolean).join(' ') || stu.name || 'Student';
+
+    const isIndependentStudent = stu.studentType === 'Independent Student';
+    const assignedRtoName = isIndependentStudent ? 'Independent Student' : (stu.assignedRto || '').trim();
+    const matchedRto = isIndependentStudent
+      ? null
+      : rtoMapByName.get(assignedRtoName.toLowerCase()) ||
+        rtoMapByCode.get(assignedRtoName.toLowerCase()) ||
+        null;
+
+    let priceConfigured = false;
+    let originalPrice = 0;
+    let pricingError = '';
+    let spokesperson = '';
+    let withdrawalFeeRule = '30%';
+    let withdrawalFeePercentage = 30;
+
+    if (isIndependentStudent) {
+      const indFee = stu.independentFee != null ? Number(stu.independentFee) : null;
+      if (indFee !== null && indFee > 0) {
+        priceConfigured = true;
+        originalPrice = indFee;
+        pricingError = '';
+      } else {
+        priceConfigured = false;
+        originalPrice = 0;
+        pricingError = 'No placement fee entered for Independent Student';
+      }
+      spokesperson = stuName;
+    } else {
+      const pricingRes = resolveRtoCoursePrice(matchedRto, stu);
+      priceConfigured = pricingRes.priceConfigured;
+      originalPrice = pricingRes.originalPrice;
+      pricingError = pricingRes.pricingError;
+      spokesperson = pricingRes.spokesperson;
+      withdrawalFeeRule = pricingRes.withdrawalFeeRule;
+      withdrawalFeePercentage = pricingRes.withdrawalFeePercentage;
+    }
+
+    const reqPriority =
+      reqPriorityByStudent.get(stuDbId) ||
+      (stuBizId ? reqPriorityByStudent.get(stuBizId) : null) ||
+      (stuName ? reqPriorityByStudent.get(stuName.toLowerCase()) : null);
+
+    const isSnoozed = stu.snoozed === true || stu.internshipPriority === 'Snooze' || reqPriority === 'Snooze';
+    const isInactive = stu.internshipPriority === 'Inactive' || stu.status === 'Inactive' || reqPriority === 'Inactive';
+
+    let canonicalStatus = mapCanonicalStatus(stu.placementStatus);
+    if (isSnoozed) {
+      canonicalStatus = 'Snooze';
+    } else if (isInactive) {
+      canonicalStatus = 'Inactive';
+    }
+
+    const isWithdrawal =
+      THIRTY_PERCENT_STATUSES.includes(stu.placementStatus) ||
+      THIRTY_PERCENT_STATUSES.includes(canonicalStatus);
+
+    let chargePercentage = 100;
+    if (isWithdrawal) {
+      if (withdrawalFeeRule === 'No Fee') {
+        chargePercentage = 0;
+      } else if (withdrawalFeeRule === 'Custom') {
+        chargePercentage = withdrawalFeePercentage;
+      } else {
+        chargePercentage = 30;
+      }
+    }
+
+    const paymentAmount = Number(((originalPrice * chargePercentage) / 100).toFixed(2));
+
+    const newPayment = await PaymentModel.create({
+      studentId: stuBizId || stuDbId,
+      student: stu._id,
+      studentType: isIndependentStudent ? 'Independent Student' : stu.studentType || 'RTO Student',
+      studentName: stuName,
+      rto: assignedRtoName,
+      spokesperson: spokesperson || matchedRto?.contactName || '',
+      course: stu.courseQualification || stu.courses || '',
+      placementStatus: canonicalStatus,
+      service: 'Placement status',
+      originalPrice,
+      defaultPlacementFee: originalPrice,
+      isPriceOverridden: false,
+      chargePercentage,
+      paymentAmount,
+      gstAmount: 0,
+      totalAmount: paymentAmount,
+      paymentStatus: 'Pending',
+      invoiceGeneratedDate: null,
+      invoiceSentDate: null,
+      paymentReceivedDate: null,
+      priceConfigured,
+      pricingError,
+    });
+
+    createdPayments.push(newPayment);
+  }
+
+  return {
+    success: true,
+    importedCount: createdPayments.length,
+    message: `Successfully imported ${createdPayments.length} student(s) into Payment.`,
+    data: createdPayments,
+  };
+};
+
 export class PaymentService {
   static getPayments = getPaymentsService;
   static getTotals = getPaymentTotalsService;
@@ -902,4 +1166,5 @@ export class PaymentService {
   static syncChargeableStudents = syncChargeableStudents;
   static resolveRtoCoursePrice = resolveRtoCoursePrice;
   static syncSingleStudentPayment = syncSingleStudentPayment;
+  static importStudents = importStudentsToPaymentService;
 }

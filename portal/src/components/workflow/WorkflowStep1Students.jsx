@@ -4,10 +4,11 @@ import { useSelector } from 'react-redux';
 import {
   Search, Filter, Download, Plus, MoreVertical,
   ChevronDown, Columns, LayoutGrid, List, ChevronLeft, ChevronRight, X,
-  Calendar, Globe, MapPin, GraduationCap, Building2, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, PauseCircle
+  Calendar, Globe, MapPin, GraduationCap, Building2, Clock, Briefcase, Mail, Phone, Edit, User, ShieldCheck, Award, CheckCircle2, ArrowUpRight, Trash2, Eye, CheckSquare, Calendar as CalendarIcon, AlertTriangle, UserCheck, PauseCircle, CreditCard
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { deleteStudent, snoozeStudent, bulkUpdateStudentStatus, bulkDeleteStudents } from '../../api/studentsApi';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { deleteStudent, snoozeStudent, updateStudent, bulkUpdateStudentStatus, bulkDeleteStudents } from '../../api/studentsApi';
+import { fetchPayments, importStudentsToPayment } from '../../api/paymentApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 import AssignRtoModal from './AssignRtoModal';
 
@@ -80,6 +81,11 @@ export default function WorkflowStep1Students({
 
   // ─── Tabs & Advanced Filters ──────────────────────────────────────────
   const [activeMainTab, setActiveMainTab] = useState('all'); // 'all' | 'inactive' | 'snooze'
+  const [searchParams] = useSearchParams();
+  const isPaymentImportMode = searchParams.get('mode') === 'paymentImport';
+  const [existingPaymentKeys, setExistingPaymentKeys] = useState(new Set());
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [importingStudents, setImportingStudents] = useState(false);
   const [filters, setFilters] = useState({
     rto: '',
     dateFrom: '',
@@ -412,9 +418,9 @@ export default function WorkflowStep1Students({
   React.useEffect(() => {
     const fromDb = {};
     (students || []).forEach((s) => {
-      if (s.snoozed) {
+      if (s.snoozed || s.internshipPriority === 'Snooze') {
         const duration = s.snoozeUntil ? 'custom' : 'indefinite';
-        fromDb[s.id] = {
+        const item = {
           id: s.id,
           studentId: s.studentId || s.id,
           name: s.name,
@@ -427,6 +433,10 @@ export default function WorkflowStep1Students({
           reason: s.snoozeReason || 'Deferred from placement workflow',
           rawStudent: s,
         };
+        fromDb[s.id] = item;
+        if (s.studentId) fromDb[s.studentId] = item;
+        if (s._id) fromDb[s._id] = item;
+        if (s.name) fromDb[norm(s.name)] = item;
       }
     });
     setSnoozedStudentIds(fromDb);
@@ -434,13 +444,75 @@ export default function WorkflowStep1Students({
 
   // ─── Priority + action-label helper (shared by tabs, filters, row menu, drawer) ──
   const getStudentPriority = (stu) => {
-    const keys = [stu?.id, stu?.studentId].filter(Boolean);
+    const fullName = `${stu?.firstName || ''} ${stu?.lastName || ''}`.trim();
+    const keys = [stu?.id, stu?.studentId, stu?._id, stu?.name, fullName, norm(stu?.name), norm(fullName)].filter(Boolean);
     for (const k of keys) {
       const v = localRequestMap[k] || internshipRequestMap[k];
-      if (v === 'Normal' || v === 'Urgent' || v === 'Inactive') return v;
+      if (v === 'Normal' || v === 'Urgent' || v === 'Inactive' || v === 'Snooze') return v;
     }
+    if (stu?.internshipPriority) return stu.internshipPriority;
     return null;
   };
+
+  const isStudentSnoozed = (s) => {
+    if (!s) return false;
+    const prio = getStudentPriority(s);
+    if (prio === 'Normal' || prio === 'Urgent') return false;
+    if (s?.internshipPriority === 'Normal' || s?.internshipPriority === 'Urgent') return false;
+    if (prio === 'Inactive' || s?.internshipPriority === 'Inactive' || s?.status === 'Inactive') return false;
+    return Boolean(
+      snoozedStudentIds[s.id] ||
+      snoozedStudentIds[s.studentId] ||
+      snoozedStudentIds[s._id] ||
+      (s.name && snoozedStudentIds[norm(s.name)]) ||
+      s.snoozed ||
+      prio === 'Snooze' ||
+      s.internshipPriority === 'Snooze'
+    );
+  };
+
+  const isStudentInactive = (s) => {
+    if (!s) return false;
+    const prio = getStudentPriority(s);
+    if (prio === 'Normal' || prio === 'Urgent') return false;
+    if (s?.internshipPriority === 'Normal' || s?.internshipPriority === 'Urgent') return false;
+    return prio === 'Inactive' || s.internshipPriority === 'Inactive' || s.status === 'Inactive';
+  };
+
+  // Fetch payments to hide students already present in payment when in payment-import mode
+  React.useEffect(() => {
+    if (!isPaymentImportMode) return;
+    let isMounted = true;
+    setLoadingPayments(true);
+    fetchPayments()
+      .then((res) => {
+        if (!isMounted) return;
+        const keys = new Set();
+        (res?.data || []).forEach((p) => {
+          if (p.student) {
+            if (typeof p.student === 'object') {
+              if (p.student._id) keys.add(String(p.student._id));
+              if (p.student.id) keys.add(String(p.student.id));
+              if (p.student.studentId) keys.add(String(p.student.studentId).trim().toLowerCase());
+              if (p.student.name) keys.add(String(p.student.name).trim().toLowerCase());
+            } else {
+              keys.add(String(p.student));
+            }
+          }
+          if (p.studentMongoId) keys.add(String(p.studentMongoId));
+          if (p.studentId) keys.add(String(p.studentId).trim().toLowerCase());
+          if (p.studentName) keys.add(String(p.studentName).trim().toLowerCase());
+        });
+        setExistingPaymentKeys(keys);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch existing payments for import mode:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingPayments(false);
+      });
+    return () => { isMounted = false; };
+  }, [isPaymentImportMode]);
 
   // Decides what the Generate/Change/Regenerate action should say & do for a student.
   const getRequestActionInfo = (stu) => {
@@ -454,21 +526,27 @@ export default function WorkflowStep1Students({
   };
 
   // ─── Tab counts & tab-scoped list ────────────────────────────────────────
-  const inactiveStudentsCount = React.useMemo(() => (
-    studentList.filter((s) => getStudentPriority(s) === 'Inactive').length
-  ), [studentList, localRequestMap, internshipRequestMap]);
+  const activeStudentsCount = React.useMemo(() => (
+    studentList.filter((s) => !isStudentSnoozed(s) && !isStudentInactive(s)).length
+  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap]);
 
-  const snoozedCount = Object.keys(snoozedStudentIds).length;
+  const inactiveStudentsCount = React.useMemo(() => (
+    studentList.filter((s) => isStudentInactive(s) && !isStudentSnoozed(s)).length
+  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap]);
+
+  const snoozedCount = React.useMemo(() => (
+    studentList.filter((s) => isStudentSnoozed(s)).length
+  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap]);
 
   const tabScopedStudents = React.useMemo(() => {
     if (activeMainTab === 'snooze') {
-      return studentList.filter((s) => Boolean(snoozedStudentIds[s.id]));
+      return studentList.filter((s) => isStudentSnoozed(s));
     }
     if (activeMainTab === 'inactive') {
-      return studentList.filter((s) => getStudentPriority(s) === 'Inactive');
+      return studentList.filter((s) => isStudentInactive(s) && !isStudentSnoozed(s));
     }
-    // All is the complete Step 1 population, including snoozed and inactive students.
-    return studentList;
+    // 'all' tab shows all active students (excluding snoozed and inactive)
+    return studentList.filter((s) => !isStudentSnoozed(s) && !isStudentInactive(s));
   }, [studentList, activeMainTab, snoozedStudentIds, localRequestMap, internshipRequestMap]);
 
   const uniqueRtos = React.useMemo(() => (
@@ -477,6 +555,15 @@ export default function WorkflowStep1Students({
 
   // ─── Final filtered + searched list (search + advanced filters) ─────────
   const filteredStudents = tabScopedStudents.filter((stu) => {
+    if (isPaymentImportMode) {
+      const keys = [stu._id, stu.id, stu.studentId, stu.name].filter(Boolean);
+      const isAlreadyInPayment = keys.some(k =>
+        existingPaymentKeys.has(String(k)) ||
+        existingPaymentKeys.has(String(k).trim().toLowerCase())
+      );
+      if (isAlreadyInPayment) return false;
+    }
+
     const matchesSearch =
       stu.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       stu.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -778,6 +865,8 @@ export default function WorkflowStep1Students({
         snoozedAt: snoozedAtIso,
         snoozeUntil: snoozeUntilDate,
         snoozeReason: reasonText,
+        internshipPriority: 'Snooze',
+        placementStatus: 'N/A',
       }).catch((err) => {
         console.error('Failed to save snooze to DB:', err);
         // Rollback optimistic update on failure
@@ -788,8 +877,9 @@ export default function WorkflowStep1Students({
         });
         showToast('Failed to snooze student. Please try again.');
       });
+      updateStudent(stuId, { internshipPriority: 'Snooze', placementStatus: 'N/A' }).catch(() => {});
 
-      if (isChangingPlacement && onUpdateRequest) {
+      if (onUpdateRequest) {
         onUpdateRequest('__by_student__', {
           studentId: stuId,
           studentName: genTargetStudent.name,
@@ -802,6 +892,40 @@ export default function WorkflowStep1Students({
       showToast(`Student ${genTargetStudent.name} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setShowGenRequestModal(false);
       setSnoozeReason('');
+      return;
+    }
+
+    // ── Inactive path ──
+    if (genPriority === 'Inactive') {
+      const updatedLocal = { ...localRequestMap };
+      if (stuId) updatedLocal[stuId] = 'Inactive';
+      if (genTargetStudent.studentId) updatedLocal[genTargetStudent.studentId] = 'Inactive';
+      setLocalRequestMap(updatedLocal);
+
+      // If this student was snoozed, clear snooze
+      if (snoozedStudentIds[stuId]) {
+        setSnoozedStudentIds((prev) => {
+          const updated = { ...prev };
+          delete updated[stuId];
+          return updated;
+        });
+        snoozeStudent(stuId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '', internshipPriority: 'Inactive', placementStatus: 'N/A' }).catch(() => {});
+      }
+
+      // Sync to student model in database
+      updateStudent(stuId, { status: 'Inactive', internshipPriority: 'Inactive', placementStatus: 'N/A' }).catch(() => {});
+
+      if (onUpdateRequest) {
+        onUpdateRequest('__by_student__', {
+          studentId: stuId,
+          studentName: genTargetStudent.name,
+          priority: 'Inactive',
+          returnedToStep1: true,
+        }).catch(() => {});
+      }
+
+      showToast(`Student ${genTargetStudent.name} marked as Inactive`);
+      setShowGenRequestModal(false);
       return;
     }
 
@@ -818,21 +942,25 @@ export default function WorkflowStep1Students({
         delete updated[stuId];
         return updated;
       });
-      snoozeStudent(stuId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '' })
+      snoozeStudent(stuId, { snoozed: false, snoozedAt: null, snoozeUntil: null, snoozeReason: '', internshipPriority: genPriority, placementStatus: 'In Progress' })
         .catch((err) => console.error('Failed to clear snooze on new request:', err));
     }
 
-    if (isChangingPlacement) {
+    // Restore student status to Active in database
+    updateStudent(stuId, { status: 'Active', internshipPriority: genPriority, placementStatus: 'In Progress' }).catch(() => {});
+
+    const existingPriority = getStudentPriority(genTargetStudent);
+    const hasExisting = isChangingPlacement || Boolean(existingPriority);
+
+    if (hasExisting) {
       // ── Change existing request priority in the backend ──
-      // Find the matching request across internshipRequestMap's backing data
-      // We surface it through onUpdateRequest(reqId, { priority }) if available
       if (onUpdateRequest) {
-        // Locate reqId: internshipRequestMap values are priorities, not IDs.
-        // WorkflowPage passes the full workflow.requests via internshipRequestMap's memo;
-        // we can't access reqId here directly, so we ask WorkflowPage to search by studentId.
-        // Pass a sentinel object so WorkflowPage can find the right record.
-        onUpdateRequest('__by_student__', { studentId: stuId, studentName: genTargetStudent.name, priority: genPriority })
-          .catch(() => { });
+        onUpdateRequest('__by_student__', {
+          studentId: stuId,
+          studentName: genTargetStudent.name,
+          priority: genPriority,
+          returnedToStep1: false,
+        }).catch(() => { });
       }
       showToast(`Placement priority updated to ${genPriority} for ${genTargetStudent.name}`);
     } else {
@@ -845,25 +973,105 @@ export default function WorkflowStep1Students({
   };
 
   const handleUnsnoozeStudent = (stuId, stuName) => {
+    // Find matching student to resolve all potential keys
+    const matchedStu = (studentList || []).find(s => s.id === stuId || s.studentId === stuId || s.name === stuName);
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const keysToDelete = [
+      stuId,
+      stuName,
+      stuName ? norm(stuName) : '',
+      matchedStu?.id,
+      matchedStu?.studentId,
+      matchedStu?._id,
+      matchedStu?.studentId ? norm(matchedStu.studentId) : '',
+    ].filter(Boolean);
+
     // Optimistic UI update
     setSnoozedStudentIds((prev) => {
       const updated = { ...prev };
-      delete updated[stuId];
+      keysToDelete.forEach(k => delete updated[k]);
       return updated;
     });
 
-    // Persist to database — clear all snooze fields
+    setLocalRequestMap((prev) => {
+      const updated = { ...prev };
+      keysToDelete.forEach(k => {
+        if (updated[k] === 'Snooze') updated[k] = 'Normal';
+      });
+      return updated;
+    });
+
+    if (onUpdateRequest) {
+      onUpdateRequest('__by_student__', {
+        studentId: stuId,
+        studentName: stuName,
+        priority: 'Normal',
+        returnedToStep1: false,
+      }).catch(() => {});
+    }
+
+    // Persist to database — clear all snooze fields and restore Active status & In Progress
     snoozeStudent(stuId, {
       snoozed: false,
       snoozedAt: null,
       snoozeUntil: null,
       snoozeReason: '',
+      internshipPriority: 'Normal',
+      placementStatus: 'In Progress',
+    }).then(() => {
+      updateStudent(stuId, { status: 'Active', internshipPriority: 'Normal', placementStatus: 'In Progress' }).catch(() => {});
+      if (onRefreshWorkflow) onRefreshWorkflow();
     }).catch((err) => {
       console.error('Failed to un-snooze student in DB:', err);
       showToast('Failed to un-snooze student. Please try again.');
     });
 
     showToast(`Student ${stuName || ''} un-snoozed & restored to active workflow`);
+  };
+
+  const handleImportSingleStudent = async (student) => {
+    try {
+      setImportingStudents(true);
+      const studentIdToImport = student._id || student.id;
+      const res = await importStudentsToPayment([studentIdToImport]);
+      showToast(res.message || `Student ${student.name} imported to Payment!`);
+      setExistingPaymentKeys(prev => {
+        const next = new Set(prev);
+        [student._id, student.id, student.studentId, student.name].filter(Boolean).forEach(k => {
+          next.add(String(k));
+          next.add(String(k).trim().toLowerCase());
+        });
+        return next;
+      });
+      setTimeout(() => {
+        navigate('/workflow?step=5');
+      }, 700);
+    } catch (err) {
+      console.error('Failed to import student to payment:', err);
+      showToast(err.response?.data?.message || 'Failed to import student to payment.');
+    } finally {
+      setImportingStudents(false);
+    }
+  };
+
+  const handleBulkImportToPayment = async () => {
+    const selected = getSelectedStudents();
+    if (selected.length === 0) return;
+    try {
+      setImportingStudents(true);
+      const targetStudentIds = selected.map(s => s._id || s.id);
+      const res = await importStudentsToPayment(targetStudentIds);
+      showToast(res.message || `${targetStudentIds.length} student(s) imported to Payment!`);
+      setSelectedRows([]);
+      setTimeout(() => {
+        navigate('/workflow?step=5');
+      }, 700);
+    } catch (err) {
+      console.error('Failed to import students to payment:', err);
+      showToast(err.response?.data?.message || 'Failed to import students to payment.');
+    } finally {
+      setImportingStudents(false);
+    }
   };
 
   const handleCreateRequest = () => {
@@ -909,10 +1117,45 @@ export default function WorkflowStep1Students({
       {/* Main Content Area */}
       <div className="flex-1 space-y-4 min-w-0">
 
+        {/* ─── Payment Import Banner ────────────────────────────────────────── */}
+        {isPaymentImportMode && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs">
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-blue-900">Payment Section — Import Students</h4>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  Select eligible students from any tab (All, Inactive Students, Snooze) to import into the Payment section. Students already in Payment are automatically hidden.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => navigate('/workflow?step=5')}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition cursor-pointer"
+              >
+                Cancel & Return
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkImportToPayment}
+                disabled={selectedRows.length === 0 || importingStudents}
+                className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>{importingStudents ? 'Importing...' : `Import Selected (${selectedRows.length})`}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ─── Student Tabs: All / Inactive / Snooze ───────────────────────── */}
         <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
           {[
-            { key: 'all', label: 'All', count: studentList.length },
+            { key: 'all', label: 'All', count: activeStudentsCount },
             { key: 'inactive', label: 'Inactive Students', count: inactiveStudentsCount },
             { key: 'snooze', label: 'Snooze', count: snoozedCount },
           ].map((tab) => (
@@ -1376,8 +1619,19 @@ export default function WorkflowStep1Students({
                     </td>
                     <td className="p-4">
                       {(() => {
-                        const statusVal = stu.placementStatus || 'None';
+                        const isSnoozedOrInactive = Boolean(
+                          snoozedStudentIds[stu.id] ||
+                          snoozedStudentIds[stu.studentId] ||
+                          stu.snoozed ||
+                          reqValue === 'Snooze' ||
+                          reqValue === 'Inactive' ||
+                          stu.internshipPriority === 'Snooze' ||
+                          stu.internshipPriority === 'Inactive' ||
+                          stu.status === 'Inactive'
+                        );
+                        const statusVal = isSnoozedOrInactive ? 'N/A' : (stu.placementStatus || 'None');
                         const statusConfig = {
+                          'N/A': { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-300' },
                           'Awaiting': { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-300' },
                           'In Progress': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
                           'Appointment Scheduled': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
@@ -1442,6 +1696,18 @@ export default function WorkflowStep1Students({
                     </td>
                     <td className="p-4 text-slate-500">{stu.addedOn}</td>
                     <td className="p-4 text-right relative" data-row-menu onClick={(e) => e.stopPropagation()}>
+                      {isPaymentImportMode && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleImportSingleStudent(stu); }}
+                          disabled={importingStudents}
+                          className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg inline-flex items-center space-x-1 mr-2 cursor-pointer transition"
+                          title="Import into Step 5 (Payment)"
+                        >
+                          <CreditCard className="w-3 h-3 text-blue-600" />
+                          <span>Import</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => setShowRowMenu(showRowMenu === stu.id ? null : stu.id)}
                         className="p-1 hover:bg-slate-100 rounded-lg inline-flex cursor-pointer"
@@ -1755,7 +2021,11 @@ export default function WorkflowStep1Students({
                         </span>
                         <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] font-bold rounded-full border border-blue-400/20 flex items-center space-x-1">
                           <Award className="w-2.5 h-2.5" />
-                          <span>{selectedStudent.placementStatus || 'Awaiting'}</span>
+                          <span>
+                            {(snoozedStudentIds[selectedStudent.id] || selectedStudent.snoozed || getStudentPriority(selectedStudent) === 'Snooze' || getStudentPriority(selectedStudent) === 'Inactive' || selectedStudent.internshipPriority === 'Snooze' || selectedStudent.internshipPriority === 'Inactive' || selectedStudent.status === 'Inactive')
+                              ? 'N/A'
+                              : (selectedStudent.placementStatus || 'Awaiting')}
+                          </span>
                         </span>
                       </div>
                     </div>

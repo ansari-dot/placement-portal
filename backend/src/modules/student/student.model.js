@@ -475,6 +475,11 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    internshipPriority: {
+      type: String,
+      enum: ["Normal", "Urgent", "Inactive", "Snooze", ""],
+      default: "",
+    },
 
     // ===== Placement Status =====
     // Tracks the student's current stage in the placement pipeline.
@@ -483,6 +488,7 @@ const studentSchema = new mongoose.Schema(
       type: String,
       enum: {
         values: [
+          "N/A",                     // Snoozed or Inactive
           "Awaiting",                // No placement request generated yet
           "In Progress",             // Placement request has been generated
           "Industry Contacted",      // At least one industry has been contacted

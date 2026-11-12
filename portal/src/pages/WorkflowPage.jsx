@@ -80,7 +80,8 @@ export default function WorkflowPage() {
   useEffect(() => {
     fetchUsers({ status: 'Active' })
       .then((res) => {
-        setCoordinators(res?.data ?? []);
+        const list = res?.data ?? [];
+        setCoordinators(list.filter(u => ['Coordinator', 'Administrator', 'Admin'].includes(u.role)));
       })
       .catch(() => { });
   }, []);
@@ -221,26 +222,55 @@ export default function WorkflowPage() {
       if (workflowId) {
         try {
           const resolvedPriority = priority || 'Normal';
+          const studentName =
+            student.name ||
+            [student.firstName, student.lastName].filter(Boolean).join(' ') ||
+            'Student';
+          const studentIdentifier =
+            student.studentId ||
+            student.id ||
+            student._id ||
+            '';
           const requestData = {
-            title: `${student.course || 'Internship'} Placement`,
-            student: student.name,
-            studentId: student.id || student.studentId,
+            title: `${student.course || student.courseQualification || 'Internship'} Placement`,
+            student: studentName,
+            studentId: String(studentIdentifier),
             company: 'Pending Assignment',
-            rto: student.rto || 'TBD',
+            rto: student.rto || student.assignedRto || 'TBD',
             priority: resolvedPriority,
-            status: resolvedPriority === 'Inactive' ? 'On Hold' : 'New',
-            returnedToStep1: resolvedPriority === 'Inactive',
+            status: ['Inactive', 'Snooze'].includes(resolvedPriority) ? 'On Hold' : 'New',
+            returnedToStep1: ['Inactive', 'Snooze'].includes(resolvedPriority),
           };
-          await createInternshipRequest(workflowId, requestData);
 
-          // ── Sync Student.internshipPriority so Score tab reflects Inactive ──
-          // The Score backend reads Student.internshipPriority directly.
-          const stuId = student.id || student.studentId;
+          // Check if an existing request exists in workflow.requests
+          const sIds = [student.id, student._id, student.studentId].filter(Boolean).map(norm);
+          const sName = norm(studentName);
+          const existingReq = (workflow?.requests || []).find((r) => {
+            const rId = norm(r.studentId);
+            const rName = norm(r.student);
+            return sIds.includes(rId) || (sName && rName === sName);
+          });
+
+          if (existingReq) {
+            await updateInternshipRequest(workflowId, existingReq._id || existingReq.reqId || existingReq.id, requestData);
+          } else {
+            await createInternshipRequest(workflowId, requestData);
+          }
+
+          // ── Sync Student.internshipPriority & status ──
+          const stuId = student.id || student._id || student.studentId;
           if (stuId) {
-            updateStudent(stuId, {
-              internshipPriority: resolvedPriority === 'Inactive' ? 'Inactive' : '',
-            }).catch((err) =>
-              console.error('Failed to sync internshipPriority on new request:', err)
+            const studentUpdate = {
+              internshipPriority: resolvedPriority,
+            };
+            if (resolvedPriority === 'Inactive') {
+              studentUpdate.status = 'Inactive';
+            } else if (['Normal', 'Urgent'].includes(resolvedPriority)) {
+              studentUpdate.status = 'Active';
+            }
+
+            updateStudent(stuId, studentUpdate).catch((err) =>
+              console.error('Failed to sync student status and priority on new request:', err)
             );
           }
 
@@ -250,8 +280,10 @@ export default function WorkflowPage() {
         }
       }
     }
-    goToStep(2);
-  }, [workflowId, goToStep, refreshWorkflowData]);
+    if (!['Inactive', 'Snooze'].includes(priority)) {
+      goToStep(2);
+    }
+  }, [workflowId, goToStep, refreshWorkflowData, workflow]);
 
   const handleStep2Next = useCallback((request, company, prefillData) => {
     if (request) setActiveWorkflowRequest(request);
@@ -338,6 +370,85 @@ export default function WorkflowPage() {
     });
     return set;
   }, [visibleWorkflowStudents]);
+
+  // Comprehensive map of student key -> 'Snooze' | 'Inactive'
+  const inactiveSnoozedStudentMap = React.useMemo(() => {
+    const map = new Map();
+
+    // 1. Group workflow requests by studentId and student name to determine latest priority
+    const latestByStudent = new Map();
+    if (workflow?.requests && Array.isArray(workflow.requests)) {
+      workflow.requests.forEach((req) => {
+        const sid = req.studentId ? norm(req.studentId) : null;
+        const sname = req.student ? norm(req.student) : null;
+        const reqTime = new Date(req.updatedAt || req.createdAt || 0).getTime();
+
+        if (sid) {
+          const existing = latestByStudent.get(sid);
+          if (!existing || reqTime > existing.time) {
+            latestByStudent.set(sid, { priority: req.priority, time: reqTime });
+          }
+        }
+        if (sname) {
+          const existing = latestByStudent.get(sname);
+          if (!existing || reqTime > existing.time) {
+            latestByStudent.set(sname, { priority: req.priority, time: reqTime });
+          }
+        }
+      });
+    }
+
+    latestByStudent.forEach((val, sid) => {
+      if (val.priority === 'Inactive' || val.priority === 'Snooze') {
+        map.set(sid, val.priority);
+      }
+    });
+
+    // 2. Also inspect workflowStudents directly (snoozed flag, internshipPriority)
+    (workflowStudents || []).forEach((stu) => {
+      const dbId = norm(stu.id || stu._id);
+      const bizId = norm(stu.studentId);
+      const fullName = norm(`${stu.firstName || ''} ${stu.lastName || ''}`.trim());
+      const name = norm(stu.name || fullName);
+      const email = norm(stu.email || stu.emailAddress);
+
+      const reqPriority =
+        (bizId && latestByStudent.get(bizId)?.priority) ||
+        (dbId && latestByStudent.get(dbId)?.priority) ||
+        (name && latestByStudent.get(name)?.priority);
+
+      const isSnoozed =
+        (stu.snoozed === true || stu.internshipPriority === 'Snooze' || reqPriority === 'Snooze') &&
+        reqPriority !== 'Normal' && reqPriority !== 'Urgent';
+
+      const isInactive =
+        (stu.internshipPriority === 'Inactive' || stu.status === 'Inactive' || reqPriority === 'Inactive') &&
+        reqPriority !== 'Normal' && reqPriority !== 'Urgent' && !isSnoozed;
+
+      const statusType = isSnoozed ? 'Snooze' : isInactive ? 'Inactive' : null;
+
+      if (statusType) {
+        if (dbId) map.set(dbId, statusType);
+        if (bizId) map.set(bizId, statusType);
+        if (name) map.set(name, statusType);
+        if (fullName) map.set(fullName, statusType);
+        if (email) map.set(email, statusType);
+      } else {
+        if (dbId) map.delete(dbId);
+        if (bizId) map.delete(bizId);
+        if (name) map.delete(name);
+        if (fullName) map.delete(fullName);
+        if (email) map.delete(email);
+      }
+    });
+
+    return map;
+  }, [workflow, workflowStudents]);
+
+  // Comprehensive keys of students who are Inactive or Snoozed — used to hide them from active workflow steps
+  const inactiveSnoozedStudentKeys = React.useMemo(() => {
+    return new Set(inactiveSnoozedStudentMap.keys());
+  }, [inactiveSnoozedStudentMap]);
 
   // ─── Mapping helpers ───────────────────────────────────────────────────────
   // ID-only matching — name fallback is intentionally removed because two students
@@ -536,7 +647,30 @@ export default function WorkflowPage() {
 
       // ── Derive final status ───────────────────────────────────────────────
       let dynamicPlacementStatus = 'Awaiting';
-      if (hasCompleted) {
+
+      // ── Check request priority — Snooze/Inactive override all workflow statuses ──
+      const sortedMatchingRequests = [...matchingRequests].sort((a, b) => {
+        const aDate = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
+        const bDate = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+        return bDate - aDate;
+      });
+      const latestRequest = sortedMatchingRequests[0];
+      const studentReqPriority = latestRequest?.priority || null;
+
+      const isSnoozedOrInactive =
+        stu.snoozed === true ||
+        stu.status === 'Inactive' ||
+        stu.internshipPriority === 'Inactive' ||
+        stu.internshipPriority === 'Snooze' ||
+        studentReqPriority === 'Inactive' ||
+        studentReqPriority === 'Snooze' ||
+        (stuDbId && inactiveSnoozedStudentKeys.has(stuDbId)) ||
+        (stuBizId && inactiveSnoozedStudentKeys.has(stuBizId)) ||
+        (stuName && inactiveSnoozedStudentKeys.has(stuName));
+
+      if (isSnoozedOrInactive) {
+        dynamicPlacementStatus = 'N/A';
+      } else if (hasCompleted) {
         dynamicPlacementStatus = 'Placement Completed';
       } else if (hasStartedPlacement) {
         dynamicPlacementStatus = 'Placement Started';
@@ -586,14 +720,18 @@ export default function WorkflowPage() {
         contactedIndustries,
       };
     });
-  }, [visibleWorkflowStudents, findRequestsForStudent, findAppointmentsForStudent, workflow]);
+  }, [visibleWorkflowStudents, findRequestsForStudent, findAppointmentsForStudent, workflow, inactiveSnoozedStudentKeys]);
 
   const mapRequestsForStep2 = useCallback((excludeReturnedToStep1 = false) => {
     if (!workflow?.requests || workflow.requests.length === 0) return [];
 
-    return workflow.requests
+    const filtered = workflow.requests
       .filter((req) => {
         if (excludeReturnedToStep1 && req.returnedToStep1 === true) return false;
+        // Hide Inactive/Snoozed students from Step 2
+        const reqStuId = norm(req.studentId);
+        const reqStuName = norm(req.student);
+        if (inactiveSnoozedStudentKeys.has(reqStuId) || inactiveSnoozedStudentKeys.has(reqStuName) || req.priority === 'Inactive' || req.priority === 'Snooze') return false;
         if (excludeReturnedToStep1) {
           const requestIds = new Set([req.id, req._id, req.reqId]
             .filter(Boolean)
@@ -608,11 +746,30 @@ export default function WorkflowPage() {
         // Coordinators always see only their students; admins filter only when a coordinator is selected
         const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
         if (!shouldFilter) return true;
-        const reqStuId = norm(req.studentId);
-        const reqStuName = norm(req.student);
         return visibleStudentKeySet.has(reqStuId) || visibleStudentKeySet.has(reqStuName);
-      })
-      .map((req) => {
+      });
+
+    // Deduplicate by student: if multiple requests exist for the same student, keep the newest one
+    const seenStudents = new Set();
+    const sorted = [...filtered].sort((a, b) => {
+      const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return tB - tA;
+    });
+
+    const uniqueRequests = [];
+    for (const req of sorted) {
+      const studentKey = norm(req.studentId);
+      const studentNameKey = norm(req.student);
+      if ((studentKey && seenStudents.has(studentKey)) || (studentNameKey && seenStudents.has(studentNameKey))) {
+        continue;
+      }
+      if (studentKey) seenStudents.add(studentKey);
+      if (studentNameKey) seenStudents.add(studentNameKey);
+      uniqueRequests.push(req);
+    }
+
+    return uniqueRequests.map((req) => {
         const requestStudentId = norm(req.studentId);
         const requestStudentName = norm(req.student);
         const student = workflowStudents.find((stu) => {
@@ -671,7 +828,7 @@ export default function WorkflowPage() {
         const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
         return tB - tA;
       });
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators, inactiveSnoozedStudentKeys]);
 
   const mapAppointmentsForStep3 = useCallback(() => {
     if (!workflow?.appointments || workflow.appointments.length === 0) {
@@ -680,10 +837,13 @@ export default function WorkflowPage() {
 
     return workflow.appointments
       .filter((appt) => {
-        const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
-        if (!shouldFilter) return true;
+        // Hide Inactive/Snoozed students from Step 3
         const apptStuId = norm(appt.studentId);
         const apptStuName = norm(appt.student);
+        const apptEmail = norm(appt.email);
+        if (inactiveSnoozedStudentKeys.has(apptStuId) || inactiveSnoozedStudentKeys.has(apptStuName) || inactiveSnoozedStudentKeys.has(apptEmail)) return false;
+        const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
+        if (!shouldFilter) return true;
         return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
       })
       .map((appt) => {
@@ -789,7 +949,7 @@ export default function WorkflowPage() {
         const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
         return tB - tA;
       });
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, inactiveSnoozedStudentKeys]);
 
   // ─── ✅ Map ALL appointments to internships ──────────────────────────────
   const mapInternshipsForStep4 = useCallback(() => {
@@ -797,10 +957,12 @@ export default function WorkflowPage() {
     const allAppointments = workflow?.appointments || [];
 
     const filteredAppointments = allAppointments.filter((appt) => {
-      const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
-      if (!shouldFilter) return true;
+      // Hide Inactive/Snoozed students from Step 4
       const apptStuId = norm(appt.studentId);
       const apptStuName = norm(appt.student);
+      if (inactiveSnoozedStudentKeys.has(apptStuId) || inactiveSnoozedStudentKeys.has(apptStuName)) return false;
+      const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
+      if (!shouldFilter) return true;
       return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
     });
 
@@ -935,7 +1097,7 @@ export default function WorkflowPage() {
     });
 
     return result;
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, visibleWorkflowStudents]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, visibleWorkflowStudents, inactiveSnoozedStudentKeys]);
 
   // ─── Request handlers ──────────────────────────────────────────────────────
 
@@ -957,12 +1119,27 @@ export default function WorkflowPage() {
     // Step 1 "Change Placement Requirement" passes '__by_student__' because it only
     // has access to studentId, not the request's _id. WorkflowPage resolves the real reqId here.
     if (requestId === '__by_student__' && workflow?.requests) {
-      const { studentId, ...rest } = requestData;
-      const match = workflow.requests.find(
-        (r) => r.studentId && studentId && norm(r.studentId) === norm(studentId)
-      );
+      const { studentId, studentName, ...rest } = requestData;
+      const sId = norm(studentId);
+      const sName = norm(studentName);
+
+      const stuObj = (workflowStudents || []).find((s) => {
+        const ids = [s.id, s._id, s.studentId].filter(Boolean).map(norm);
+        const name = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim());
+        return ids.includes(sId) || (sName && name === sName);
+      });
+      const allCandidateIds = stuObj
+        ? [stuObj.id, stuObj._id, stuObj.studentId].filter(Boolean).map(norm)
+        : [sId];
+
+      const match = (workflow.requests || []).find((r) => {
+        const rId = norm(r.studentId);
+        const rName = norm(r.student);
+        return allCandidateIds.includes(rId) || (sName && rName === sName);
+      });
+
       if (match) {
-        const realId = String(match._id || match.reqId || '');
+        const realId = String(match._id || match.reqId || match.id || '');
         if (realId) {
           // When marking a student inactive, also set the request status to On Hold
           if (['Inactive', 'Snooze'].includes(rest.priority)) {
@@ -976,21 +1153,61 @@ export default function WorkflowPage() {
             updatedBy: authUser?.name || authUser?.email || 'User',
           });
 
-          // ── Sync Student.internshipPriority so Score tab reflects the change ──
-          // The Score backend reads Student.internshipPriority directly; the workflow
-          // request priority alone is not enough to update the count.
+          // ── Sync Student status & internshipPriority ──
           if (studentId && rest.priority !== undefined) {
-            const newPriority = rest.priority === 'Inactive' ? 'Inactive' : '';
-            updateStudent(studentId, { internshipPriority: newPriority }).catch((err) =>
-              console.error('Failed to sync internshipPriority on student:', err)
+            const studentUpdate = { internshipPriority: rest.priority };
+            if (rest.priority === 'Inactive') {
+              studentUpdate.status = 'Inactive';
+              studentUpdate.placementStatus = 'N/A';
+            } else if (rest.priority === 'Snooze') {
+              studentUpdate.snoozed = true;
+              studentUpdate.placementStatus = 'N/A';
+            } else if (['Normal', 'Urgent'].includes(rest.priority)) {
+              studentUpdate.status = 'Active';
+              studentUpdate.snoozed = false;
+              studentUpdate.placementStatus = 'In Progress';
+            }
+            updateStudent(studentId, studentUpdate).catch((err) =>
+              console.error('Failed to sync student status and priority:', err)
             );
           }
 
           await refreshWorkflowData();
           return result?.data;
         }
+      } else {
+        // No existing request found — create one with the specified priority
+        const studentIdentifier = String(studentId || stuObj?.studentId || stuObj?.id || '');
+        const requestDataPayload = {
+          title: `${stuObj?.course || stuObj?.courseQualification || 'Internship'} Placement`,
+          student: studentName || stuObj?.name || 'Student',
+          studentId: studentIdentifier,
+          company: 'Pending Assignment',
+          rto: stuObj?.rto || stuObj?.assignedRto || 'TBD',
+          priority: rest.priority || 'Normal',
+          status: ['Inactive', 'Snooze'].includes(rest.priority) ? 'On Hold' : 'New',
+          returnedToStep1: ['Inactive', 'Snooze'].includes(rest.priority),
+        };
+        const created = await createInternshipRequest(wfId, requestDataPayload);
+        if (studentId && rest.priority !== undefined) {
+          const studentUpdate = { internshipPriority: rest.priority };
+          if (rest.priority === 'Inactive') {
+            studentUpdate.status = 'Inactive';
+            studentUpdate.placementStatus = 'N/A';
+          } else if (rest.priority === 'Snooze') {
+            studentUpdate.snoozed = true;
+            studentUpdate.placementStatus = 'N/A';
+          } else if (['Normal', 'Urgent'].includes(rest.priority)) {
+            studentUpdate.status = 'Active';
+            studentUpdate.snoozed = false;
+            studentUpdate.placementStatus = 'In Progress';
+          }
+          updateStudent(studentId, studentUpdate).catch(() => {});
+        }
+        await refreshWorkflowData();
+        return created?.data;
       }
-      return; // No match — localStorage already updated by Step 1
+      return;
     }
 
     try {
@@ -999,19 +1216,27 @@ export default function WorkflowPage() {
         updatedBy: authUser?.name || authUser?.email || 'User',
       });
 
-      // ── Sync Student.internshipPriority for direct request updates (Step 2) ──
-      // When a request's priority is changed directly (e.g. from the Step 2 requests
-      // table), keep Student.internshipPriority in sync so the Score tab stays correct.
+      // ── Sync Student status & internshipPriority for direct request updates (Step 2) ──
       if (requestData.priority !== undefined) {
-        // Find the matching request to get its studentId
         const matchedReq = (workflow?.requests || []).find(
           (r) => String(r._id || r.reqId || r.id) === String(requestId)
         );
         const stuId = matchedReq?.studentId;
         if (stuId) {
-          const newPriority = requestData.priority === 'Inactive' ? 'Inactive' : '';
-          updateStudent(stuId, { internshipPriority: newPriority }).catch((err) =>
-            console.error('Failed to sync internshipPriority on student:', err)
+          const studentUpdate = { internshipPriority: requestData.priority };
+          if (requestData.priority === 'Inactive') {
+            studentUpdate.status = 'Inactive';
+            studentUpdate.placementStatus = 'N/A';
+          } else if (requestData.priority === 'Snooze') {
+            studentUpdate.snoozed = true;
+            studentUpdate.placementStatus = 'N/A';
+          } else if (['Normal', 'Urgent'].includes(requestData.priority)) {
+            studentUpdate.status = 'Active';
+            studentUpdate.snoozed = false;
+            studentUpdate.placementStatus = 'In Progress';
+          }
+          updateStudent(stuId, studentUpdate).catch((err) =>
+            console.error('Failed to sync student status and priority:', err)
           );
         }
       }
@@ -1022,7 +1247,7 @@ export default function WorkflowPage() {
       console.error('Failed to update request:', err);
       throw err;
     }
-  }, [workflowId, workflow, refreshWorkflowData, authUser]);
+  }, [workflowId, workflow, refreshWorkflowData, authUser, workflowStudents]);
 
   const handleDeleteRequest = useCallback(async (requestId) => {
     const wfId = workflowId || workflow?._id || workflow?.id || 'default';
@@ -1370,9 +1595,6 @@ export default function WorkflowPage() {
 
   const internshipRequestMap = React.useMemo(() => {
     const map = {};
-
-    // Only use backend workflow requests — no localStorage (avoids stale data showing
-    // Urgent/Normal badge on students who never had a request generated)
     if (workflow?.requests && Array.isArray(workflow.requests)) {
       workflow.requests.forEach((req) => {
         const priorityVal = req.priority || 'Normal';
@@ -1380,12 +1602,18 @@ export default function WorkflowPage() {
           map[req.studentId] = priorityVal;
           map[norm(req.studentId)] = priorityVal;
         }
+        if (req.student) {
+          map[req.student] = priorityVal;
+          map[norm(req.student)] = priorityVal;
+        }
         if (req.id) map[req.id] = priorityVal;
         if (req._id) map[String(req._id)] = priorityVal;
       });
     }
     return map;
   }, [workflow]);
+
+
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -1440,6 +1668,7 @@ export default function WorkflowPage() {
             appointments={mapAppointmentsForStep3()}
             onCoordinatorAssigned={handleCoordinatorAssigned}
             coordinators={coordinators}
+            onRefreshWorkflow={refreshWorkflowData}
           />
         );
       case 2:
@@ -1497,7 +1726,12 @@ export default function WorkflowPage() {
           />
         );
       case 5:
-        return <WorkflowStep5Payments initialSearch={searchParam} />;
+        return (
+          <WorkflowStep5Payments
+            initialSearch={searchParam}
+            inactiveSnoozedMap={inactiveSnoozedStudentMap}
+          />
+        );
       default:
         if (!isAdmin) {
           return (

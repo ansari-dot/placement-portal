@@ -10,6 +10,12 @@ export const fetchPaymentTotals = async (params = {}) => {
   return response.data;
 };
 
+export const importStudentsToPayment = async (studentIds) => {
+  const ids = Array.isArray(studentIds) ? studentIds : [studentIds];
+  const response = await api.post('/payments/import', { studentIds: ids });
+  return response.data;
+};
+
 export const updatePaymentStatus = async (id, data) => {
   const payload = typeof data === 'object' ? data : { paymentStatus: data };
   const response = await api.patch(`/payments/${id}/status`, payload);

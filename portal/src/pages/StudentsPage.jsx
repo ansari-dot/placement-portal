@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { UserPlus } from 'lucide-react';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
-import AllStudentsTable from '../components/student/AllStudentsTable';
+import MyStudentsTable from '../components/student/MyStudentsTable';
 import StudentPortalPage from './StudentPortalPage';
 
 export default function StudentsPage() {
@@ -46,7 +46,7 @@ export default function StudentsPage() {
 
             {/* Render Table */}
             <div>
-              <AllStudentsTable />
+              <MyStudentsTable />
             </div>
 
           </div>

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import StudentModel from '../student/student.model.js';
 import WorkflowModel from './workflow.model.js';
 import {
@@ -264,7 +265,41 @@ export const createInternshipRequestController = async (req, res, next) => {
       return res.status(400).json({ message: 'Request body is missing' });
     }
 
-    const validatedData = internshipRequestSchema.parse(req.body);
+    const payload = { ...req.body };
+    if (typeof payload.student === 'object' && payload.student !== null) {
+      if (!payload.studentId) {
+        payload.studentId = payload.student.studentId || payload.student._id || payload.student.id;
+      }
+      payload.student = payload.student.name || `${payload.student.firstName || ''} ${payload.student.lastName || ''}`.trim();
+    }
+    if (!payload.studentId && (payload.id || payload._id)) {
+      payload.studentId = payload.id || payload._id;
+    }
+    const candidateId = payload.studentId || payload.id || payload._id;
+    if ((!payload.student || !payload.studentId) && candidateId) {
+      const studentDoc = await StudentModel.findOne({
+        $or: [
+          ...(mongoose.Types.ObjectId.isValid(candidateId) ? [{ _id: candidateId }] : []),
+          { studentId: candidateId },
+        ],
+      }).lean();
+      if (studentDoc) {
+        if (!payload.student) {
+          payload.student = [studentDoc.firstName, studentDoc.lastName].filter(Boolean).join(' ') || studentDoc.name || 'Student';
+        }
+        if (!payload.studentId) {
+          payload.studentId = studentDoc.studentId || String(studentDoc._id);
+        }
+        if (!payload.title) {
+          payload.title = `${studentDoc.courseQualification || studentDoc.courses || 'Internship'} Placement`;
+        }
+        if (!payload.rto) {
+          payload.rto = studentDoc.assignedRto || 'TBD';
+        }
+      }
+    }
+
+    const validatedData = internshipRequestSchema.parse(payload);
     const request = await createInternshipRequest(id, validatedData);
 
     if (!request) {

@@ -15,32 +15,45 @@ import AssignCoordinatorModal from './AssignCoordinatorModal';
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
 
-const mapBackendStudent = (s) => ({
-  dbId: s.id || s._id,
-  id: s.studentId || s.id || '',
-  name: s.name || [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') || 'N/A',
-  age: s.age || '',
-  avatar: s.avatar || FALLBACK_AVATAR,
-  rto: s.rto || s.assignedRto || '',
-  rtoCode: s.rtoCode || '',
-  course: s.course || s.courseQualification || '',
-  courseCode: s.courseCode || '',
-  email: s.email || s.emailAddress || '',
-  phone: s.phone || s.phoneNumber || '',
-  location: s.location || s.suburb || '',
-  state: s.state || '',
-  status: s.status || 'Active',
-  placementStatus: s.placementStatus || 'Awaiting',
-  placementHours: s.placementHours ?? null,
-  source: s.source || s.studentSource || '',
-  created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
-  assignedCoordinator: s.assignedCoordinator || null,
-  assignedCoordinatorName: s.assignedCoordinatorName || '',
-  assignedAt: s.assignedCoordinatorAt
-    ? new Date(s.assignedCoordinatorAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
-    : (s.assignedAt || '—'),
-  isOnline: s.isOnline === true,
-});
+const mapBackendStudent = (s) => {
+  const isSnoozedOrInactive =
+    s.snoozed === true ||
+    s.internshipPriority === 'Snooze' ||
+    s.internshipPriority === 'Inactive' ||
+    s.status === 'Inactive';
+
+  return {
+    dbId: s.id || s._id,
+    id: s.studentId || s.id || '',
+    name: s.name || [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') || 'N/A',
+    age: s.age || '',
+    avatar: s.avatar || FALLBACK_AVATAR,
+    rto: s.rto || s.assignedRto || '',
+    rtoCode: s.rtoCode || '',
+    course: s.course || s.courseQualification || '',
+    courseCode: s.courseCode || '',
+    email: s.email || s.emailAddress || '',
+    phone: s.phone || s.phoneNumber || '',
+    location: s.location || s.suburb || '',
+    state: s.state || '',
+    status: s.status || 'Active',
+    placementStatus: isSnoozedOrInactive ? 'N/A' : (s.placementStatus || 'Awaiting'),
+    placementHours: s.placementHours ?? null,
+    source: s.source || s.studentSource || '',
+    created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
+    assignedCoordinator: s.assignedCoordinator || null,
+    assignedCoordinatorName: s.assignedCoordinatorName || '',
+    assignedAt: s.assignedCoordinatorAt
+      ? new Date(s.assignedCoordinatorAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+      : (s.assignedAt || '—'),
+    isOnline: s.isOnline === true,
+    snoozed: s.snoozed === true,
+    snoozedAt: s.snoozedAt || null,
+    snoozeUntil: s.snoozeUntil || null,
+    snoozeReason: s.snoozeReason || '',
+    internshipPriority: s.internshipPriority || '',
+  };
+};
 
 
 

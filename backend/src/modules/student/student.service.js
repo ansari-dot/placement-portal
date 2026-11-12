@@ -281,6 +281,15 @@ export class StudentService {
         });
       });
 
+      const requestsByStudent = new Map();
+      allRequests.forEach((r) => {
+        const keys = [r.studentId, String(r._id || ''), r.student?.trim().toLowerCase()].filter(Boolean);
+        keys.forEach((k) => {
+          if (!requestsByStudent.has(k)) requestsByStudent.set(k, []);
+          requestsByStudent.get(k).push(r);
+        });
+      });
+
       const now = new Date();
       rawStudents.forEach((s) => {
         const sFullName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
@@ -289,8 +298,21 @@ export class StudentService {
 
         const studentAppts = keys.flatMap((k) => apptsByStudent.get(k) || []);
         const studentInts = keys.flatMap((k) => intsByStudent.get(k) || []);
+        const studentReqs = keys.flatMap((k) => requestsByStudent.get(k) || []);
+        const sortedReqs = [...studentReqs].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+        const latestReqPriority = sortedReqs[0]?.priority;
 
-        if (studentInts.length > 0 || studentAppts.length > 0) {
+        const isSnoozedOrInactive =
+          s.snoozed === true ||
+          s.internshipPriority === 'Snooze' ||
+          s.internshipPriority === 'Inactive' ||
+          s.status === 'Inactive' ||
+          latestReqPriority === 'Snooze' ||
+          latestReqPriority === 'Inactive';
+
+        if (isSnoozedOrInactive) {
+          s.placementStatus = 'N/A';
+        } else if (studentInts.length > 0 || studentAppts.length > 0) {
           if (
             studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
             studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status))
@@ -333,6 +355,10 @@ export class StudentService {
               s.commencementDate = latestInt.start || latestInt.startDate;
             }
           }
+        } else if (sortedReqs.length > 0) {
+          if (!s.placementStatus || s.placementStatus === 'Awaiting' || s.placementStatus === 'N/A') {
+            s.placementStatus = 'In Progress';
+          }
         }
 
         // Calculate lifecycle status from workflow data
@@ -354,12 +380,7 @@ export class StudentService {
   }
 
   static async getAllStudentsUnfiltered(user) {
-    const role = user?.role;
-    const isAdmin = role === 'Administrator' || role === 'Admin';
-    if (user && !isAdmin) {
-      return await this.getAllStudents(user);
-    }
-    return await StudentModel.find({}).sort({ createdAt: -1 });
+    return await this.getAllStudents(user);
   }
 
   static async getStudentById(id, user) {
@@ -373,6 +394,16 @@ export class StudentService {
 
     if (!student) {
       throw new NotFoundError('Student not found');
+    }
+
+    const sObj = student.toObject ? student.toObject() : student;
+    if (
+      sObj.snoozed === true ||
+      sObj.internshipPriority === 'Snooze' ||
+      sObj.internshipPriority === 'Inactive' ||
+      sObj.status === 'Inactive'
+    ) {
+      sObj.placementStatus = 'N/A';
     }
 
     const role = user?.role;
@@ -479,7 +510,7 @@ export class StudentService {
       }
     }
 
-    return sanitizeStudentDataForRole(student, role);
+    return sanitizeStudentDataForRole(sObj, role);
   }
 
   static async updateStudent(id, studentData, actingUser) {
@@ -650,6 +681,23 @@ export class StudentService {
       } catch (_) {}
     }
 
+    // Enforce placementStatus: Snooze and Inactive students must strictly be 'N/A'
+    if (
+      studentData.snoozed === true ||
+      studentData.internshipPriority === 'Snooze' ||
+      studentData.internshipPriority === 'Inactive' ||
+      studentData.status === 'Inactive'
+    ) {
+      studentData.placementStatus = 'N/A';
+    } else if (
+      studentData.status === 'Active' &&
+      ['Normal', 'Urgent'].includes(studentData.internshipPriority)
+    ) {
+      if (!studentData.placementStatus || studentData.placementStatus === 'N/A') {
+        studentData.placementStatus = 'In Progress';
+      }
+    }
+
     let student = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
       student = await StudentModel.findByIdAndUpdate(id, studentData, {
@@ -685,13 +733,14 @@ export class StudentService {
       })
       .catch(() => {});
 
-    // Sync placement dates / status into workflow internships, appointments, and payments if present
-    if (student && (studentData.commencementDate || studentData.completionDate || studentData.placementStatus)) {
+    // Sync placement dates / status into workflow internships, appointments, requests, and payments if present
+    if (student && (studentData.commencementDate || studentData.completionDate || studentData.placementStatus || studentData.status || studentData.snoozed !== undefined || studentData.internshipPriority !== undefined)) {
       try {
         const studentBizId = String(student.studentId || '').trim();
         const studentDbId = String(student._id || student.id || '').trim();
         const studentName = `${student.firstName || ''} ${student.lastName || ''}`.trim();
         const isCompleted = ['Placement Completed', 'Completed'].includes(studentData.placementStatus);
+        const isInactive = ['Inactive', 'Suspended', 'Graduated'].includes(studentData.status) || studentData.internshipPriority === 'Inactive';
 
         // Update lifecycle status based on workflow data
         try {
@@ -723,11 +772,12 @@ export class StudentService {
           ...(studentName ? [{ student: studentName }, { student: new RegExp(`^${studentName}$`, 'i') }, { name: studentName }] : []),
         ];
 
-        // 1. Update WorkflowModel embedded internships & appointments
+        // 1. Update WorkflowModel embedded internships, appointments & requests
         const workflows = await WorkflowModel.find({
           $or: [
-            ...(studentBizId ? [{ 'internships.studentId': studentBizId }, { 'appointments.studentId': studentBizId }] : []),
-            ...(studentName ? [{ 'internships.student': new RegExp(`^${studentName}$`, 'i') }, { 'appointments.student': new RegExp(`^${studentName}$`, 'i') }] : []),
+            ...(studentBizId ? [{ 'internships.studentId': studentBizId }, { 'appointments.studentId': studentBizId }, { 'requests.studentId': studentBizId }] : []),
+            ...(studentDbId ? [{ 'internships.studentId': studentDbId }, { 'appointments.studentId': studentDbId }, { 'requests.studentId': studentDbId }] : []),
+            ...(studentName ? [{ 'internships.student': new RegExp(`^${studentName}$`, 'i') }, { 'appointments.student': new RegExp(`^${studentName}$`, 'i') }, { 'requests.student': new RegExp(`^${studentName}$`, 'i') }] : []),
           ],
         });
 
@@ -736,6 +786,7 @@ export class StudentService {
           (wf.internships || []).forEach((i) => {
             const matches =
               (studentBizId && String(i.studentId || '').trim().toLowerCase() === studentBizId.toLowerCase()) ||
+              (studentDbId && String(i.studentId || '').trim().toLowerCase() === studentDbId.toLowerCase()) ||
               (studentName && String(i.student || '').trim().toLowerCase() === studentName.toLowerCase());
             if (matches) {
               if (studentData.commencementDate) i.start = studentData.commencementDate;
@@ -744,6 +795,11 @@ export class StudentService {
                 i.status = isCompleted ? 'Completed' : studentData.placementStatus;
                 if (isCompleted) i.progress = 100;
               }
+              // If student account status is Inactive/Suspended/Graduated, mark workflow items as inactive
+              if (isInactive && !['Completed', 'Placement Completed'].includes(i.status)) {
+                i.status = 'Inactive';
+                i.progress = 0;
+              }
               wfModified = true;
             }
           });
@@ -751,6 +807,7 @@ export class StudentService {
           (wf.appointments || []).forEach((a) => {
             const matches =
               (studentBizId && String(a.studentId || '').trim().toLowerCase() === studentBizId.toLowerCase()) ||
+              (studentDbId && String(a.studentId || '').trim().toLowerCase() === studentDbId.toLowerCase()) ||
               (studentName && String(a.student || '').trim().toLowerCase() === studentName.toLowerCase());
             if (matches) {
               if (studentData.commencementDate) a.commencementDate = studentData.commencementDate;
@@ -761,7 +818,42 @@ export class StudentService {
               } else if (studentData.placementStatus === 'Placement Started') {
                 a.status = 'Confirmed';
               }
+              // If student account status is Inactive/Suspended/Graduated, mark appointments as inactive
+              if (isInactive && !['Completed', 'Placement Completed'].includes(a.status)) {
+                a.status = 'Inactive';
+                a.appointmentOutcome = 'inactive';
+              }
               wfModified = true;
+            }
+          });
+
+          (wf.requests || []).forEach((r) => {
+            const matches =
+              (studentBizId && String(r.studentId || '').trim().toLowerCase() === studentBizId.toLowerCase()) ||
+              (studentDbId && String(r.studentId || '').trim().toLowerCase() === studentDbId.toLowerCase()) ||
+              (studentName && String(r.student || '').trim().toLowerCase() === studentName.toLowerCase());
+            if (matches) {
+              if (studentData.snoozed === true || studentData.internshipPriority === 'Snooze') {
+                r.priority = 'Snooze';
+                r.returnedToStep1 = true;
+                r.status = 'On Hold';
+                wfModified = true;
+              } else if (studentData.internshipPriority === 'Inactive' || studentData.status === 'Inactive') {
+                r.priority = 'Inactive';
+                r.returnedToStep1 = true;
+                r.status = 'On Hold';
+                wfModified = true;
+              } else if (['Normal', 'Urgent'].includes(studentData.internshipPriority)) {
+                r.priority = studentData.internshipPriority;
+                r.returnedToStep1 = false;
+                if (r.status === 'On Hold') r.status = 'New';
+                wfModified = true;
+              } else if (studentData.snoozed === false && r.priority === 'Snooze') {
+                r.priority = 'Normal';
+                r.returnedToStep1 = false;
+                if (r.status === 'On Hold') r.status = 'New';
+                wfModified = true;
+              }
             }
           });
 

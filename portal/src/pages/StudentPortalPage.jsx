@@ -583,6 +583,7 @@ export default function StudentPortalPage() {
 
   const getStatusColor = (status) => {
     const s = String(status || '').trim().toLowerCase();
+    if (s === 'n/a') return 'bg-slate-100 text-slate-600 border-slate-300';
     if (s.includes('completed')) return 'bg-emerald-50 text-emerald-700 border-emerald-300';
     if (s.includes('placement started') || s === 'active') return 'bg-emerald-50 text-emerald-700 border-emerald-300';
     if (s.includes('appointment successful') || s.includes('successful')) return 'bg-teal-50 text-teal-700 border-teal-300';
@@ -593,6 +594,7 @@ export default function StudentPortalPage() {
 
   const calculateWorkflowProgress = (status) => {
     const s = String(status || '').trim().toLowerCase();
+    if (s === 'n/a') return 0;
     if (s.includes('completed')) return 5;
     if (s.includes('placement started') || s === 'active') return 4;
     if (s.includes('appointment successful') || s.includes('successful')) return 3.5;
@@ -604,6 +606,15 @@ export default function StudentPortalPage() {
 
   // Derive dynamic real-time status: synchronizes database record, active workflows, appointments, and internships
   const effectiveStatus = (() => {
+    const isSnoozedOrInactive =
+      studentProfile?.snoozed === true ||
+      studentProfile?.internshipPriority === 'Snooze' ||
+      studentProfile?.internshipPriority === 'Inactive' ||
+      studentProfile?.status === 'Inactive' ||
+      studentRequests.some(r => r.priority === 'Snooze' || r.priority === 'Inactive');
+
+    if (isSnoozedOrInactive) return 'N/A';
+
     const direct = studentProfile?.placementStatus;
     if (studentInternships.length > 0) {
       const anyDone = studentInternships.some(i => ['Completed', 'Placement Completed'].includes(i.status));

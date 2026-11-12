@@ -7,6 +7,7 @@ import {
   getPaymentTotalsService,
   updatePaymentStatusService,
   bulkPaymentReceivedService,
+  importStudentsToPaymentService,
 } from './payment.service.js';
 import {
   bulkGenerateInvoiceController,
@@ -158,6 +159,20 @@ export const bulkPaymentReceivedController = async (req, res, next) => {
     });
   } catch (error) {
     logger.error(`bulkPaymentReceivedController error: ${error.message}`);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    return next ? next(error) : res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const importStudentsController = async (req, res, next) => {
+  try {
+    const { studentIds } = req.body;
+    const result = await importStudentsToPaymentService(studentIds);
+    return res.status(200).json(result);
+  } catch (error) {
+    logger.error(`importStudentsController error: ${error.message}`);
     if (error.statusCode) {
       return res.status(error.statusCode).json({ success: false, message: error.message });
     }
