@@ -56,7 +56,7 @@ export const getStudentQueryScope = async (user) => {
     }
     if (!rtoName && user.requestedOrgName) {
       const matchedRto = await RtoModel.findOne({
-        name: { $regex: `^${user.requestedOrgName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        name: { $regex: user.requestedOrgName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' },
       });
       if (matchedRto) {
         rtoName = matchedRto.name;
@@ -66,18 +66,55 @@ export const getStudentQueryScope = async (user) => {
       }
     }
 
+    // If we have rtoId but not rtoName, or vice-versa, resolve from RtoModel
+    let rtoDoc = null;
+    if (rtoId && mongoose.Types.ObjectId.isValid(rtoId)) {
+      rtoDoc = await RtoModel.findById(rtoId).lean();
+      if (rtoDoc && !rtoName) rtoName = rtoDoc.name;
+    } else if (rtoName) {
+      rtoDoc = await RtoModel.findOne({
+        name: { $regex: rtoName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' },
+      }).lean();
+      if (rtoDoc && !rtoId) rtoId = rtoDoc._id;
+    }
+
     const rtoConditions = [];
+    if (rtoId) {
+      rtoConditions.push({ rtoId });
+      if (mongoose.Types.ObjectId.isValid(rtoId)) {
+        rtoConditions.push({ rtoId: new mongoose.Types.ObjectId(rtoId) });
+        rtoConditions.push({ rtoId: String(rtoId) });
+      }
+    }
     if (rtoName) {
       const cleanName = rtoName.trim();
       const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       rtoConditions.push({ assignedRto: { $regex: `^${escaped}$`, $options: 'i' } });
       rtoConditions.push({ institute: { $regex: `^${escaped}$`, $options: 'i' } });
+      rtoConditions.push({ assignedRto: { $regex: escaped, $options: 'i' } });
+      rtoConditions.push({ institute: { $regex: escaped, $options: 'i' } });
     }
-    if (rtoId) {
-      rtoConditions.push({ rtoId });
-      if (mongoose.Types.ObjectId.isValid(rtoId)) {
-        rtoConditions.push({ rtoId: new mongoose.Types.ObjectId(rtoId) });
-      }
+    if (rtoDoc?.name && rtoDoc.name !== rtoName) {
+      const altEscaped = rtoDoc.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      rtoConditions.push({ assignedRto: { $regex: altEscaped, $options: 'i' } });
+      rtoConditions.push({ institute: { $regex: altEscaped, $options: 'i' } });
+    }
+    if (rtoDoc?.code) {
+      rtoConditions.push({ rtoCode: rtoDoc.code });
+    }
+
+    // Auto-link any matching students in database that have null rtoId
+    if (rtoId && rtoName) {
+      try {
+        const linkFilter = {
+          $or: [
+            { assignedRto: { $regex: rtoName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+            { institute: { $regex: rtoName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+          ],
+          $or: [{ rtoId: null }, { rtoId: { $exists: false } }],
+        };
+        await StudentModel.updateMany(linkFilter, { $set: { rtoId, assignedRto: rtoName } });
+      } catch (_) {}
     }
 
     return rtoConditions.length > 0 ? { $or: rtoConditions } : { _id: null };

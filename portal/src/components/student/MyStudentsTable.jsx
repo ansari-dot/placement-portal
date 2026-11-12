@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import { defaultStudents, emptyFilters, parseDate, btnSecondary } from './studentData';
 import { downloadStudentsCSV } from './csvUtils';
 import { fetchStudents, deleteStudent, snoozeStudent } from '../../api/studentsApi';
+import { PLACEMENT_DATA_CHANGED } from '../../api/placementEvents';
 import { fetchUsers } from '../../api/userApi';
 import {
   fetchWorkflows,
@@ -34,7 +35,9 @@ const MY_PROGRESS_PLACEMENT_STATUS_OPTIONS = [
   'Waiting to Join',
   'Placement Started',
   'Student Withdraw',
+  'Student Missed Appointment',
   'Industry Rejected',
+  'Not Suitable Site',
   'Placement Completed',
 ];
 
@@ -58,6 +61,8 @@ const mapBackendStudent = (s) => ({
   placementHours: s.placementHours ?? null,
   source: s.source || s.studentSource || '',
   created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
+  createdAt: s.createdAt || null,
+  updatedAt: s.updatedAt || null,
   // Coordinator assignment
   assignedCoordinator: s.assignedCoordinator || null,
   assignedCoordinatorName: s.assignedCoordinatorName || '',
@@ -683,6 +688,16 @@ export default function MyStudentsTable() {
   // Load workflow data for dual-source placement request detection
   useEffect(() => { loadWorkflowData(); }, [loadWorkflowData]);
 
+  // Synchronise placement status whenever workflow or placement data updates anywhere
+  useEffect(() => {
+    const handleSync = () => {
+      loadStudents();
+      loadWorkflowData();
+    };
+    window.addEventListener(PLACEMENT_DATA_CHANGED, handleSync);
+    return () => window.removeEventListener(PLACEMENT_DATA_CHANGED, handleSync);
+  }, [loadStudents, loadWorkflowData]);
+
   // Sync snoozed students from backend data
   useEffect(() => {
     const fromStudents = {};
@@ -896,7 +911,13 @@ export default function MyStudentsTable() {
   }, [students, activeMainTab, filters, urlSearch, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
 
   const sortedStudents = useMemo(() => {
-    if (!sortField) return filteredStudents;
+    if (!sortField) {
+      return [...filteredStudents].sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (parseDate(a.created) || 0);
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (parseDate(b.created) || 0);
+        return timeB - timeA;
+      });
+    }
     const sortValue = (s) => {
       switch (sortField) {
         case 'student': return s.name || '';
@@ -908,7 +929,7 @@ export default function MyStudentsTable() {
         case 'location': return s.location || '';
         case 'status': return s.status || '';
         case 'source': return s.source || '';
-        case 'created': return parseDate(s.created) || 0;
+        case 'created': return s.createdAt ? new Date(s.createdAt).getTime() : (parseDate(s.created) || 0);
         default: return s.name || '';
       }
     };

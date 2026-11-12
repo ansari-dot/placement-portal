@@ -458,11 +458,11 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
     return { total, pending, invoiceSent, received30, fullReceived };
   }, [activePayments]);
 
-  // Sort payments with most recently updated / created student at the top
+  // Sort payments with most recently created / generated invoice student at the top
   const sortedPayments = useMemo(() => {
     return [...activePayments].sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      const tA = new Date(a.createdAt || a.invoiceDate || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.invoiceDate || b.updatedAt || 0).getTime();
       return tB - tA;
     });
   }, [activePayments]);

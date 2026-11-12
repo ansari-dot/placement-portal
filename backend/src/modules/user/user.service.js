@@ -378,7 +378,14 @@ export class UserService {
     const normEmail = email.toLowerCase().trim();
     const existingUser = await UserModel.findOne({ email: normEmail });
     if (existingUser) {
-      throw new ConflictError('User with this email already exists');
+      if (existingUser.isDeleted === true) {
+        // Free up the email of the soft-deleted user so recreation succeeds
+        if (!existingUser.originalEmail) existingUser.originalEmail = existingUser.email;
+        existingUser.email = `deleted_${Date.now()}_${existingUser.email}`;
+        await existingUser.save();
+      } else {
+        throw new ConflictError('User with this email already exists');
+      }
     }
 
     const userStatus = status || 'Active';
@@ -489,6 +496,10 @@ export class UserService {
     user.approved = false;
     user.deletedAt = new Date();
     user.deletedBy = adminUser?._id || null;
+    if (!user.originalEmail) {
+      user.originalEmail = user.email;
+    }
+    user.email = `deleted_${Date.now()}_${user.email}`;
     await user.save();
 
     return user;
@@ -685,5 +696,53 @@ export class UserService {
       delete uObj.lastActive;
       return uObj;
     });
+  }
+
+  static async getPendingPasswordResets() {
+    return await UserModel.find({
+      forgotPasswordStatus: 'Pending',
+      isDeleted: { $ne: true },
+    })
+      .select('_id name email role department forgotPasswordStatus forgotPasswordRequestedAt createdAt phone avatar')
+      .sort({ forgotPasswordRequestedAt: -1, updatedAt: -1 })
+      .lean();
+  }
+
+  static async approvePasswordReset(id, adminUser) {
+    const user = await UserModel.findById(id);
+    if (!user || user.isDeleted) {
+      throw new NotFoundError('User not found');
+    }
+    user.forgotPasswordStatus = 'Approved';
+    user.forgotPasswordApprovedAt = new Date();
+    user.forgotPasswordApprovedBy = adminUser?._id || null;
+    await user.save();
+
+    try {
+      await NotificationModel.create({
+        title: 'Password Reset Approved',
+        desc: `Admin approved password reset for ${user.name} (${user.email})`,
+        type: 'system',
+        link: '/users',
+        targetRoles: ['Administrator', 'Admin'],
+      });
+    } catch (_) {}
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    return userObj;
+  }
+
+  static async rejectPasswordReset(id, adminUser) {
+    const user = await UserModel.findById(id);
+    if (!user || user.isDeleted) {
+      throw new NotFoundError('User not found');
+    }
+    user.forgotPasswordStatus = 'Rejected';
+    await user.save();
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    return userObj;
   }
 }

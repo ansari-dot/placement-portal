@@ -10,6 +10,7 @@ const PLACEMENT_STATUS_OPTIONS = [
   'Waiting to Join',
   'Placement Started',
   'Student Withdraw',
+  'Student Missed Appointment',
   'Industry Rejected',
   'Not Suitable Site',
   'Placement Completed',

@@ -10,6 +10,7 @@ import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
 import { fetchStudentById, updateStudent, openStudentDocument, isStoredDocument } from '../api/studentsApi';
+import { notifyPlacementDataChanged } from '../api/placementEvents';
 import { fetchWorkflows, fetchWorkflowById } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
 import { fetchRtos } from '../api/rtoApi';
@@ -308,6 +309,7 @@ export default function StudentViewEditPage() {
         payload.studentType = 'RTO Student';
       }
       const response = await updateStudent(dbId, payload);
+      notifyPlacementDataChanged();
       toast.success(response?.message || 'Student updated successfully!');
       navigate('/my-students');
     } catch (err) {

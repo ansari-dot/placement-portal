@@ -2,12 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginThunk, clearError } from '../redux/authSlice';
-import { signupUser, fetchRtoAutocomplete, fetchIndustryAutocomplete, checkStudentEmailApi } from '../api/authApi';
+import {
+  signupUser,
+  fetchRtoAutocomplete,
+  fetchIndustryAutocomplete,
+  checkStudentEmailApi,
+  requestForgotPasswordApi,
+  checkPasswordResetStatusApi,
+  resetPasswordApi,
+} from '../api/authApi';
 import logo1 from '../assets/logo1.png';
 import {
   Lock, Mail, Eye, EyeOff, ShieldCheck, ArrowRight,
   AlertCircle, Loader2, LayoutDashboard, Users, User, UserPlus, CheckCircle2, Building2,
-  BookOpen, GraduationCap
+  BookOpen, GraduationCap, KeyRound, ArrowLeft, Check
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -35,17 +43,35 @@ export default function LoginPage() {
   const [signupLoading, setSignupLoading] = useState(false);
   const [signupError, setSignupError] = useState('');
 
-  // Student specific registration & claiming state
+  // Student & Organization specific registration & claiming state
   const [studentLookup, setStudentLookup] = useState({
     isChecking: false,
     foundInDatabase: false,
     isAlreadyUser: false,
     student: null,
+    rtoName: null,
+    facilityName: null,
     message: '',
   });
   const [signupCourse, setSignupCourse] = useState('');
   const [signupStudentRto, setSignupStudentRto] = useState('');
   const [isClaimedSuccess, setIsClaimedSuccess] = useState(false);
+
+  // Forgot Password state
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccessMessage, setForgotSuccessMessage] = useState('');
+  const [forgotError, setForgotError] = useState('');
+
+  // Password Reset Approval & New Password State
+  const [resetApprovedStatus, setResetApprovedStatus] = useState(null); // 'Pending' | 'Approved' | 'Rejected' | 'None'
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState('');
+  const [resetError, setResetError] = useState('');
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -135,19 +161,8 @@ export default function LoginPage() {
     };
   }, [signupFacilityName, signupRole]);
 
-  // Debounced Student email lookup for signup (detects pre-assigned vs new student)
+  // Debounced email lookup for signup (detects pre-assigned student, RTO, or Industry email)
   useEffect(() => {
-    if (signupRole !== 'Student') {
-      setStudentLookup({
-        isChecking: false,
-        foundInDatabase: false,
-        isAlreadyUser: false,
-        student: null,
-        message: '',
-      });
-      return;
-    }
-
     const trimmedEmail = signupEmail.trim();
     if (!trimmedEmail || !/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(trimmedEmail)) {
       setStudentLookup({
@@ -155,6 +170,8 @@ export default function LoginPage() {
         foundInDatabase: false,
         isAlreadyUser: false,
         student: null,
+        rtoName: null,
+        facilityName: null,
         message: '',
       });
       return;
@@ -171,6 +188,8 @@ export default function LoginPage() {
             foundInDatabase: !!res.foundInDatabase,
             isAlreadyUser: !!res.isAlreadyUser,
             student: res.student || null,
+            rtoName: res.rtoName || null,
+            facilityName: res.facilityName || null,
             message: res.message || '',
           });
 
@@ -183,6 +202,20 @@ export default function LoginPage() {
               setSignupPhone(res.student.phone);
             }
           }
+
+          // Automatically populate RTO Name if RTO recognized from email
+          if (res.rtoName) {
+            if (signupRole === 'RTO Manager' && !signupRtoName.trim()) {
+              setSignupRtoName(res.rtoName);
+            } else if (signupRole === 'Student' && !signupStudentRto.trim()) {
+              setSignupStudentRto(res.rtoName);
+            }
+          }
+
+          // Automatically populate Industry / Facility Name if Industry recognized from email
+          if (res.facilityName && signupRole === 'Industry' && !signupFacilityName.trim()) {
+            setSignupFacilityName(res.facilityName);
+          }
         }
       } catch (err) {
         if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
@@ -191,6 +224,8 @@ export default function LoginPage() {
             foundInDatabase: false,
             isAlreadyUser: false,
             student: null,
+            rtoName: null,
+            facilityName: null,
             message: '',
           });
         }
@@ -202,6 +237,33 @@ export default function LoginPage() {
       controller.abort();
     };
   }, [signupEmail, signupRole]);
+
+  // Check Password Reset Approval Status when user enters email on login screen
+  useEffect(() => {
+    const trimmed = email.trim();
+    if (!trimmed || !/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(trimmed) || isSignup || isForgotPassword) {
+      setResetApprovedStatus(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await checkPasswordResetStatusApi(trimmed, controller.signal);
+        if (res && res.status) {
+          setResetApprovedStatus(res.status);
+        } else {
+          setResetApprovedStatus(null);
+        }
+      } catch (_) {
+        setResetApprovedStatus(null);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [email, isSignup, isForgotPassword]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -251,10 +313,56 @@ export default function LoginPage() {
 
   const toggleMode = () => {
     setIsSignup(!isSignup);
+    setIsForgotPassword(false);
     setSignupSuccess(false);
     setIsClaimedSuccess(false);
     setSignupError('');
     dispatch(clearError());
+  };
+
+  const handleForgotPasswordSubmit = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotSuccessMessage('');
+    if (!forgotEmail.trim()) {
+      setForgotError('Please enter your registered email address.');
+      return;
+    }
+    try {
+      setForgotLoading(true);
+      const res = await requestForgotPasswordApi(forgotEmail.trim());
+      setForgotSuccessMessage(res?.message || 'Your password reset request has been sent to the administrator for approval. Please contact your administrator.');
+    } catch (err) {
+      setForgotError(err?.response?.data?.message || 'Unable to submit request. Please verify your email.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    setResetError('');
+    setResetSuccessMessage('');
+    if (!newPassword || newPassword.length < 6) {
+      setResetError('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+    try {
+      setResetLoading(true);
+      const res = await resetPasswordApi(email.trim(), newPassword);
+      setResetSuccessMessage('Password changed successfully! Signing you in...');
+      setTimeout(() => {
+        dispatch(loginThunk({ email: email.trim(), password: newPassword }));
+      }, 700);
+    } catch (err) {
+      setResetError(err?.response?.data?.message || 'Failed to update password.');
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   return (
@@ -351,7 +459,13 @@ export default function LoginPage() {
             {/* Top Shield / User Icon Circle */}
             <div className="flex justify-center">
               <div className="w-16 h-16 rounded-full bg-blue-50 text-[#0147A6] flex items-center justify-center shadow-xs">
-                {isSignup ? <UserPlus className="w-8 h-8" /> : <Lock className="w-7 h-7" />}
+                {isForgotPassword ? (
+                  <KeyRound className="w-7 h-7 text-[#0147A6]" />
+                ) : isSignup ? (
+                  <UserPlus className="w-8 h-8" />
+                ) : (
+                  <Lock className="w-7 h-7" />
+                )}
               </div>
             </div>
 
@@ -359,9 +473,9 @@ export default function LoginPage() {
             <div className="flex bg-slate-100 p-1.5 rounded-2xl">
               <button
                 type="button"
-                onClick={() => { setIsSignup(false); setSignupSuccess(false); setSignupError(''); }}
+                onClick={() => { setIsSignup(false); setIsForgotPassword(false); setSignupSuccess(false); setSignupError(''); }}
                 className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer ${
-                  !isSignup
+                  !isSignup && !isForgotPassword
                     ? 'bg-white text-[#0147A6] shadow-md shadow-slate-200'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -370,9 +484,9 @@ export default function LoginPage() {
               </button>
               <button
                 type="button"
-                onClick={() => { setIsSignup(true); setSignupSuccess(false); setSignupError(''); }}
+                onClick={() => { setIsSignup(true); setIsForgotPassword(false); setSignupSuccess(false); setSignupError(''); }}
                 className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  isSignup
+                  isSignup && !isForgotPassword
                     ? 'bg-[#0147A6] text-white shadow-md shadow-blue-900/20'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -385,10 +499,16 @@ export default function LoginPage() {
             {/* Title & Subtitle */}
             <div className="text-center space-y-1 pb-1">
               <h2 className="text-2xl font-extrabold text-slate-900">
-                {isSignup ? 'Create Portal Account' : 'Sign In to Portal'}
+                {isForgotPassword
+                  ? 'Forgot Password'
+                  : isSignup
+                  ? 'Create Portal Account'
+                  : 'Sign In to Portal'}
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                {isSignup
+                {isForgotPassword
+                  ? 'Submit your request for administrator approval to reset your password'
+                  : isSignup
                   ? 'General registration for RTOs, Students, Coordinators & Industry Users'
                   : 'Enter your account email and password to access the portal'}
               </p>
@@ -532,6 +652,28 @@ export default function LoginPage() {
                           <div className="text-[11px]">
                             <span className="font-bold block">Account Already Exists</span>
                             <span>This email is already registered. Please click <strong>Sign In</strong> above to log in.</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recognized Registered RTO */}
+                      {studentLookup.rtoName && !studentLookup.isAlreadyUser && (
+                        <div className="bg-teal-50 border border-teal-200 rounded-xl p-2.5 flex items-start gap-2 text-teal-900 mt-1">
+                          <Building2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                          <div className="text-[11px]">
+                            <span className="font-bold block text-teal-950">Registered RTO Recognized: {studentLookup.rtoName}</span>
+                            <span className="text-teal-700 font-medium">Students enrolled under this RTO will automatically link to your account.</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recognized Registered Industry Facility */}
+                      {studentLookup.facilityName && !studentLookup.isAlreadyUser && (
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-2.5 flex items-start gap-2 text-indigo-900 mt-1">
+                          <Building2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                          <div className="text-[11px]">
+                            <span className="font-bold block text-indigo-950">Partner Facility Recognized: {studentLookup.facilityName}</span>
+                            <span className="text-indigo-700 font-medium">Placement requests and daily attendance logbook will link to this host site.</span>
                           </div>
                         </div>
                       )}
@@ -760,87 +902,297 @@ export default function LoginPage() {
                   )}
                 </button>
               </form>
-            ) : !signupSuccess ? (
-              /* Login Form */
-              <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              
-              {/* Email Address */}
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (error) dispatch(clearError());
-                    }}
-                    placeholder="e.g. admin@mantisplacements.com"
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Password */}
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (error) dispatch(clearError());
-                    }}
-                    placeholder="••••••••••••"
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Remember me */}
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center space-x-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 text-[#0147A6] border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
-                  />
-                  <span className="text-xs text-slate-600 font-medium">Remember me</span>
-                </label>
-              </div>
-
-              {/* Action Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-sm rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer mt-3"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Signing in...</span>
-                  </>
+            ) : isForgotPassword ? (
+              /* Forgot Password Form */
+              <div className="space-y-4 text-xs">
+                {forgotSuccessMessage ? (
+                  <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-5 text-center space-y-3">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                    <h4 className="text-sm font-bold text-emerald-800">Password Reset Request Submitted</h4>
+                    <p className="text-xs text-emerald-700 leading-relaxed font-medium">
+                      {forgotSuccessMessage}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Once your administrator approves the reset request, return to this Sign In screen. When you enter your email, the password change option will automatically appear.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForgotPassword(false);
+                        if (forgotEmail) setEmail(forgotEmail);
+                      }}
+                      className="w-full py-2.5 bg-[#0147A6] hover:bg-[#003882] text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer mt-2"
+                    >
+                      Return to Sign In
+                    </button>
+                  </div>
                 ) : (
-                  <>
-                    <span>Sign In to Portal</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
+                  <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+                    {forgotError && (
+                      <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start space-x-2 text-xs text-rose-700">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <span className="font-semibold leading-relaxed">{forgotError}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-slate-700">Account Email Address *</label>
+                      <div className="relative">
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                          type="email"
+                          required
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          placeholder="e.g. user@organization.com"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-900 flex items-start gap-2.5">
+                      <ShieldCheck className="w-4 h-4 text-[#0147A6] shrink-0 mt-0.5" />
+                      <span className="leading-relaxed">
+                        For institutional security, password reset requests for RTOs, students, and industry partners are sent directly to the Administrator for approval.
+                      </span>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="w-full py-3.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-xs rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                    >
+                      {forgotLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Submitting Request...</span>
+                        </>
+                      ) : (
+                        <>
+                          <KeyRound className="w-4 h-4" />
+                          <span>Send Request to Administrator</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsForgotPassword(false);
+                          setForgotError('');
+                        }}
+                        className="text-xs font-semibold text-slate-500 hover:text-[#0147A6] transition inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>Return to Sign In</span>
+                      </button>
+                    </div>
+                  </form>
                 )}
-              </button>
-            </form>
+              </div>
+            ) : !signupSuccess ? (
+              /* Approved Password Reset View OR Standard Login Form */
+              resetApprovedStatus === 'Approved' ? (
+                /* Admin Approved Password Change Form */
+                <form onSubmit={handleResetPasswordSubmit} className="space-y-4 text-xs">
+                  {/* Notification at the top stating forgot password approved */}
+                  <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex items-start space-x-3 text-xs text-emerald-800 shadow-xs">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-extrabold block text-sm text-emerald-950">
+                        Forgot Password Request Approved!
+                      </span>
+                      <p className="text-emerald-700 leading-relaxed font-medium mt-0.5">
+                        Your forgot password request has been approved by an admin. You can now set your new password below to sign in.
+                      </p>
+                    </div>
+                  </div>
+
+                  {resetError && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start space-x-2 text-xs text-rose-700">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <span className="font-semibold leading-relaxed">{resetError}</span>
+                    </div>
+                  )}
+
+                  {resetSuccessMessage && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start space-x-2 text-xs text-emerald-700">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="font-semibold leading-relaxed">{resetSuccessMessage}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">Account Email Address</label>
+                    <input
+                      type="email"
+                      disabled
+                      value={email}
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-600 font-semibold text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">New Password *</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password (min. 6 characters)"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">Confirm New Password *</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Re-enter new password"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                  >
+                    {resetLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Updating Password...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Save New Password & Sign In</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              ) : (
+                /* Standard Login Form */
+                <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+                  {/* Status Banner if reset is pending approval */}
+                  {resetApprovedStatus === 'Pending' && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-800 shadow-xs">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block text-amber-950">Password Reset Pending Approval</span>
+                        <span className="text-amber-800">Your password reset request has been submitted to the administrator. Please contact your administrator to approve it.</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email Address */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">Email Address</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (error) dispatch(clearError());
+                        }}
+                        placeholder="e.g. admin@mantisplacements.com"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">Password</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          if (error) dispatch(clearError());
+                        }}
+                        placeholder="••••••••••••"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-slate-900 placeholder-slate-400 outline-none focus:border-[#0147A6] focus:ring-2 focus:ring-blue-500/10 transition-all font-medium text-xs shadow-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Remember me & Forgot Password */}
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="flex items-center space-x-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 text-[#0147A6] border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span className="text-xs text-slate-600 font-medium">Remember me</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForgotPassword(true);
+                        setForgotEmail(email);
+                        setForgotError('');
+                        setForgotSuccessMessage('');
+                      }}
+                      className="text-xs font-bold text-[#0147A6] hover:underline cursor-pointer"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+
+                  {/* Action Button */}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white font-bold text-sm rounded-xl shadow-xs transition-all duration-500 flex items-center justify-center space-x-2 cursor-pointer mt-3"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Signing in...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Sign In to Portal</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )
             ) : null}
 
             {/* Bottom Security Note */}

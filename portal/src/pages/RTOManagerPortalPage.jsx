@@ -204,24 +204,30 @@ export default function RTOManagerPortalPage() {
     return Array.from(set);
   }, [students]);
 
-  // Filtered Students
+  // Filtered Students (recently added on top)
   const filteredStudents = useMemo(() => {
-    return students.filter((s) => {
-      const sName = (s.name || `${s.firstName || ''} ${s.lastName || ''}`).toLowerCase();
-      const sId = (s.studentId || s.id || '').toLowerCase();
-      const sCourse = (s.course || s.courseQualification || '').toLowerCase();
-      const q = search.toLowerCase().trim();
+    return students
+      .filter((s) => {
+        const sName = (s.name || `${s.firstName || ''} ${s.lastName || ''}`).toLowerCase();
+        const sId = (s.studentId || s.id || '').toLowerCase();
+        const sCourse = (s.course || s.courseQualification || '').toLowerCase();
+        const q = search.toLowerCase().trim();
 
-      const matchesSearch = !q || sName.includes(q) || sId.includes(q) || sCourse.includes(q);
-      const matchesStatus =
-        statusFilter === 'All' ||
-        (s.placementStatus || s.status || '').toLowerCase() === statusFilter.toLowerCase();
-      const matchesCourse =
-        courseFilter === 'All' ||
-        (s.course || s.courseQualification || '').toLowerCase() === courseFilter.toLowerCase();
+        const matchesSearch = !q || sName.includes(q) || sId.includes(q) || sCourse.includes(q);
+        const matchesStatus =
+          statusFilter === 'All' ||
+          (s.placementStatus || s.status || '').toLowerCase() === statusFilter.toLowerCase();
+        const matchesCourse =
+          courseFilter === 'All' ||
+          (s.course || s.courseQualification || '').toLowerCase() === courseFilter.toLowerCase();
 
-      return matchesSearch && matchesStatus && matchesCourse;
-    });
+        return matchesSearch && matchesStatus && matchesCourse;
+      })
+      .sort((a, b) => {
+        const tA = new Date(a.createdAt || a.created || a.addedOn || a.updatedAt || 0).getTime();
+        const tB = new Date(b.createdAt || b.created || b.addedOn || b.updatedAt || 0).getTime();
+        return tB - tA;
+      });
   }, [students, search, statusFilter, courseFilter]);
 
   // Metrics for KPI Cards

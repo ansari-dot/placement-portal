@@ -58,6 +58,22 @@ export const submitSupportTicket = async (ticketData) => {
   return response.data;
 };
 
+export const requestForgotPasswordApi = async (email, note = '') => {
+  const response = await api.post('/auth/forgot-password', { email, note });
+  return response.data;
+};
+
+export const checkPasswordResetStatusApi = async (email, signal) => {
+  if (!email || !email.trim()) return null;
+  const response = await api.get(`/auth/password-reset-status?email=${encodeURIComponent(email.trim())}`, { signal });
+  return response.data;
+};
+
+export const resetPasswordApi = async (email, newPassword) => {
+  const response = await api.post('/auth/reset-password', { email, newPassword });
+  return response.data;
+};
+
 
 
 

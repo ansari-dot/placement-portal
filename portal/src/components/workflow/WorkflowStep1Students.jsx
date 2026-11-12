@@ -28,7 +28,16 @@ const STEP1_DRAWER_DOCS = [
 // Statuses for which a student's placement request should be REGENERATED
 // (a fresh request) rather than merely "changed" — the previous attempt
 // ended negatively and the student needs a brand-new placement request.
-const REGENERATE_STATUSES = ['Student Withdraw', 'Student Missed Appointment', 'Industry Rejected', 'Not Suitable Site'];
+const REGENERATE_STATUSES = [
+  'Student Withdraw',
+  'Student Withdrawn',
+  'Withdrawn',
+  'Student Missed Appointment',
+  'No Show',
+  'Industry Rejected',
+  'Declined',
+  'Not Suitable Site',
+];
 
 const norm = (val) => (val === undefined || val === null ? '' : String(val).trim().toLowerCase());
 
@@ -611,8 +620,8 @@ export default function WorkflowStep1Students({
 
   const sortedFilteredStudents = React.useMemo(() => {
     return [...filteredStudents].sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || a.addedOn || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || b.addedOn || 0).getTime();
+      const tA = new Date(a.createdAt || a.addedOn || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.addedOn || b.updatedAt || 0).getTime();
       return tB - tA;
     });
   }, [filteredStudents]);
@@ -1637,6 +1646,8 @@ export default function WorkflowStep1Students({
                           'Appointment Scheduled': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
                           'Appointment Successful': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
                           'Student Withdraw': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300' },
+                          'Student Withdrawn': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300' },
+                          'Withdrawn': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300' },
                           'Student Missed Appointment': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-300' },
                           'Industry Rejected': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
                           'Placement Started': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300' },

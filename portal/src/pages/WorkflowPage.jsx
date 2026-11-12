@@ -33,7 +33,7 @@ import {
 } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
 import { updateStudent } from '../api/studentsApi';
-import { PLACEMENT_DATA_CHANGED } from '../api/placementEvents';
+import { PLACEMENT_DATA_CHANGED, notifyPlacementDataChanged } from '../api/placementEvents';
 
 const STEP_LABELS = ['Students', 'Placement Requests', 'Appointments', 'Placements', 'Payments'];
 
@@ -275,6 +275,7 @@ export default function WorkflowPage() {
           }
 
           await refreshWorkflowData();
+      notifyPlacementDataChanged();
         } catch (err) {
           console.error('Failed to create internship request in backend:', err);
         }
@@ -303,6 +304,7 @@ export default function WorkflowPage() {
         contactedIndustries: [contactData],
       });
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     } catch (err) {
       console.error('Failed to add contact', err);
       throw err;
@@ -492,8 +494,8 @@ export default function WorkflowPage() {
     if (!visibleWorkflowStudents || visibleWorkflowStudents.length === 0) return [];
 
     const sortedStudents = [...visibleWorkflowStudents].sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || a.addedOn || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || b.addedOn || 0).getTime();
+      const tA = new Date(a.createdAt || a.addedOn || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.addedOn || b.updatedAt || 0).getTime();
       return tB - tA;
     });
 
@@ -531,17 +533,18 @@ export default function WorkflowPage() {
         return bDate - aDate;
       });
 
-      const TERMINAL_APPT_STATUSES = ['Cancelled', 'Withdrawn', 'Declined', 'No Show', 'Not Suitable Site', 'Industry Rejected', 'Student Missed Appointment'];
+      const TERMINAL_APPT_STATUSES = [
+        'Cancelled',
+        'Withdrawn',
+        'Student Withdraw',
+        'Student Withdrawn',
+        'Declined',
+        'No Show',
+        'Not Suitable Site',
+        'Industry Rejected',
+        'Student Missed Appointment',
+      ];
       const ACTIVE_APPT_STATUSES = ['Scheduled', 'Confirmed'];
-
-      // The most recent NON-terminal appointment wins over any terminal one.
-      // If there is any active (Scheduled/Confirmed) appointment, that takes precedence
-      // over any Withdrawn/Declined appointment regardless of date order.
-      const hasAnyActive = sortedAppointments.some((a) => ACTIVE_APPT_STATUSES.includes(a.status));
-      const mostRecentAppt = hasAnyActive
-        ? sortedAppointments.find((a) => ACTIVE_APPT_STATUSES.includes(a.status))
-        : sortedAppointments[0];
-      const mostRecentIsTerminal = !hasAnyActive && mostRecentAppt && TERMINAL_APPT_STATUSES.includes(mostRecentAppt.status);
 
       // ── Terminal / outcome statuses — highest precedence first ───────────
 
@@ -555,14 +558,82 @@ export default function WorkflowPage() {
             (a.appointmentOutcome === 'successful' && a.status === 'Completed')
         );
 
+      // Student Withdraw — most recent appointment, any internship, or student record is withdrawn
+      const hasStudentWithdraw =
+        !hasCompleted && (
+          ['Student Withdraw', 'Student Withdrawn', 'Withdrawn'].includes(stu.placementStatus) ||
+          matchingInternships.some((i) =>
+            ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(i.status)
+          ) ||
+          sortedAppointments.some((a) =>
+            ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(a.status) ||
+            a.appointmentOutcome === 'student_withdrawal' ||
+            a.cancellationType === 'withdrawn'
+          )
+        );
+
+      // Not Suitable Site — site was deemed inappropriate
+      const hasNotSuitableSite =
+        !hasCompleted && !hasStudentWithdraw && (
+          stu.placementStatus === 'Not Suitable Site' ||
+          matchingInternships.some((i) => i.status === 'Not Suitable Site') ||
+          sortedAppointments.some((a) =>
+            a.status === 'Not Suitable Site' ||
+            a.appointmentOutcome === 'not_suitable_site' ||
+            (a.status === 'Declined' && a.cancellationTypeLabel === 'Not Suitable Site')
+          )
+        );
+
+      // Industry Rejected — industry declined the student
+      const hasIndustryRejected =
+        !hasCompleted && !hasStudentWithdraw && !hasNotSuitableSite && (
+          ['Industry Rejected', 'Declined'].includes(stu.placementStatus) ||
+          matchingInternships.some((i) => ['Declined', 'Industry Rejected'].includes(i.status)) ||
+          sortedAppointments.some((a) =>
+            ['Industry Rejected', 'Declined'].includes(a.status) ||
+            (a.status === 'Declined' && a.appointmentOutcome !== 'not_suitable_site') ||
+            a.appointmentOutcome === 'industry_rejected' ||
+            (a.cancellationType === 'industry' && a.status === 'Cancelled')
+          )
+        );
+
+      // Student Missed Appointment — No Show
+      const hasStudentMissed =
+        !hasCompleted &&
+        !hasNotSuitableSite &&
+        !hasStudentWithdraw &&
+        !hasIndustryRejected &&
+        (
+          ['Student Missed Appointment', 'No Show'].includes(stu.placementStatus) ||
+          matchingInternships.some((i) => ['No Show', 'Student Missed Appointment'].includes(i.status)) ||
+          sortedAppointments.some((a) =>
+            ['No Show', 'Student Missed Appointment'].includes(a.status) ||
+            a.appointmentOutcome === 'student_missed'
+          )
+        );
+
+      // The most recent NON-terminal appointment wins over any terminal one.
+      // If there is any active (Scheduled/Confirmed) appointment, that takes precedence
+      // over any Withdrawn/Declined appointment regardless of date order.
+      const hasAnyActive = sortedAppointments.some((a) => ACTIVE_APPT_STATUSES.includes(a.status));
+      const mostRecentAppt = hasAnyActive
+        ? sortedAppointments.find((a) => ACTIVE_APPT_STATUSES.includes(a.status))
+        : sortedAppointments[0];
+      const mostRecentIsTerminal = !hasAnyActive && mostRecentAppt && TERMINAL_APPT_STATUSES.includes(mostRecentAppt.status);
+
       const hasStartedPlacement =
-        !hasCompleted && !mostRecentIsTerminal && (
+        !hasCompleted &&
+        !hasStudentWithdraw &&
+        !hasNotSuitableSite &&
+        !hasIndustryRejected &&
+        !hasStudentMissed &&
+        !mostRecentIsTerminal && (
           matchingInternships.some((i) =>
             i.status === 'Placement Started' ||
             i.status === 'Active' ||
             (
               i.start &&
-              !['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Withdrawn', 'Cancelled', 'Completed', 'Placement Completed', 'Not Suitable Site'].includes(i.status) &&
+              !['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Completed', 'Placement Completed', 'Not Suitable Site'].includes(i.status) &&
               !isNaN(new Date(i.start).getTime()) &&
               new Date(i.start) <= now
             )
@@ -578,52 +649,6 @@ export default function WorkflowPage() {
             }
             return false;
           })
-        );
-
-      // Student Withdraw — most recent appointment or any internship is withdrawn
-      const hasStudentWithdraw =
-        !hasCompleted && !hasStartedPlacement && (
-          stu.placementStatus === 'Student Withdraw' ||
-          sortedAppointments.some((a) =>
-            a.status === 'Withdrawn' ||
-            a.status === 'Student Withdraw' ||
-            a.appointmentOutcome === 'student_withdrawal' ||
-            a.cancellationType === 'withdrawn'
-          ) ||
-          matchingInternships.some((i) => i.status === 'Withdrawn')
-        );
-
-      // Not Suitable Site — site was deemed inappropriate
-      const hasNotSuitableSite =
-        !hasCompleted && !hasStartedPlacement && !hasStudentWithdraw && (
-          stu.placementStatus === 'Not Suitable Site' ||
-          sortedAppointments.some((a) =>
-            a.status === 'Not Suitable Site' ||
-            a.appointmentOutcome === 'not_suitable_site' ||
-            (a.status === 'Declined' && a.cancellationTypeLabel === 'Not Suitable Site')
-          )
-        );
-
-      // Industry Rejected — industry declined the student
-      const hasIndustryRejected =
-        !hasCompleted && !hasStartedPlacement && !hasStudentWithdraw && !hasNotSuitableSite && (
-          stu.placementStatus === 'Industry Rejected' ||
-          sortedAppointments.some((a) =>
-            a.status === 'Industry Rejected' ||
-            (a.status === 'Declined' && a.appointmentOutcome !== 'not_suitable_site') ||
-            a.appointmentOutcome === 'industry_rejected' ||
-            (a.cancellationType === 'industry' && a.status === 'Cancelled')
-          ) ||
-          matchingInternships.some((i) => i.status === 'Declined' || i.status === 'Industry Rejected')
-        );
-
-      // Student Missed Appointment — No Show
-      const hasStudentMissed =
-        !hasCompleted && !hasStartedPlacement &&
-        !hasNotSuitableSite && !hasStudentWithdraw && !hasIndustryRejected &&
-        (
-          stu.placementStatus === 'Student Missed Appointment' ||
-          sortedAppointments.some((a) => a.status === 'No Show' || a.status === 'Student Missed Appointment')
         );
 
       // Appointment Successful — outcome confirmed, not yet commenced
@@ -672,16 +697,16 @@ export default function WorkflowPage() {
         dynamicPlacementStatus = 'N/A';
       } else if (hasCompleted) {
         dynamicPlacementStatus = 'Placement Completed';
-      } else if (hasStartedPlacement) {
-        dynamicPlacementStatus = 'Placement Started';
-      } else if (hasNotSuitableSite) {
-        dynamicPlacementStatus = 'Not Suitable Site';
       } else if (hasStudentWithdraw) {
         dynamicPlacementStatus = 'Student Withdraw';
+      } else if (hasNotSuitableSite) {
+        dynamicPlacementStatus = 'Not Suitable Site';
       } else if (hasIndustryRejected) {
         dynamicPlacementStatus = 'Industry Rejected';
       } else if (hasStudentMissed) {
         dynamicPlacementStatus = 'Student Missed Appointment';
+      } else if (hasStartedPlacement) {
+        dynamicPlacementStatus = 'Placement Started';
       } else if (hasApptSuccessful) {
         dynamicPlacementStatus = 'Appointment Successful';
       } else if (hasScheduledAppt) {
@@ -752,8 +777,8 @@ export default function WorkflowPage() {
     // Deduplicate by student: if multiple requests exist for the same student, keep the newest one
     const seenStudents = new Set();
     const sorted = [...filtered].sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      const tA = new Date(a.createdAt || a.date || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
       return tB - tA;
     });
 
@@ -824,8 +849,8 @@ export default function WorkflowPage() {
         };
       })
       .sort((a, b) => {
-        const tA = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
-        const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+        const tA = new Date(a.createdAt || a.date || a.updatedAt || 0).getTime();
+        const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
         return tB - tA;
       });
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators, inactiveSnoozedStudentKeys]);
@@ -945,8 +970,8 @@ export default function WorkflowPage() {
         };
       })
       .sort((a, b) => {
-        const tA = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
-        const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+        const tA = new Date(a.createdAt || a.date || a.updatedAt || 0).getTime();
+        const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
         return tB - tA;
       });
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, inactiveSnoozedStudentKeys]);
@@ -1091,8 +1116,8 @@ export default function WorkflowPage() {
     });
 
     result.sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || a.start || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || b.start || 0).getTime();
+      const tA = new Date(a.createdAt || a.start || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.start || b.updatedAt || 0).getTime();
       return tB - tA;
     });
 
@@ -1106,6 +1131,7 @@ export default function WorkflowPage() {
     try {
       const result = await createInternshipRequest(wfId, requestData);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       return result.data;
     } catch (err) {
       console.error('Failed to create request:', err);
@@ -1173,6 +1199,7 @@ export default function WorkflowPage() {
           }
 
           await refreshWorkflowData();
+      notifyPlacementDataChanged();
           return result?.data;
         }
       } else {
@@ -1205,6 +1232,7 @@ export default function WorkflowPage() {
           updateStudent(studentId, studentUpdate).catch(() => {});
         }
         await refreshWorkflowData();
+      notifyPlacementDataChanged();
         return created?.data;
       }
       return;
@@ -1242,6 +1270,7 @@ export default function WorkflowPage() {
       }
 
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       return result.data;
     } catch (err) {
       console.error('Failed to update request:', err);
@@ -1268,9 +1297,11 @@ export default function WorkflowPage() {
     try {
       await deleteInternshipRequest(wfId, requestId);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     } catch (err) {
       console.error('Failed to delete request:', err);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       throw err;
     }
   }, [workflowId, workflow, refreshWorkflowData]);
@@ -1300,6 +1331,7 @@ export default function WorkflowPage() {
     try {
       const result = await createAppointment(wfId, appointmentData);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       return result.data;
     } catch (err) {
       console.error('Failed to create appointment:', err);
@@ -1418,6 +1450,7 @@ export default function WorkflowPage() {
       // ────────────────────────────────────────────────────────────────────
 
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
 
       // Navigation: Only go to Step 4 if successful placement.
       // Do NOT kick back to Step 1 on rejection/withdrawal — keep student visible in Step 3!
@@ -1456,10 +1489,12 @@ export default function WorkflowPage() {
       const result = await deleteAppointment(wfId, appointmentId);
       console.log('✅ Appointment deleted:', result);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       return result;
     } catch (err) {
       console.error('Failed to delete appointment:', err);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       throw err;
     }
   }, [workflowId, workflow, refreshWorkflowData]);
@@ -1469,6 +1504,7 @@ export default function WorkflowPage() {
     try {
       const result = await createInternship(wfId, internshipData);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       return result.data;
     } catch (err) {
       console.error('Failed to create internship:', err);
@@ -1480,13 +1516,49 @@ export default function WorkflowPage() {
     const wfId = workflowId || workflow?._id || workflow?.id || 'default';
     try {
       const result = await updateInternship(wfId, internshipId, internshipData);
+
+      // Find student and synchronize StudentModel placementStatus
+      if (internshipData.status) {
+        const allInts = workflow?.internships || [];
+        const allAppts = workflow?.appointments || [];
+        const matched = allInts.find(i => String(i._id) === String(internshipId) || i.intId === internshipId || String(i.id) === String(internshipId)) ||
+                        allAppts.find(a => String(a._id) === String(internshipId) || a.apptId === internshipId || String(a.id) === String(internshipId));
+        const stuName = internshipData.student || matched?.student;
+        const stuId = internshipData.studentId || matched?.studentId;
+
+        const canonicalStatus =
+          ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(internshipData.status) ? 'Student Withdraw' :
+          ['Declined', 'Industry Rejected'].includes(internshipData.status) ? 'Industry Rejected' :
+          ['Student Missed Appointment', 'No Show'].includes(internshipData.status) ? 'Student Missed Appointment' :
+          internshipData.status === 'Not Suitable Site' ? 'Not Suitable Site' :
+          ['Placement Completed', 'Completed'].includes(internshipData.status) ? 'Placement Completed' :
+          ['Placement Started', 'Active', 'Joined'].includes(internshipData.status) ? 'Placement Started' :
+          ['Waiting to Join'].includes(internshipData.status) ? 'Waiting to Join' :
+          internshipData.status;
+
+        const targetStu = (workflowStudents || []).find(s =>
+          (stuId && (s.studentId === stuId || String(s._id || s.id) === String(stuId))) ||
+          (stuName && (s.name?.trim().toLowerCase() === String(stuName).trim().toLowerCase() ||
+           `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase() === String(stuName).trim().toLowerCase()))
+        );
+
+        const stuDbId = targetStu?.id || targetStu?._id || stuId;
+        if (stuDbId) {
+          try {
+            await updateStudent(stuDbId, { placementStatus: canonicalStatus });
+          } catch (_) {}
+        }
+      }
+
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
+      notifyPlacementDataChanged();
       return result.data;
     } catch (err) {
       console.error('Failed to update internship:', err);
       throw err;
     }
-  }, [workflowId, workflow, refreshWorkflowData]);
+  }, [workflowId, workflow, workflowStudents, refreshWorkflowData]);
 
   const handleDeleteInternship = useCallback(async (internshipId) => {
     const wfId = workflowId || workflow?._id || workflow?.id || 'default';
@@ -1513,9 +1585,11 @@ export default function WorkflowPage() {
     try {
       await deleteInternship(wfId, internshipId);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     } catch (err) {
       console.error('Failed to delete internship:', err);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
       throw err;
     }
   }, [workflowId, workflow, refreshWorkflowData]);
@@ -1525,12 +1599,14 @@ export default function WorkflowPage() {
     try {
       await bulkDeleteInternshipRequests(wfId, requestIds);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     } catch (err) {
       console.error('Failed to bulk delete requests:', err);
       for (const id of requestIds) {
         try { await deleteInternshipRequest(wfId, id); } catch (_) {}
       }
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     }
   }, [workflowId, workflow, refreshWorkflowData]);
 
@@ -1539,12 +1615,14 @@ export default function WorkflowPage() {
     try {
       await bulkDeleteAppointments(wfId, appointmentIds);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     } catch (err) {
       console.error('Failed to bulk delete appointments:', err);
       for (const id of appointmentIds) {
         try { await deleteAppointment(wfId, id); } catch (_) {}
       }
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     }
   }, [workflowId, workflow, refreshWorkflowData]);
 
@@ -1553,12 +1631,14 @@ export default function WorkflowPage() {
     try {
       await bulkDeleteInternships(wfId, internshipIds);
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     } catch (err) {
       console.error('Failed to bulk delete internships:', err);
       for (const id of internshipIds) {
         try { await deleteInternship(wfId, id); } catch (_) {}
       }
       await refreshWorkflowData();
+      notifyPlacementDataChanged();
     }
   }, [workflowId, workflow, refreshWorkflowData]);
 

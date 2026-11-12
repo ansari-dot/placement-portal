@@ -315,32 +315,67 @@ export class StudentService {
         } else if (studentInts.length > 0 || studentAppts.length > 0) {
           if (
             studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
-            studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status))
+            studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status)) ||
+            ['Completed', 'Placement Completed'].includes(s.placementStatus)
           ) {
-            s.placementStatus = 'Placement Completed';
-          } else if (
-            studentInts.some((i) => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
-            studentAppts.some(
-              (a) =>
-                !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
-                (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
-                a.commencementDate &&
-                new Date(a.commencementDate) <= now
-            )
-          ) {
-            s.placementStatus = 'Placement Started';
-          } else if (
-            studentAppts.some(
-              (a) =>
-                !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status) &&
-                a.appointmentOutcome === 'successful' &&
-                !a.commencementDate
-            )
-          ) {
-            s.placementStatus = 'Appointment Successful';
-          } else if (studentAppts.some((a) => ['Scheduled', 'Rescheduled'].includes(a.status))) {
-            s.placementStatus = 'Appointment Scheduled';
-          }
+          s.placementStatus = 'Placement Completed';
+        } else if (
+          studentInts.some((i) => ['Student Withdraw', 'Student Withdrawn', 'Withdrawn'].includes(i.status)) ||
+          studentAppts.some((a) => ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(a.status) || a.appointmentOutcome === 'student_withdrawal') ||
+          ['Student Withdraw', 'Student Withdrawn', 'Withdrawn'].includes(s.placementStatus)
+        ) {
+          s.placementStatus = 'Student Withdraw';
+        } else if (
+          studentInts.some((i) => i.status === 'Not Suitable Site') ||
+          studentAppts.some((a) => a.status === 'Not Suitable Site' || a.appointmentOutcome === 'not_suitable_site') ||
+          s.placementStatus === 'Not Suitable Site'
+        ) {
+          s.placementStatus = 'Not Suitable Site';
+        } else if (
+          studentInts.some((i) => ['Industry Rejected', 'Declined'].includes(i.status)) ||
+          studentAppts.some((a) => ['Industry Rejected', 'Declined'].includes(a.status) || a.appointmentOutcome === 'industry_rejected') ||
+          ['Industry Rejected', 'Declined'].includes(s.placementStatus)
+        ) {
+          s.placementStatus = 'Industry Rejected';
+        } else if (
+          studentInts.some((i) => ['Student Missed Appointment', 'No Show'].includes(i.status)) ||
+          studentAppts.some((a) => ['Student Missed Appointment', 'No Show'].includes(a.status) || a.appointmentOutcome === 'student_missed') ||
+          ['Student Missed Appointment', 'No Show'].includes(s.placementStatus)
+        ) {
+          s.placementStatus = 'Student Missed Appointment';
+        } else if (
+          studentInts.some((i) => ['Active', 'Placement Started', 'Joined'].includes(i.status)) ||
+          s.placementStatus === 'Placement Started' ||
+          studentAppts.some(
+            (a) =>
+              !['Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status) &&
+              (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
+              a.commencementDate &&
+              new Date(a.commencementDate) <= now
+          )
+        ) {
+          s.placementStatus = 'Placement Started';
+        } else if (
+          studentInts.some((i) => i.status === 'Waiting to Join') ||
+          s.placementStatus === 'Waiting to Join'
+        ) {
+          s.placementStatus = 'Waiting to Join';
+        } else if (
+          studentAppts.some(
+            (a) =>
+              !['Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status) &&
+              a.appointmentOutcome === 'successful' &&
+              !a.commencementDate
+          ) ||
+          s.placementStatus === 'Appointment Successful'
+        ) {
+          s.placementStatus = 'Appointment Successful';
+        } else if (
+          studentAppts.some((a) => ['Scheduled', 'Rescheduled'].includes(a.status)) ||
+          s.placementStatus === 'Appointment Scheduled'
+        ) {
+          s.placementStatus = 'Appointment Scheduled';
+        }
 
           const latestAppt = studentAppts.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
           if (latestAppt) {
@@ -815,6 +850,18 @@ export class StudentService {
               if (isCompleted) {
                 a.status = 'Completed';
                 a.appointmentOutcome = 'successful';
+              } else if (['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(studentData.placementStatus)) {
+                a.status = 'Withdrawn';
+                a.appointmentOutcome = 'student_withdrawal';
+              } else if (['Industry Rejected', 'Declined'].includes(studentData.placementStatus)) {
+                a.status = 'Industry Rejected';
+                a.appointmentOutcome = 'industry_rejected';
+              } else if (['Student Missed Appointment', 'No Show'].includes(studentData.placementStatus)) {
+                a.status = 'No Show';
+                a.appointmentOutcome = 'student_missed';
+              } else if (studentData.placementStatus === 'Not Suitable Site') {
+                a.status = 'Not Suitable Site';
+                a.appointmentOutcome = 'not_suitable_site';
               } else if (studentData.placementStatus === 'Placement Started') {
                 a.status = 'Confirmed';
               }
@@ -833,6 +880,11 @@ export class StudentService {
               (studentDbId && String(r.studentId || '').trim().toLowerCase() === studentDbId.toLowerCase()) ||
               (studentName && String(r.student || '').trim().toLowerCase() === studentName.toLowerCase());
             if (matches) {
+              if (['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment'].includes(studentData.placementStatus)) {
+                r.status = studentData.placementStatus;
+                r.returnedToStep1 = true;
+                wfModified = true;
+              }
               if (studentData.snoozed === true || studentData.internshipPriority === 'Snooze') {
                 r.priority = 'Snooze';
                 r.returnedToStep1 = true;
@@ -863,20 +915,41 @@ export class StudentService {
         }
 
         // 2. Update standalone AppointmentModel
-        if (isCompleted) {
+        if (studentData.placementStatus) {
           try {
             const AppointmentModel = (await import('../appointment/appointment.model.js')).default;
             if (AppointmentModel) {
-              await AppointmentModel.updateMany(
-                {
-                  $or: [
-                    ...(studentBizId ? [{ studentId: studentBizId }, { studentId: new RegExp(`^${studentBizId}$`, 'i') }] : []),
-                    ...(studentName ? [{ student: studentName }, { student: new RegExp(`^${studentName}$`, 'i') }] : []),
-                  ],
-                },
-                { status: 'Completed', appointmentOutcome: 'successful' },
-                { runValidators: false }
-              );
+              const apptUpdate = {};
+              if (isCompleted) {
+                apptUpdate.status = 'Completed';
+                apptUpdate.appointmentOutcome = 'successful';
+              } else if (['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(studentData.placementStatus)) {
+                apptUpdate.status = 'Withdrawn';
+                apptUpdate.appointmentOutcome = 'student_withdrawal';
+              } else if (['Industry Rejected', 'Declined'].includes(studentData.placementStatus)) {
+                apptUpdate.status = 'Industry Rejected';
+                apptUpdate.appointmentOutcome = 'industry_rejected';
+              } else if (['Student Missed Appointment', 'No Show'].includes(studentData.placementStatus)) {
+                apptUpdate.status = 'No Show';
+                apptUpdate.appointmentOutcome = 'student_missed';
+              } else if (studentData.placementStatus === 'Not Suitable Site') {
+                apptUpdate.status = 'Not Suitable Site';
+                apptUpdate.appointmentOutcome = 'not_suitable_site';
+              } else if (studentData.placementStatus === 'Placement Started') {
+                apptUpdate.status = 'Confirmed';
+              }
+              if (Object.keys(apptUpdate).length > 0) {
+                await AppointmentModel.updateMany(
+                  {
+                    $or: [
+                      ...(studentBizId ? [{ studentId: studentBizId }, { studentId: new RegExp(`^${studentBizId}$`, 'i') }] : []),
+                      ...(studentName ? [{ student: studentName }, { student: new RegExp(`^${studentName}$`, 'i') }] : []),
+                    ],
+                  },
+                  { $set: apptUpdate },
+                  { runValidators: false }
+                );
+              }
             }
           } catch (_) {}
         }

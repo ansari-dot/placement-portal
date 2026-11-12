@@ -11,6 +11,9 @@ import {
   checkStudentEmailController,
   updateProfileController,
   submitSupportTicketController,
+  forgotPasswordController,
+  getPasswordResetStatusController,
+  resetPasswordController,
 } from './auth.controller.js';
 import { authenticate, softAuth } from '../../core/guards/auth.guard.js';
 import { authRateLimiter, autocompleteRateLimiter } from '../../core/middlewares/rateLimiter.middleware.js';
@@ -22,6 +25,9 @@ const router = express.Router();
 router.get('/check-student-email', autocompleteRateLimiter, checkStudentEmailController);
 router.get('/rto-autocomplete', autocompleteRateLimiter, rtoAutocompleteController);
 router.get('/industry-autocomplete', autocompleteRateLimiter, industryAutocompleteController);
+router.post('/forgot-password', authRateLimiter, forgotPasswordController);
+router.get('/password-reset-status', autocompleteRateLimiter, getPasswordResetStatusController);
+router.post('/reset-password', authRateLimiter, resetPasswordController);
 router.post('/login', authRateLimiter, validateBody(loginSchema), loginController);
 
 router.post('/signup', authRateLimiter, validateBody(signupSchema), signupController);

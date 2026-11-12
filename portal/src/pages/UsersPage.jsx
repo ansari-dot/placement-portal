@@ -1,12 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import JobLayout from '../components/layout/JobLayout';
 import UsersPageApp from '../components/user/UsersPageApp';
-import { fetchUsers, fetchUserStats, createUser, updateUser, deleteUser, fetchPendingUsers, approveUser, rejectUser } from '../api/userApi';
+import {
+  fetchUsers,
+  fetchUserStats,
+  createUser,
+  updateUser,
+  deleteUser,
+  fetchPendingUsers,
+  approveUser,
+  rejectUser,
+  fetchPendingPasswordResets,
+  approvePasswordReset,
+  rejectPasswordReset,
+} from '../api/userApi';
 import { toast } from 'react-toastify';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [pendingPasswordResets, setPendingPasswordResets] = useState([]);
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -25,16 +38,20 @@ export default function UsersPage() {
 
   const loadData = useCallback(async (filters = {}) => {
     try {
-      const [userList, userStats, pendingList] = await Promise.all([
+      const [userList, userStats, pendingList, resetsList] = await Promise.all([
         fetchUsers(filters),
         fetchUserStats(),
-        fetchPendingUsers()
+        fetchPendingUsers(),
+        fetchPendingPasswordResets().catch(() => ({ success: true, data: [] })),
       ]);
       if (userList.success && userList.data) setUsers(userList.data);
       if (userStats.success && userStats.data) setStats(userStats.data);
       if (pendingList.success && pendingList.data) {
         setPendingUsers(pendingList.data);
         window.dispatchEvent(new Event('user-approval-changed'));
+      }
+      if (resetsList?.success && resetsList?.data) {
+        setPendingPasswordResets(resetsList.data);
       }
     } catch (err) {
       console.error('Failed to load User data:', err);
@@ -116,6 +133,28 @@ export default function UsersPage() {
     }
   }, [loadData]);
 
+  const handleApprovePasswordReset = useCallback(async (id, userName = 'user') => {
+    try {
+      await approvePasswordReset(id);
+      await loadData();
+      toast.success(`Password reset for ${userName} has been approved.`);
+    } catch (err) {
+      console.error('Failed to approve password reset:', err);
+      toast.error(err?.response?.data?.message || 'Failed to approve password reset.');
+    }
+  }, [loadData]);
+
+  const handleRejectPasswordReset = useCallback(async (id, userName = 'user') => {
+    try {
+      await rejectPasswordReset(id);
+      await loadData();
+      toast.info(`Password reset for ${userName} has been rejected.`);
+    } catch (err) {
+      console.error('Failed to reject password reset:', err);
+      toast.error(err?.response?.data?.message || 'Failed to reject password reset.');
+    }
+  }, [loadData]);
+
   const handleOpenAddModal = (user = null) => {
     setEditingUser(user);
     setShowModal(true);
@@ -131,6 +170,7 @@ export default function UsersPage() {
       <UsersPageApp
         users={users}
         pendingUsers={pendingUsers}
+        pendingPasswordResets={pendingPasswordResets}
         stats={stats}
         onFilterChange={loadData}
         onDeleteUser={handleDeleteUser}
@@ -142,6 +182,8 @@ export default function UsersPage() {
         onUpdateUser={handleUpdateUser}
         onApproveUser={handleApproveUser}
         onRejectUser={handleRejectUser}
+        onApprovePasswordReset={handleApprovePasswordReset}
+        onRejectPasswordReset={handleRejectPasswordReset}
       />
     </JobLayout>
   );

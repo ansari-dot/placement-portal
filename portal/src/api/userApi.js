@@ -55,3 +55,18 @@ export const fetchCoordinators = async (params) => {
   return response.data;
 };
 
+export const fetchPendingPasswordResets = async () => {
+  const response = await api.get('/users/pending-password-resets');
+  return response.data;
+};
+
+export const approvePasswordReset = async (id) => {
+  const response = await api.post(`/users/${id}/approve-password-reset`);
+  return response.data;
+};
+
+export const rejectPasswordReset = async (id) => {
+  const response = await api.post(`/users/${id}/reject-password-reset`);
+  return response.data;
+};
+

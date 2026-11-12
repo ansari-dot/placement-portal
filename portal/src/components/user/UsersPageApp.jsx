@@ -3,7 +3,7 @@ import {
   Users, Search, ChevronDown, Filter, Plus, Trash2, X,
   ShieldCheck, UserCheck, UserX, Building2, Mail, Phone,
   Calendar, CheckCircle2, Clock, MoreVertical, Edit2,
-  UserPlus, Check, XCircle, AlertCircle, Eye
+  UserPlus, Check, XCircle, AlertCircle, Eye, KeyRound
 } from 'lucide-react';
 import { LivePresenceBadge, formatLastSeen } from '../../utils/presenceUtils';
 
@@ -582,6 +582,84 @@ function PendingRequests({ pendingUsers = [], onApproveUser, onRejectUser, onVie
 }
 
 // ==========================================
+// 5B. PENDING PASSWORD RESET REQUESTS COMPONENT
+// ==========================================
+function PendingPasswordResets({ pendingPasswordResets = [], onApprovePasswordReset, onRejectPasswordReset }) {
+  if (!pendingPasswordResets || pendingPasswordResets.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-amber-200/90 shadow-xs overflow-hidden">
+      <div className="px-6 py-4 bg-gradient-to-r from-amber-50/90 via-orange-50/40 to-amber-50/30 border-b border-amber-200 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-xs">
+            <KeyRound className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Pending Password Reset Approval Requests</h3>
+            <p className="text-xs text-slate-500 font-medium">
+              Review and approve password reset requests. Approved users can set their new password upon logging in.
+            </p>
+          </div>
+        </div>
+        <span className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-lg border border-amber-300">
+          {pendingPasswordResets.length} Action Required
+        </span>
+      </div>
+
+      <div className="divide-y divide-slate-100 bg-white">
+        {pendingPasswordResets.map((u) => {
+          const uId = u.id || u._id;
+          const initials = (u.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+          return (
+            <div key={uId} className="px-6 py-4 flex items-center justify-between hover:bg-amber-50/20 transition-colors">
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white font-bold flex items-center justify-center text-xs shadow-xs">
+                  {initials}
+                </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-sm">{u.name}</span>
+                    <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold border bg-slate-100 text-slate-700">
+                      {u.role}
+                    </span>
+                  </div>
+                  <span className="text-slate-500 text-xs font-medium">{u.email}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <span className="text-slate-400 text-xs font-medium">
+                  Requested: {u.forgotPasswordRequestedAt ? new Date(u.forgotPasswordRequestedAt).toLocaleString() : 'Recently'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onApprovePasswordReset(uId, u.name)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors shadow-xs cursor-pointer"
+                    title="Approve password reset request"
+                  >
+                    <Check className="w-4 h-4" />
+                    Approve Reset
+                  </button>
+                  <button
+                    onClick={() => onRejectPasswordReset(uId, u.name)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold rounded-lg transition-colors shadow-xs cursor-pointer"
+                    title="Reject password reset request"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Reject
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
 // 6. USER DETAIL VIEW MODAL COMPONENT
 // ==========================================
 function UserDetailModal({ user, onClose, onEdit }) {
@@ -741,6 +819,7 @@ function UserDetailModal({ user, onClose, onEdit }) {
 export default function UsersPageApp({
   users = [],
   pendingUsers = [],
+  pendingPasswordResets = [],
   stats,
   onFilterChange,
   onDeleteUser,
@@ -751,7 +830,9 @@ export default function UsersPageApp({
   editingUser,
   onUpdateUser,
   onApproveUser,
-  onRejectUser
+  onRejectUser,
+  onApprovePasswordReset,
+  onRejectPasswordReset,
 }) {
   const [viewingUser, setViewingUser] = useState(null);
   const [modalName, setModalName] = useState('');
@@ -827,6 +908,13 @@ export default function UsersPageApp({
       <div className="p-6 max-w-[1600px] mx-auto w-full space-y-6">
         {/* KPI Overview */}
         <MetricsCards stats={stats} />
+
+        {/* Pending Password Reset Requests */}
+        <PendingPasswordResets
+          pendingPasswordResets={pendingPasswordResets}
+          onApprovePasswordReset={onApprovePasswordReset}
+          onRejectPasswordReset={onRejectPasswordReset}
+        />
 
         {/* Pending Registration Requests */}
         <PendingRequests

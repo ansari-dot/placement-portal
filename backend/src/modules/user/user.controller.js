@@ -177,3 +177,41 @@ export const getCoordinatorsController = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getPendingPasswordResetsController = async (req, res, next) => {
+  try {
+    const requests = await UserService.getPendingPasswordResets();
+    res.status(200).json({
+      success: true,
+      data: requests,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const approvePasswordResetController = async (req, res, next) => {
+  try {
+    const user = await UserService.approvePasswordReset(req.params.id, req.user);
+    res.status(200).json({
+      success: true,
+      message: `Password reset approved for ${user.name}. User can now reset password on login.`,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const rejectPasswordResetController = async (req, res, next) => {
+  try {
+    const user = await UserService.rejectPasswordReset(req.params.id, req.user);
+    res.status(200).json({
+      success: true,
+      message: `Password reset rejected for ${user.name}.`,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

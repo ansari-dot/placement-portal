@@ -273,48 +273,49 @@ export const calculateLifecycleStatus = (student, workflowData = null) => {
     return STUDENT_LIFECYCLE_STATUSES.PLACEMENT_COMPLETED;
   }
   
-  // 2. Check for Placement Unsuccessful (terminal outcomes)
-  const terminalAppointment = sortedAppointments.find(a => {
-    const status = a.status || '';
-    const outcome = a.appointmentOutcome || '';
-    return (
-      status === 'Industry Rejected' ||
-      status === 'Declined' ||
-      status === 'Not Suitable Site' ||
-      status === 'Withdrawn' ||
-      status === 'Student Missed Appointment' ||
-      status === 'No Show' ||
-      outcome === 'industry_rejected' ||
-      outcome === 'student_withdrawal' ||
-      outcome === 'not_suitable_site' ||
-      outcome === 'student_missed'
-    );
-  });
-  
-  if (terminalAppointment) {
-    const status = terminalAppointment.status || '';
-    const outcome = terminalAppointment.appointmentOutcome || '';
-    
-    if (status === 'Industry Rejected' || outcome === 'industry_rejected') {
-      return STUDENT_LIFECYCLE_STATUSES.STUDENT_REJECTED;
-    }
-    if (status === 'Not Suitable Site' || outcome === 'not_suitable_site') {
-      return STUDENT_LIFECYCLE_STATUSES.PLACEMENT_UNSUCCESSFUL;
-    }
-    if (status === 'Withdrawn' || status === 'Student Withdraw' || outcome === 'student_withdrawal') {
-      return STUDENT_LIFECYCLE_STATUSES.STUDENT_WITHDRAWN;
-    }
-    if (status === 'Student Missed Appointment' || status === 'No Show' || outcome === 'student_missed') {
-      return STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_MISSED;
-    }
+  // 2. Check for Placement Unsuccessful / Withdrawn / Rejected (terminal outcomes)
+  const isWithdrawn =
+    ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(student.placementStatus) ||
+    studentInternships.some(i => ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(i.status)) ||
+    sortedAppointments.some(a => ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(a.status) || a.appointmentOutcome === 'student_withdrawal');
+
+  if (isWithdrawn) {
+    return STUDENT_LIFECYCLE_STATUSES.STUDENT_WITHDRAWN;
   }
-  
+
+  const isNotSuitable =
+    student.placementStatus === 'Not Suitable Site' ||
+    studentInternships.some(i => i.status === 'Not Suitable Site') ||
+    sortedAppointments.some(a => a.status === 'Not Suitable Site' || a.appointmentOutcome === 'not_suitable_site');
+
+  if (isNotSuitable) {
+    return STUDENT_LIFECYCLE_STATUSES.PLACEMENT_UNSUCCESSFUL;
+  }
+
+  const isRejected =
+    ['Industry Rejected', 'Declined'].includes(student.placementStatus) ||
+    studentInternships.some(i => ['Industry Rejected', 'Declined'].includes(i.status)) ||
+    sortedAppointments.some(a => ['Industry Rejected', 'Declined'].includes(a.status) || a.appointmentOutcome === 'industry_rejected');
+
+  if (isRejected) {
+    return STUDENT_LIFECYCLE_STATUSES.STUDENT_REJECTED;
+  }
+
+  const isMissed =
+    ['Student Missed Appointment', 'No Show'].includes(student.placementStatus) ||
+    studentInternships.some(i => ['Student Missed Appointment', 'No Show'].includes(i.status)) ||
+    sortedAppointments.some(a => ['Student Missed Appointment', 'No Show'].includes(a.status) || a.appointmentOutcome === 'student_missed');
+
+  if (isMissed) {
+    return STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_MISSED;
+  }
+
   // 3. Check for Placement In Progress
   const now = new Date();
   if (
     studentInternships.some(i => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
     sortedAppointments.some(a => {
-      if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status)) return false;
+      if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
       if (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') {
         return a.commencementDate && new Date(a.commencementDate) <= now;
       }

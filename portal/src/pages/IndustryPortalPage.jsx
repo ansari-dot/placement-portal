@@ -42,7 +42,12 @@ export default function IndustryPortalPage() {
       setLoading(true);
       const res = await fetchStudents();
       const list = res?.data ?? res ?? [];
-      setStudents(Array.isArray(list) ? list : []);
+      const sorted = (Array.isArray(list) ? list : []).sort((a, b) => {
+        const tA = new Date(a.createdAt || a.created || a.addedOn || a.updatedAt || 0).getTime();
+        const tB = new Date(b.createdAt || b.created || b.addedOn || b.updatedAt || 0).getTime();
+        return tB - tA;
+      });
+      setStudents(sorted);
     } catch (err) {
       console.error('Failed to load industry students:', err);
       toast.error('Unable to load assigned students.');

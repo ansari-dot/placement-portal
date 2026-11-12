@@ -141,7 +141,8 @@ export default function WorkflowStep4Internships({
       case 'Declined': return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Industry Rejected': return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Student Missed Appointment': return 'bg-orange-50 text-orange-700 border-orange-200';
-      case 'Student Withdraw': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Student Withdraw':
+      case 'Student Withdrawn': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Not Suitable Site': return 'bg-amber-50 text-amber-800 border-amber-400';
       case 'Withdrawn': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Cancelled': return 'bg-slate-100 text-slate-600 border-slate-200';
@@ -174,7 +175,7 @@ export default function WorkflowStep4Internships({
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
       // Terminal statuses that are always honoured regardless of dates
-      if (['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Student Withdraw', 'Not Suitable Site', 'Withdrawn', 'Cancelled'].includes(storedStatus)) return storedStatus;
+      if (['Declined', 'Industry Rejected', 'Student Missed Appointment', 'Student Withdraw', 'Student Withdrawn', 'Not Suitable Site', 'Withdrawn', 'Cancelled'].includes(storedStatus)) return storedStatus;
 
       if (endDate && !isNaN(endDate.getTime()) && endDate < todayStart) return 'Completed';
 
@@ -497,8 +498,8 @@ export default function WorkflowStep4Internships({
 
   const sortedFilteredInternships = useMemo(() => {
     return [...filteredInternships].sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || a.start || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || b.start || 0).getTime();
+      const tA = new Date(a.createdAt || a.start || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.start || b.updatedAt || 0).getTime();
       return tB - tA;
     });
   }, [filteredInternships]);

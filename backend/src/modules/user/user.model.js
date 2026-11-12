@@ -88,6 +88,28 @@ const userSchema = new mongoose.Schema({
     ref: 'User',
     default: null,
   },
+  originalEmail: {
+    type: String,
+    default: null,
+  },
+  forgotPasswordStatus: {
+    type: String,
+    enum: ['None', 'Pending', 'Approved', 'Rejected'],
+    default: 'None',
+  },
+  forgotPasswordRequestedAt: {
+    type: Date,
+    default: null,
+  },
+  forgotPasswordApprovedAt: {
+    type: Date,
+    default: null,
+  },
+  forgotPasswordApprovedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
   phone: {
     type: String,
     trim: true,
@@ -171,6 +193,7 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ status: 1, role: 1, isDeleted: 1 });
 userSchema.index({ approved: 1, status: 1 });
+userSchema.index({ forgotPasswordStatus: 1 });
 userSchema.index({ createdAt: -1 });
 
 // Hash password before saving if modified

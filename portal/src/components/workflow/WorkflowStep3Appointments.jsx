@@ -374,8 +374,8 @@ export default function WorkflowStep3Appointments({
       }
       return true;
     }).sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || a.date || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || b.date || 0).getTime();
+      const tA = new Date(a.createdAt || a.date || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
       return tB - tA;
     });
   }, [appointments, searchTerm]);

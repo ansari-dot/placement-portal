@@ -162,6 +162,56 @@ export const submitSupportTicketController = async (req, res, next) => {
   }
 };
 
+export const forgotPasswordController = async (req, res, next) => {
+  try {
+    const { email, note } = req.body;
+    const result = await AuthService.requestForgotPassword(email, note);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPasswordResetStatusController = async (req, res, next) => {
+  try {
+    const email = String(req.query.email || req.query.q || '');
+    const result = await AuthService.getPasswordResetStatus(email);
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetPasswordController = async (req, res, next) => {
+  try {
+    const { email, newPassword } = req.body;
+    const result = await AuthService.resetPasswordWithApproval(email, newPassword);
+
+    res.cookie('token', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 5 * 60 * 60 * 1000,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.user,
+      token: result.token,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
 

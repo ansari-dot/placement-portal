@@ -1239,12 +1239,26 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
         for (const appt of workflow.appointments) {
             const matches =
                 (existingInt.studentId && appt.studentId === existingInt.studentId) ||
-                (existingInt.student && appt.student === existingInt.student);
+                (existingInt.student && String(appt.student || '').trim().toLowerCase() === String(existingInt.student || '').trim().toLowerCase());
             if (matches) {
                 if (isCompleted) {
                     appt.status = 'Completed';
                     appt.appointmentOutcome = 'successful';
-                } else if (internshipData.status === 'Placement Started') {
+                } else if (['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(internshipData.status)) {
+                    appt.status = 'Withdrawn';
+                    appt.appointmentOutcome = 'student_withdrawal';
+                } else if (['Industry Rejected', 'Declined'].includes(internshipData.status)) {
+                    appt.status = 'Industry Rejected';
+                    appt.appointmentOutcome = 'industry_rejected';
+                } else if (['Student Missed Appointment', 'No Show'].includes(internshipData.status)) {
+                    appt.status = 'No Show';
+                    appt.appointmentOutcome = 'student_missed';
+                } else if (['Not Suitable Site'].includes(internshipData.status)) {
+                    appt.status = 'Not Suitable Site';
+                    appt.appointmentOutcome = 'not_suitable_site';
+                } else if (['Placement Started', 'Active', 'Joined'].includes(internshipData.status)) {
+                    appt.status = 'Confirmed';
+                } else if (['Appointment Successful', 'Waiting to Join'].includes(internshipData.status)) {
                     appt.status = 'Confirmed';
                 }
                 if (appt._id && mongoose.Types.ObjectId.isValid(appt._id)) {
@@ -1254,6 +1268,20 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
                     }, { runValidators: false }).catch(() => {});
                 }
             }
+        }
+
+        // Sync corresponding requests in workflow & InternshipRequestModel
+        if (workflow.requests && workflow.requests.length > 0) {
+            const isTerminalOutcome = ['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(internshipData.status);
+            workflow.requests.forEach((req) => {
+                const matches =
+                    (existingInt.studentId && (req.studentId === existingInt.studentId || req.id === existingInt.studentId)) ||
+                    (existingInt.student && req.student && req.student.trim().toLowerCase() === String(existingInt.student).trim().toLowerCase());
+                if (matches && isTerminalOutcome) {
+                    req.status = newPs;
+                    req.returnedToStep1 = true;
+                }
+            });
         }
 
         await workflow.save({ validateBeforeSave: false });
@@ -1298,10 +1326,16 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
                 appt.status = 'Confirmed';
             } else if (internshipData.status === 'Declined' || internshipData.status === 'Industry Rejected') {
                 appt.status = 'Industry Rejected';
-            } else if (internshipData.status === 'Student Missed Appointment') {
+                appt.appointmentOutcome = 'industry_rejected';
+            } else if (internshipData.status === 'Student Missed Appointment' || internshipData.status === 'No Show') {
                 appt.status = 'No Show';
-            } else if (internshipData.status === 'Withdrawn' || internshipData.status === 'Student Withdraw') {
+                appt.appointmentOutcome = 'student_missed';
+            } else if (['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(internshipData.status)) {
                 appt.status = 'Withdrawn';
+                appt.appointmentOutcome = 'student_withdrawal';
+            } else if (internshipData.status === 'Not Suitable Site') {
+                appt.status = 'Not Suitable Site';
+                appt.appointmentOutcome = 'not_suitable_site';
             } else if (internshipData.status === 'Cancelled') {
                 appt.status = 'Cancelled';
             }

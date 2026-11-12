@@ -110,24 +110,62 @@ export class AuthService {
     else if (role === 'Industry' || role === 'Industry/Host') canonicalRole = 'Industry';
     else if (role === 'Student') canonicalRole = 'Student';
 
-    // Check unique email
+    // Check unique email (if soft-deleted user exists with this email, release it)
     const existingUser = await UserModel.findOne({ email: normEmail });
     if (existingUser) {
-      throw new ConflictError('A user with this email address already exists');
+      if (existingUser.isDeleted === true) {
+        if (!existingUser.originalEmail) existingUser.originalEmail = existingUser.email;
+        existingUser.email = `deleted_${Date.now()}_${existingUser.email}`;
+        await existingUser.save();
+      } else {
+        throw new ConflictError('A user with this email address already exists');
+      }
     }
 
     // Auto-resolve RTO for RTO Manager signup if matching RTO is in system
     let boundRtoId = null;
     let boundRtoName = null;
-    if (canonicalRole === 'RTO Manager' && rtoName) {
+    if (canonicalRole === 'RTO Manager' || canonicalRole === 'RTO') {
       try {
-        const cleanRto = rtoName.trim();
-        const matched = await RtoModel.findOne({
-          name: { $regex: `^${cleanRto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-        });
+        let matched = null;
+        // 1. Try finding RTO by registered contact email
+        matched = await RtoModel.findOne({ contactEmail: normEmail });
+
+        // 2. If not found by email, try matching by selected rtoName
+        if (!matched && rtoName) {
+          const cleanRto = rtoName.trim();
+          matched = await RtoModel.findOne({
+            name: { $regex: `^${cleanRto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+          });
+          if (!matched) {
+            matched = await RtoModel.findOne({
+              name: { $regex: cleanRto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' },
+            });
+          }
+        }
+
         if (matched) {
           boundRtoId = matched._id;
           boundRtoName = matched.name;
+
+          // Auto-link any existing students in the database whose assignedRto or institute matches this RTO
+          try {
+            const cleanName = matched.name.trim();
+            const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            await StudentModel.updateMany(
+              {
+                $or: [
+                  { assignedRto: { $regex: escaped, $options: 'i' } },
+                  { institute: { $regex: escaped, $options: 'i' } },
+                  { rtoId: matched._id },
+                ],
+                $or: [{ rtoId: null }, { rtoId: { $exists: false } }],
+              },
+              { $set: { rtoId: matched._id, assignedRto: matched.name } }
+            );
+          } catch (linkErr) {
+            console.error('Error auto-linking students on RTO signup:', linkErr.message);
+          }
         }
       } catch (_) {}
     }
@@ -135,12 +173,20 @@ export class AuthService {
     // Auto-resolve Industry facility for Industry signup if matching Industry is in system
     let boundIndustryId = null;
     let boundFacilityName = null;
-    if (canonicalRole === 'Industry' && facilityName) {
+    if (canonicalRole === 'Industry') {
       try {
-        const cleanFac = facilityName.trim();
-        const matched = await IndustryModel.findOne({
-          name: { $regex: `^${cleanFac.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-        });
+        let matched = await IndustryModel.findOne({ contactEmail: normEmail });
+        if (!matched && facilityName) {
+          const cleanFac = facilityName.trim();
+          matched = await IndustryModel.findOne({
+            name: { $regex: `^${cleanFac.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+          });
+          if (!matched) {
+            matched = await IndustryModel.findOne({
+              name: { $regex: cleanFac.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' },
+            });
+          }
+        }
         if (matched) {
           boundIndustryId = matched._id;
           boundFacilityName = matched.name;
@@ -452,8 +498,8 @@ export class AuthService {
       };
     }
 
-    // 1. Check if a User account already exists
-    const existingUser = await UserModel.findOne({ email: normEmail, isDeleted: false });
+    // 1. Check if an active User account already exists (ignore soft-deleted users)
+    const existingUser = await UserModel.findOne({ email: normEmail, isDeleted: { $ne: true } });
     if (existingUser) {
       return {
         foundInDatabase: false,
@@ -462,16 +508,33 @@ export class AuthService {
       };
     }
 
-    // 2. Check if student profile exists in StudentModel (added by Admin/RTO)
+    // 2. Check if email belongs to an RTO in RtoModel
+    let matchedRto = null;
+    try {
+      matchedRto = await RtoModel.findOne({ contactEmail: normEmail });
+    } catch (_) {}
+
+    // 3. Check if email belongs to an Industry partner in IndustryModel
+    let matchedIndustry = null;
+    try {
+      matchedIndustry = await IndustryModel.findOne({ contactEmail: normEmail });
+    } catch (_) {}
+
+    // 4. Check if student profile exists in StudentModel (added by Admin/RTO)
     const student = await StudentModel.findOne({ emailAddress: normEmail });
     if (student) {
       const studentName = student.name || `${student.firstName || ''} ${student.lastName || ''}`.trim();
-      const rtoDisplay = student.assignedRto || student.institute || 'Registered Training Organisation';
+      const rtoDisplay = student.assignedRto || student.institute || matchedRto?.name || 'Registered Training Organisation';
       const courseDisplay = student.courseQualification || student.courses || 'Vocational Placement';
 
       return {
         foundInDatabase: true,
         isAlreadyUser: false,
+        rtoName: rtoDisplay,
+        rtoId: student.rtoId || matchedRto?._id || null,
+        facilityName: matchedIndustry?.name || null,
+        industryId: matchedIndustry?._id || null,
+        course: courseDisplay,
         student: {
           id: student._id,
           studentId: student.studentId || '',
@@ -488,12 +551,130 @@ export class AuthService {
       };
     }
 
-    // 3. Not found in StudentModel
+    // 5. If RTO or Industry matched by email without existing student record
+    if (matchedRto || matchedIndustry) {
+      return {
+        foundInDatabase: false,
+        isAlreadyUser: false,
+        rtoName: matchedRto ? matchedRto.name : null,
+        rtoId: matchedRto ? matchedRto._id : null,
+        facilityName: matchedIndustry ? matchedIndustry.name : null,
+        industryId: matchedIndustry ? matchedIndustry._id : null,
+        message: matchedRto
+          ? `Recognized registered RTO: ${matchedRto.name}`
+          : `Recognized registered industry partner: ${matchedIndustry.name}`,
+      };
+    }
+
+    // 6. Not found in records
     return {
       foundInDatabase: false,
       isAlreadyUser: false,
+      rtoName: null,
+      rtoId: null,
+      facilityName: null,
+      industryId: null,
       message: 'No pre-existing student record found. You can register as a New Student applicant.',
     };
+  }
+
+  static async requestForgotPassword(email, note = '') {
+    const normEmail = (email || '').toLowerCase().trim();
+    if (!normEmail) {
+      throw new BadRequestError('Email address is required');
+    }
+    const user = await UserModel.findOne({ email: normEmail, isDeleted: { $ne: true } });
+    if (!user) {
+      throw new NotFoundError('No active account found with this email address. Please check your email or contact support.');
+    }
+
+    user.forgotPasswordStatus = 'Pending';
+    user.forgotPasswordRequestedAt = new Date();
+    await user.save();
+
+    try {
+      await NotificationModel.create({
+        title: 'Password Reset Request',
+        desc: `${user.name} (${user.role} - ${user.email}) requested a password reset. Administrator approval required.`,
+        type: 'system',
+        link: '/users',
+        targetRoles: ['Administrator', 'Admin'],
+      });
+    } catch (_) {}
+
+    return {
+      success: true,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      status: 'Pending',
+      message: 'Your password reset request has been sent to the administrator for approval. Please contact your administrator.',
+    };
+  }
+
+  static async getPasswordResetStatus(email) {
+    const normEmail = (email || '').toLowerCase().trim();
+    if (!normEmail) {
+      return { status: 'None' };
+    }
+    const user = await UserModel.findOne({ email: normEmail, isDeleted: { $ne: true } })
+      .select('forgotPasswordStatus forgotPasswordRequestedAt forgotPasswordApprovedAt name role email');
+    if (!user) {
+      return { status: 'None', message: 'User not found' };
+    }
+    return {
+      status: user.forgotPasswordStatus || 'None',
+      requestedAt: user.forgotPasswordRequestedAt,
+      approvedAt: user.forgotPasswordApprovedAt,
+      name: user.name,
+      role: user.role,
+      email: user.email,
+    };
+  }
+
+  static async resetPasswordWithApproval(email, newPassword) {
+    const normEmail = (email || '').toLowerCase().trim();
+    if (!normEmail || !newPassword) {
+      throw new BadRequestError('Email and new password are required');
+    }
+    if (newPassword.length < 6) {
+      throw new BadRequestError('Password must be at least 6 characters');
+    }
+    const user = await UserModel.findOne({ email: normEmail, isDeleted: { $ne: true } }).select('+password');
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+    if (user.forgotPasswordStatus !== 'Approved') {
+      throw new ForbiddenError('Your password reset request has not been approved by an administrator yet. Please contact your administrator.');
+    }
+
+    user.password = newPassword;
+    user.forgotPasswordStatus = 'None';
+    user.forgotPasswordRequestedAt = null;
+    user.forgotPasswordApprovedAt = null;
+    user.forgotPasswordApprovedBy = null;
+    await user.save();
+
+    try {
+      await NotificationModel.create({
+        title: 'Password Reset Completed',
+        desc: `${user.name} (${user.email}) has reset their password after administrator approval.`,
+        type: 'system',
+        link: '/users',
+        targetRoles: ['Administrator', 'Admin'],
+      });
+    } catch (_) {}
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role, email: user.email },
+      JWT_SECRET,
+      { expiresIn: '5h' }
+    );
+
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    return { user: userObj, token, message: 'Password has been reset successfully! You are now logged in.' };
   }
 
   static async updateProfile(userId, payload) {
