@@ -357,7 +357,14 @@ export class StudentService {
               s.placementStatus === 'Appointment Scheduled'
             );
 
-          const hasActiveApptOrPlacement = hasActivePlacement || hasWaitingToJoin || hasApptSuccessful || hasApptScheduled;
+          const hasActiveContact = sortedReqs.some((r) =>
+            Array.isArray(r.contactedIndustries) &&
+            r.contactedIndustries.some((ci) =>
+              !['Student Withdraw', 'Student Withdrawn', 'Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(ci.response)
+            )
+          );
+
+          const hasActiveApptOrPlacement = hasActivePlacement || hasWaitingToJoin || hasApptSuccessful || hasApptScheduled || hasActiveContact;
 
           if (
             studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
@@ -373,6 +380,8 @@ export class StudentService {
             s.placementStatus = 'Appointment Successful';
           } else if (hasApptScheduled) {
             s.placementStatus = 'Appointment Scheduled';
+          } else if (hasActiveContact) {
+            s.placementStatus = 'Industry Contacted';
           } else if (
             !hasActiveApptOrPlacement && (
               studentInts.some((i) => ['Student Withdraw', 'Student Withdrawn', 'Withdrawn'].includes(i.status)) ||

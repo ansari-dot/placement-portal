@@ -602,8 +602,13 @@ export default function WorkflowPage() {
             (a.date && !['Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'No Show', 'Not Suitable Site', 'Industry Rejected', 'Student Missed Appointment'].includes(a.status)))
         );
 
-      // Active placement or appointment presence protects forward progress
-      const hasActivePlacementOrAppt = hasStartedPlacement || hasApptSuccessful || hasScheduledAppt;
+      // Active contact in progress (e.g. new industry added after withdrawal)
+      const hasActiveContact = contactedIndustries.some((ci) =>
+        !['Student Withdraw', 'Withdrawn', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(ci.response)
+      );
+
+      // Active placement, appointment, or active contact presence protects forward progress
+      const hasActivePlacementOrAppt = hasStartedPlacement || hasApptSuccessful || hasScheduledAppt || hasActiveContact;
 
       // Student Withdraw — only applies if there is NO active placement or appointment
       const hasStudentWithdraw =
@@ -692,6 +697,8 @@ export default function WorkflowPage() {
         dynamicPlacementStatus = 'Appointment Successful';
       } else if (hasScheduledAppt) {
         dynamicPlacementStatus = 'Appointment Scheduled';
+      } else if (hasActiveContact) {
+        dynamicPlacementStatus = 'Industry Contacted';
       } else if (hasStudentWithdraw) {
         dynamicPlacementStatus = 'Student Withdraw';
       } else if (hasNotSuitableSite) {
