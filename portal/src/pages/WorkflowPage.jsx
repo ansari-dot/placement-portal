@@ -1141,13 +1141,13 @@ export default function WorkflowPage() {
     filteredAppointments.forEach((appt, index) => {
       const studentName = appt.student || 'Unknown Student';
       const studentId = appt.studentId || '';
+      const targetId = norm(studentId);
+      const targetName = norm(studentName);
 
       const stuMatch = (visibleWorkflowStudents || []).find((s) => {
         const sDbId = norm(s.id || s._id);
         const sBizId = norm(s.studentId);
         const sName = norm(s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim());
-        const targetId = norm(studentId);
-        const targetName = norm(studentName);
         return (
           (sDbId && targetId && sDbId === targetId) ||
           (sBizId && targetId && sBizId === targetId) ||
