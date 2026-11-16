@@ -19,7 +19,8 @@ docs/client_reports/
 ├── README_Client_Documentation_Index.md             # Master Overview & Roadmap Index (This Document)
 ├── Phase_1_Frontend_UI_Design_Report.md             # Phase 1: Portal UI/UX Design & Frontend Engineering (Aug 15 - Sep 01)
 ├── Phase_2_Backend_Architecture_Security_Report.md  # Phase 2: Backend Architecture, Security & State Engine (Sep 01 - Oct 01)
-└── Phase_3_RBAC_Portals_Payment_Maintenance_Report.md # Phase 3: RBAC Portals, Payment/Billing & Maintenance (Oct 02 - Nov 01+)
+├── Phase_3_RBAC_Portals_Payment_Maintenance_Report.md # Phase 3: RBAC Portals, Payment/Billing & Architecture (Oct 02 - Nov 01)
+└── Phase_4_Placement_and_Payment_Workflow_Milestone_Report.md # Phase 4: Placement & Payment Workflow Milestone (Nov 01 - Nov 17)
 ```
 
 ---
@@ -30,7 +31,8 @@ docs/client_reports/
 |:---:|:---:|:---|:---|:---:|
 | **Phase 1** | **Aug 15 – Sep 01** | **Portal UI/UX & Frontend Design** | • 5-Step Placement Workflow UI<br/>• Student, RTO & Industry 5-Step Wizards<br/>• Executive Dashboard & KPI Analytics<br/>• Jobs Management Portal<br/>• React 19 + TailwindCSS Design System | `6419cc7` → `8b45dae`<br/>*(16 commits, 31,400+ LOC)* |
 | **Phase 2** | **Sep 01 – Oct 01** | **Backend Architecture & Security** | • Multi-Entity Relational Data Models<br/>• Bi-Directional Workflow Synchronization<br/>• Non-Repudiation Audit Logging Middleware<br/>• Coordinator Approval Enforcement Gate<br/>• Automated Date & Schedule Calculator<br/>• Enterprise SMTP Email Infrastructure<br/>• Live Presence Heartbeat Hub | `03fd20a` → `340e0be`<br/>*(22 commits, 17,600+ LOC)* |
-| **Phase 3** | **Oct 02 – Nov 01+** | **RBAC Portals, Payment & Maintenance** | • Dedicated Portals: Student, RTO, Industry<br/>• Complete Payment, Billing & GST Invoicing<br/>• Server-Side Branded PDF Generator<br/>• Enterprise Clean Modular Refactoring (`core`/`modules`)<br/>• 16-State Unified Student Lifecycle Engine<br/>• Bulk CSV Student Import Engine<br/>• Review & Rating System<br/>• Maintenance & Coordinator Task Fixes (Nov 1+) | `e9e451f` → `8d053a2`<br/>*(31 commits, 40,500+ LOC)* |
+| **Phase 3** | **Oct 02 – Nov 01** | **RBAC Portals & Modular Architecture** | • Dedicated Portals: Student, RTO, Industry<br/>• Complete Payment, Billing & GST Invoicing<br/>• Server-Side Branded PDF Generator<br/>• Enterprise Clean Modular Refactoring (`core`/`modules`)<br/>• 16-State Unified Student Lifecycle Engine<br/>• Bulk CSV Student Import Engine<br/>• Review & Rating System | `e9e451f` → `8d053a2`<br/>*(31 commits, 40,500+ LOC)* |
+| **Phase 4** | **Nov 01 – Nov 17** | **Placement & Payment Workflow Milestone** | • Deduplication across Steps 3 & 4<br/>• Clean Industry Lifecycle (Withdrawal/Missed/Rejected resets)<br/>• 3-Tab Strict Isolation (Active, Snooze, Inactive)<br/>• Step 5 Editable Charge % (100% / 30% / Auto)<br/>• Manual Override Persistence across Syncs<br/>• Automated 54-case & 48-case Production Test Suites | `6ee81b8` → `cbf1b17`<br/>*(10 commits, 5,800+ LOC)* |
 
 ---
 
@@ -47,4 +49,5 @@ docs/client_reports/
 - 📄 [Phase 1: Portal UI/UX Architecture & Frontend Engineering Report](./Phase_1_Frontend_UI_Design_Report.md)
 - 📄 [Phase 2: Backend System Design, Security & Core Architecture Report](./Phase_2_Backend_Architecture_Security_Report.md)
 - 📄 [Phase 3: RBAC Dedicated Portals, Payment Flow & Maintenance Report](./Phase_3_RBAC_Portals_Payment_Maintenance_Report.md)
+- 📄 [Phase 4: Placement & Payment Workflow Milestone Report](./Phase_4_Placement_and_Payment_Workflow_Milestone_Report.md)
 
