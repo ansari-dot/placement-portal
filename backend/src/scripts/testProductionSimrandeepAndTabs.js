@@ -501,15 +501,245 @@ async function runSuite() {
     );
 
     // -------------------------------------------------------------------------
+    // TEST 14: DEDUPLICATION & PREVENT STALE INDUSTRY DISPLAY (REJECTED, WITHDRAWN, MISSED)
+    // -------------------------------------------------------------------------
+    console.log('\n--- Step 14: Deduplication in Steps 3 & 4 and Clean Industry Lifecycle ---');
+
+    // Helper functions mirroring WorkflowPage deduplication logic
+    const norm = (s) => (s ? String(s).trim().toLowerCase() : '');
+    const deduplicateStep3 = (appts) => {
+      const sorted = [...appts].sort((a, b) => {
+        const aIsTerminal = ['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) ||
+          ['student_withdrawal', 'industry_rejected', 'student_missed', 'not_suitable_site'].includes(a.appointmentOutcome);
+        const bIsTerminal = ['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(b.status) ||
+          ['student_withdrawal', 'industry_rejected', 'student_missed', 'not_suitable_site'].includes(b.appointmentOutcome);
+        if (aIsTerminal !== bIsTerminal) return aIsTerminal ? 1 : -1;
+        return new Date(b.createdAt || b.date || b.updatedAt || 0) - new Date(a.createdAt || a.date || a.updatedAt || 0);
+      });
+      const deduped = [];
+      const seen = new Set();
+      for (const a of sorted) {
+        const key = norm(a.studentId) || norm(a.student);
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          deduped.push(a);
+        }
+      }
+      return deduped;
+    };
+
+    const deduplicateStep4 = (placements) => {
+      const sorted = [...placements].sort((a, b) => {
+        const aIsActive = !['Student Withdraw', 'Withdrawn', 'Cancelled', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(a.status) ? 1 : 0;
+        const bIsActive = !['Student Withdraw', 'Withdrawn', 'Cancelled', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(b.status) ? 1 : 0;
+        if (bIsActive !== aIsActive) return bIsActive - aIsActive;
+        return new Date(b.createdAt || b.start || b.updatedAt || 0) - new Date(a.createdAt || a.start || a.updatedAt || 0);
+      });
+      const deduped = [];
+      const seen = new Set();
+      for (const p of sorted) {
+        const key = norm(p.studentId) || norm(p.student);
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          deduped.push(p);
+        }
+      }
+      return deduped;
+    };
+
+    // 14.1 Simrandeep Kaur (Withdrawn then new appointment) deduplication
+    const freshWf = await WorkflowModel.findById(workflow._id);
+    const simrandeepAppts = freshWf.appointments.filter(a => norm(a.studentId) === norm(testStudentId));
+    assert(simrandeepAppts.length === 2, 'Simrandeep has exactly 2 historical appointments in DB');
+
+    const dedupedSimAppts = deduplicateStep3(simrandeepAppts);
+    assert(dedupedSimAppts.length === 1, 'Step 3: Simrandeep appears exactly once after deduplication');
+    assert(dedupedSimAppts[0].company === 'Modbury Kindergarten', 'Step 3: Simrandeep shows active company Modbury Kindergarten (never Lotus Montessori)');
+
+    const simrandeepPlacements = [
+      { studentId: testStudentId, student: testStudentName, company: 'Lotus Montessori', status: 'Student Withdraw', createdAt: new Date(timestamp) },
+      { studentId: testStudentId, student: testStudentName, company: 'Modbury Kindergarten', status: 'Waiting to Join', createdAt: new Date(timestamp + 1000) }
+    ];
+    const dedupedSimPlacements = deduplicateStep4(simrandeepPlacements);
+    assert(dedupedSimPlacements.length === 1, 'Step 4: Simrandeep appears exactly once after deduplication');
+    assert(dedupedSimPlacements[0].company === 'Modbury Kindergarten', 'Step 4: Simrandeep shows active company Modbury Kindergarten (never Lotus Montessori)');
+
+    // 14.2 Industry Rejected Student Flow
+    const rejBizId = `STU-REJ-${timestamp}`;
+    const rejName = `Rejected Student ${timestamp}`;
+    const rejStudent = await StudentModel.create({
+      studentId: rejBizId,
+      name: rejName,
+      firstName: 'Rejected',
+      lastName: 'Student',
+      email: `rejected.${timestamp}@test.edu.au`,
+      emailAddress: `rejected.${timestamp}@test.edu.au`,
+      phoneNumber: '0411222333',
+      courseQualification: 'Certificate III in Early Childhood Education and Care',
+      course: 'Certificate III in Early Childhood Education and Care',
+      status: 'Active',
+      internshipPriority: 'Normal',
+      placementStatus: 'In Progress',
+      assignedRto: 'Care Education RTO',
+    });
+
+    const rejReq = await createInternshipRequest(workflow._id, {
+      title: 'Vocational Placement',
+      student: rejName,
+      studentId: rejBizId,
+      company: 'Facility Alpha',
+      rto: 'Care Education RTO',
+      status: 'New',
+    });
+
+    const rejAppt = await createAppointment(workflow._id, {
+      student: rejName,
+      studentId: rejBizId,
+      company: 'Facility Alpha',
+      rto: 'Care Education RTO',
+      date: '2026-11-20',
+      time: '10:00 AM',
+      status: 'Scheduled',
+    });
+
+    // Mark as Industry Rejected
+    await updateAppointment(workflow._id, rejAppt._id || rejAppt.apptId, {
+      status: 'Industry Rejected',
+      appointmentOutcome: 'industry_rejected',
+      notes: 'No capacity at Facility Alpha',
+    });
+
+    const wfAfterRej = await WorkflowModel.findById(workflow._id);
+    const reqAfterRej = wfAfterRej.requests.find(r => norm(r.studentId) === norm(rejBizId));
+    assert(reqAfterRej.company === 'Pending Assignment', 'Industry Rejected: request company is reset to Pending Assignment');
+    assert(reqAfterRej.status === 'Industry Rejected', 'Industry Rejected: request status is Industry Rejected');
+
+    const stuAfterRej = await StudentModel.findById(rejStudent._id);
+    assert(stuAfterRej.company === '' || !stuAfterRej.company, 'Industry Rejected: student company is cleared from student doc');
+    assert(stuAfterRej.placementStatus === 'Industry Rejected', 'Industry Rejected: student placementStatus is Industry Rejected');
+
+    // Add new appointment with Facility Beta
+    await updateInternshipRequest(workflow._id, reqAfterRej._id || reqAfterRej.id, {
+      newContacts: [{ organizationName: 'Facility Beta', contactPerson: 'Manager Beta', response: 'New' }]
+    });
+
+    const betaAppt = await createAppointment(workflow._id, {
+      student: rejName,
+      studentId: rejBizId,
+      company: 'Facility Beta',
+      rto: 'Care Education RTO',
+      date: '2026-11-28',
+      time: '02:00 PM',
+      status: 'Scheduled',
+    });
+
+    const wfAfterBeta = await WorkflowModel.findById(workflow._id);
+    const allRejAppts = wfAfterBeta.appointments.filter(a => norm(a.studentId) === norm(rejBizId));
+    assert(allRejAppts.length === 2, 'Industry Rejected student now has 2 historical appointments in DB');
+
+    const dedupedRejStep3 = deduplicateStep3(allRejAppts);
+    assert(dedupedRejStep3.length === 1, 'Industry Rejected student appears exactly ONCE in Step 3');
+    assert(dedupedRejStep3[0].company === 'Facility Beta', 'Industry Rejected student shows Facility Beta in Step 3 (not Facility Alpha)');
+
+    const rejPlacements = [
+      { studentId: rejBizId, student: rejName, company: 'Facility Alpha', status: 'Industry Rejected', createdAt: new Date(timestamp) },
+      { studentId: rejBizId, student: rejName, company: 'Facility Beta', status: 'Waiting to Join', createdAt: new Date(timestamp + 2000) }
+    ];
+    const dedupedRejStep4 = deduplicateStep4(rejPlacements);
+    assert(dedupedRejStep4.length === 1, 'Industry Rejected student appears exactly ONCE in Step 4');
+    assert(dedupedRejStep4[0].company === 'Facility Beta', 'Industry Rejected student shows Facility Beta in Step 4 (not Facility Alpha)');
+
+    // 14.3 Student Missed Appointment Flow
+    const missBizId = `STU-MISS-${timestamp}`;
+    const missName = `Missed Student ${timestamp}`;
+    const missStudent = await StudentModel.create({
+      studentId: missBizId,
+      name: missName,
+      firstName: 'Missed',
+      lastName: 'Student',
+      email: `missed.${timestamp}@test.edu.au`,
+      emailAddress: `missed.${timestamp}@test.edu.au`,
+      phoneNumber: '0422333444',
+      courseQualification: 'Certificate III in Early Childhood Education and Care',
+      course: 'Certificate III in Early Childhood Education and Care',
+      status: 'Active',
+      internshipPriority: 'Normal',
+      placementStatus: 'In Progress',
+      assignedRto: 'Care Education RTO',
+    });
+
+    const missReq = await createInternshipRequest(workflow._id, {
+      title: 'Vocational Placement',
+      student: missName,
+      studentId: missBizId,
+      company: 'Facility Gamma',
+      rto: 'Care Education RTO',
+      status: 'New',
+    });
+
+    const missAppt = await createAppointment(workflow._id, {
+      student: missName,
+      studentId: missBizId,
+      company: 'Facility Gamma',
+      rto: 'Care Education RTO',
+      date: '2026-11-22',
+      time: '11:00 AM',
+      status: 'Scheduled',
+    });
+
+    // Mark as Student Missed Appointment
+    await updateAppointment(workflow._id, missAppt._id || missAppt.apptId, {
+      status: 'Student Missed Appointment',
+      appointmentOutcome: 'student_missed',
+      notes: 'Student missed interview due to transit delay',
+    });
+
+    const wfAfterMiss = await WorkflowModel.findById(workflow._id);
+    const reqAfterMiss = wfAfterMiss.requests.find(r => norm(r.studentId) === norm(missBizId));
+    assert(reqAfterMiss.company === 'Pending Assignment', 'Student Missed: request company is reset to Pending Assignment');
+    assert(reqAfterMiss.status === 'Student Missed Appointment', 'Student Missed: request status is Student Missed Appointment');
+
+    const stuAfterMiss = await StudentModel.findById(missStudent._id);
+    assert(stuAfterMiss.company === '' || !stuAfterMiss.company, 'Student Missed: student company is cleared from student doc');
+    assert(stuAfterMiss.placementStatus === 'Student Missed Appointment', 'Student Missed: student placementStatus is Student Missed Appointment');
+
+    // Add new appointment with Facility Delta
+    const deltaAppt = await createAppointment(workflow._id, {
+      student: missName,
+      studentId: missBizId,
+      company: 'Facility Delta',
+      rto: 'Care Education RTO',
+      date: '2026-11-29',
+      time: '03:00 PM',
+      status: 'Scheduled',
+    });
+
+    const wfAfterDelta = await WorkflowModel.findById(workflow._id);
+    const allMissAppts = wfAfterDelta.appointments.filter(a => norm(a.studentId) === norm(missBizId));
+    assert(allMissAppts.length === 2, 'Student Missed student now has 2 historical appointments in DB');
+
+    const dedupedMissStep3 = deduplicateStep3(allMissAppts);
+    assert(dedupedMissStep3.length === 1, 'Student Missed student appears exactly ONCE in Step 3');
+    assert(dedupedMissStep3[0].company === 'Facility Delta', 'Student Missed student shows Facility Delta in Step 3 (not Facility Gamma)');
+
+    const missPlacements = [
+      { studentId: missBizId, student: missName, company: 'Facility Gamma', status: 'Student Missed Appointment', createdAt: new Date(timestamp) },
+      { studentId: missBizId, student: missName, company: 'Facility Delta', status: 'Waiting to Join', createdAt: new Date(timestamp + 3000) }
+    ];
+    const dedupedMissStep4 = deduplicateStep4(missPlacements);
+    assert(dedupedMissStep4.length === 1, 'Student Missed student appears exactly ONCE in Step 4');
+    assert(dedupedMissStep4[0].company === 'Facility Delta', 'Student Missed student shows Facility Delta in Step 4 (not Facility Gamma)');
+
+    // -------------------------------------------------------------------------
     // CLEANUP
     // -------------------------------------------------------------------------
     console.log('\n--- Cleanup Test Records ---');
-    await StudentModel.deleteMany({ _id: { $in: [student._id, snoozedStudent._id, inactiveStudent._id] } });
+    await StudentModel.deleteMany({ _id: { $in: [student._id, snoozedStudent._id, inactiveStudent._id, rejStudent._id, missStudent._id] } });
     await WorkflowModel.deleteOne({ _id: workflow._id });
-    await AppointmentModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
-    await InternshipRequestModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
-    await InternshipModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
-    await PaymentModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
+    await AppointmentModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId, rejBizId, missBizId] } });
+    await InternshipRequestModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId, rejBizId, missBizId] } });
+    await InternshipModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId, rejBizId, missBizId] } });
+    await PaymentModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId, rejBizId, missBizId] } });
     console.log('  Cleaned up all temporary test records successfully.');
 
   } catch (err) {

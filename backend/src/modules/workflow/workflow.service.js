@@ -32,17 +32,29 @@ export const generateReqId = async () => {
 
 export const generateApptId = async () => {
     const prefix = "APPT";
-    const lastAppt = await AppointmentModel.findOne().sort({ createdAt: -1 });
-    let newIdNumber = 1;
+    let maxNumber = 0;
 
+    const lastAppt = await AppointmentModel.findOne().sort({ createdAt: -1 });
     if (lastAppt?.apptId) {
         const lastNumber = parseInt(lastAppt.apptId.split("-")[1], 10);
         if (!Number.isNaN(lastNumber)) {
-            newIdNumber = lastNumber + 1;
+            maxNumber = Math.max(maxNumber, lastNumber);
         }
     }
 
-    return `${prefix}-${newIdNumber.toString().padStart(6, "0")}`;
+    try {
+        const workflows = await WorkflowModel.find({ "appointments.0": { $exists: true } }, { appointments: 1 }).lean();
+        workflows.forEach((wf) => {
+            (wf.appointments || []).forEach((a) => {
+                if (a.apptId) {
+                    const num = parseInt(a.apptId.split("-")[1], 10);
+                    if (!Number.isNaN(num)) maxNumber = Math.max(maxNumber, num);
+                }
+            });
+        });
+    } catch (_) { }
+
+    return `${prefix}-${(maxNumber + 1).toString().padStart(6, "0")}`;
 };
 
 export const generateIntId = async () => {
@@ -316,6 +328,10 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
     if (Array.isArray(newContacts) && newContacts.length > 0) {
         matchedRequest.contactedIndustries.push(...newContacts);
         matchedRequest.returnedToStep1 = false;
+        const latestContact = newContacts[newContacts.length - 1];
+        if (latestContact && latestContact.organizationName) {
+            matchedRequest.company = latestContact.organizationName;
+        }
         if (['Student Withdraw', 'Student Withdrawn', 'Withdrawn', 'New', 'On Hold'].includes(matchedRequest.status)) {
             matchedRequest.status = 'Industry Contacted';
         }
@@ -513,6 +529,22 @@ export const createAppointment = async (workflowId, appointmentData) => {
         appointmentData.apptId = await generateApptId();
     }
 
+    // Auto-resolve rto if missing
+    if (!appointmentData.rto) {
+        try {
+            const studentQuery = [];
+            if (appointmentData.studentId) {
+                studentQuery.push({ studentId: appointmentData.studentId });
+                if (mongoose.Types.ObjectId.isValid(appointmentData.studentId)) studentQuery.push({ _id: appointmentData.studentId });
+            }
+            if (appointmentData.student) studentQuery.push({ name: appointmentData.student });
+            if (studentQuery.length > 0) {
+                const sDoc = await StudentModel.findOne({ $or: studentQuery }, { assignedRto: 1, rto: 1 }).lean();
+                if (sDoc?.assignedRto || sDoc?.rto) appointmentData.rto = sDoc.assignedRto || sDoc.rto;
+            }
+        } catch (_) { }
+    }
+
     // Auto-resolve contactPerson and industryType if not directly supplied
     if (!appointmentData.contactPerson || !appointmentData.industryType) {
         try {
@@ -571,16 +603,21 @@ export const createAppointment = async (workflowId, appointmentData) => {
                 (studentId && (req.studentId === studentId || req.id === studentId)) ||
                 (studentName && req.student && req.student.trim().toLowerCase() === studentName);
 
-            if (isStudentMatch && Array.isArray(req.contactedIndustries)) {
-                req.contactedIndustries.forEach((ci) => {
-                    const orgName = (ci.organizationName || '').trim().toLowerCase();
-                    if (
-                        (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
-                        (appointment.industryContactId && (ci._id?.toString() === appointment.industryContactId || ci.id === appointment.industryContactId))
-                    ) {
-                        ci.response = 'Appointment Scheduled';
-                    }
-                });
+            if (isStudentMatch) {
+                req.company = appointment.company || req.company;
+                req.status = 'Appointment Scheduled';
+                req.returnedToStep1 = false;
+                if (Array.isArray(req.contactedIndustries)) {
+                    req.contactedIndustries.forEach((ci) => {
+                        const orgName = (ci.organizationName || '').trim().toLowerCase();
+                        if (
+                            (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) ||
+                            (appointment.industryContactId && (ci._id?.toString() === appointment.industryContactId || ci.id === appointment.industryContactId))
+                        ) {
+                            ci.response = 'Appointment Scheduled';
+                        }
+                    });
+                }
             }
         });
     }
@@ -598,16 +635,27 @@ export const createAppointment = async (workflowId, appointmentData) => {
         }
         if (studentQuery.length > 0) {
             const studentDoc = await StudentModel.findOne({ $or: studentQuery });
-            if (studentDoc && Array.isArray(studentDoc.contactedIndustries)) {
-                const companyName = (appointment.company || '').trim().toLowerCase();
-                let updatedStudent = false;
-                studentDoc.contactedIndustries.forEach((ci) => {
-                    const orgName = (ci.organizationName || '').trim().toLowerCase();
-                    if (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) {
-                        ci.response = 'Appointment Scheduled';
-                        updatedStudent = true;
-                    }
-                });
+            if (studentDoc) {
+                if (appointment.company) studentDoc.company = appointment.company;
+                const isInactiveOrSnoozed =
+                    studentDoc.snoozed === true ||
+                    studentDoc.status === 'Inactive' ||
+                    studentDoc.internshipPriority === 'Inactive' ||
+                    studentDoc.internshipPriority === 'Snooze';
+                if (!isInactiveOrSnoozed) {
+                    studentDoc.placementStatus = 'Appointment Scheduled';
+                }
+                let updatedStudent = true;
+                if (Array.isArray(studentDoc.contactedIndustries)) {
+                    const companyName = (appointment.company || '').trim().toLowerCase();
+                    studentDoc.contactedIndustries.forEach((ci) => {
+                        const orgName = (ci.organizationName || '').trim().toLowerCase();
+                        if (companyName && orgName && (orgName === companyName || orgName.includes(companyName) || companyName.includes(orgName))) {
+                            ci.response = 'Appointment Scheduled';
+                            updatedStudent = true;
+                        }
+                    });
+                }
                 if (updatedStudent) await studentDoc.save();
             }
             
@@ -640,7 +688,8 @@ export const createAppointment = async (workflowId, appointmentData) => {
         console.error("Failed to create notification:", err);
     }
 
-    return appointment;
+    const createdSubdoc = workflow.appointments[workflow.appointments.length - 1];
+    return createdSubdoc ? (createdSubdoc.toObject ? createdSubdoc.toObject() : createdSubdoc) : appointment;
 };
 
 /**
@@ -882,6 +931,7 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
                 if (isStudentMatch) {
                     req.status = outcomeStatusLabel;
                     req.returnedToStep1 = true;
+                    req.company = 'Pending Assignment';
                     if (Array.isArray(req.contactedIndustries)) {
                         req.contactedIndustries.forEach((ci) => {
                             const orgName = (ci.organizationName || '').trim().toLowerCase();
@@ -898,12 +948,31 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
             await workflow.save({ validateBeforeSave: false });
         }
 
+        // Update matching internships in workflow.internships
+        if (workflow.internships && workflow.internships.length > 0) {
+            workflow.internships.forEach((int) => {
+                const isStudentMatch =
+                    (studentId && (int.studentId === studentId || int.id === studentId)) ||
+                    (studentName && int.student && int.student.trim().toLowerCase() === studentName);
+                const isCompanyMatch = !companyName || (int.company && (int.company.trim().toLowerCase() === companyName || int.company.trim().toLowerCase().includes(companyName) || companyName.includes(int.company.trim().toLowerCase())));
+                if (isStudentMatch && isCompanyMatch) {
+                    int.status = outcomeStatusLabel;
+                    int.cancellationReason = appointmentData.notes || appointmentData.cancellationReason || '';
+                    int.cancellationType = outcome === 'student_withdrawal' ? 'withdrawn' : outcome === 'industry_rejected' ? 'industry' : 'student';
+                }
+            });
+            await workflow.save({ validateBeforeSave: false });
+        }
+
         // 2. Look up student and update placementStatus to outcomeStatusLabel WITHOUT removing coordinator!
         const { studentDoc, email: toEmail } = await resolveStudentAndEmail(appt);
 
         if (studentDoc) {
             try {
                 studentDoc.placementStatus = outcomeStatusLabel;
+                if (studentDoc.company && companyName && (studentDoc.company.trim().toLowerCase() === companyName || companyName.includes(studentDoc.company.trim().toLowerCase()))) {
+                    studentDoc.company = '';
+                }
                 if (Array.isArray(studentDoc.contactedIndustries)) {
                     studentDoc.contactedIndustries.forEach((ci) => {
                         const orgName = (ci.organizationName || '').trim().toLowerCase();
@@ -927,7 +996,7 @@ export const updateAppointment = async (workflowId, appointmentId, appointmentDa
                 if (stuQuery.length > 0) {
                     await StudentModel.findOneAndUpdate(
                         { $or: stuQuery },
-                        { placementStatus: outcomeStatusLabel },
+                        { placementStatus: outcomeStatusLabel, company: '' },
                         { runValidators: false }
                     );
                 }

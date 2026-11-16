@@ -357,7 +357,12 @@ export const syncChargeableStudents = async () => {
     const existingPaymentStudentBizIds = allPayments.map((p) => p.studentId).filter(Boolean);
     const eligibleStudents = await StudentModel.find({
       $or: [
-        { placementStatus: { $in: CHARGEABLE_PLACEMENT_STATUSES } },
+        {
+          placementStatus: { $in: CHARGEABLE_PLACEMENT_STATUSES },
+          status: { $ne: 'Inactive' },
+          snoozed: { $ne: true },
+          internshipPriority: { $nin: ['Inactive', 'Snooze'] },
+        },
         { _id: { $in: [...existingPaymentStudentIds, ...chargeableFromEventsDbIds] } },
         { studentId: { $in: [...existingPaymentStudentBizIds, ...chargeableFromEventsBizIds] } },
       ],

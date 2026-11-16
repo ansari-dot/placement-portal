@@ -304,6 +304,7 @@ export default function WorkflowPage() {
         contactedIndustries: [contactData],
         returnedToStep1: false,
         status: 'Industry Contacted',
+        company: contactData.organizationName || 'Pending Assignment',
       });
       await refreshWorkflowData();
       notifyPlacementDataChanged();
@@ -781,12 +782,34 @@ export default function WorkflowPage() {
         dynamicPlacementStatus = 'Awaiting';
       }
 
+      // Resolve student's current active company
+      const activeAppt = sortedAppointments.find((a) =>
+        !TERMINAL_APPT_STATUSES.includes(a.status) &&
+        a.appointmentOutcome !== 'student_withdrawal' &&
+        a.appointmentOutcome !== 'industry_rejected' &&
+        a.appointmentOutcome !== 'student_missed' &&
+        a.appointmentOutcome !== 'not_suitable_site'
+      );
+      const activeInt = matchingInternships.find((i) =>
+        !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(i.status)
+      );
+      const activeContact = contactedIndustries.find((ci) =>
+        !['Student Withdraw', 'Withdrawn', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(ci.response)
+      );
+
+      const resolvedStudentCompany =
+        activeInt?.company ||
+        activeAppt?.company ||
+        activeContact?.organizationName ||
+        (hasStudentWithdraw || hasIndustryRejected || hasStudentMissed || hasNotSuitableSite ? '' : (stu.company || ''));
+
       return {
         ...stu,
         name: stu.name || stuFullName,
         email: stu.emailAddress || stu.email || '',
         id: stu.id || stu._id || '',
         studentId: stu.studentId || '',
+        company: resolvedStudentCompany,
         rto: stu.assignedRto || stu.rto || stu.institute || '',
         status: stu.status || 'Active',
         placementStatus: dynamicPlacementStatus,
@@ -877,6 +900,37 @@ export default function WorkflowPage() {
         const requestCoordinator = coordinators.find(
           (coordinator) => String(coordinator._id || coordinator.id) === String(req.coordinator || '')
         );
+        // Resolve current active company for the request:
+        const studentAppts = (workflow?.appointments || []).filter((a) => {
+          const aStuId = norm(a.studentId);
+          const aStuName = norm(a.student);
+          return (aStuId && aStuId === requestStudentId) || (aStuName && aStuName === requestStudentName);
+        });
+        const activeAppt = studentAppts.find((a) =>
+          !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) &&
+          a.appointmentOutcome !== 'student_withdrawal' &&
+          a.appointmentOutcome !== 'industry_rejected' &&
+          a.appointmentOutcome !== 'student_missed' &&
+          a.appointmentOutcome !== 'not_suitable_site'
+        );
+
+        const activeContacts = (req.contactedIndustries || []).filter((ci) =>
+          !['Student Withdraw', 'Withdrawn', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(ci.response)
+        );
+        const latestContact = activeContacts[activeContacts.length - 1];
+        const isTerminalReq = ['Student Withdraw', 'Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(req.status);
+
+        let resolvedCompany = '';
+        if (activeAppt?.company) {
+          resolvedCompany = activeAppt.company;
+        } else if (latestContact?.organizationName) {
+          resolvedCompany = latestContact.organizationName;
+        } else if (isTerminalReq) {
+          resolvedCompany = '';
+        } else if (req.company && req.company !== 'Pending Assignment') {
+          resolvedCompany = req.company;
+        }
+
         return {
           id: req.id || req._id || '',
           reqId: req.reqId || '',
@@ -894,7 +948,7 @@ export default function WorkflowPage() {
           availabilityTo: student?.availabilityTo || '',
           coordinatorName: student?.assignedCoordinatorName || assignedCoordinator?.name || requestCoordinator?.name || req.coordinator || '',
           assignedCoordinatorAt: student?.assignedCoordinatorAt || null,
-          company: req.company === 'Pending Assignment' ? '' : (req.company || ''),
+          company: resolvedCompany,
           rto: req.rto || '',
           priority: req.priority || 'Normal',
           status: req.status || 'New',
@@ -926,7 +980,7 @@ export default function WorkflowPage() {
       return [];
     }
 
-    return workflow.appointments
+    const mappedAppts = workflow.appointments
       .filter((appt) => {
         // Strict exclusion: Hide Inactive/Snoozed students from Step 3
         if (isRecordInactiveOrSnoozed(appt)) return false;
@@ -1034,12 +1088,38 @@ export default function WorkflowPage() {
           updatedAt: appt.updatedAt || '',
           createdAt: appt.createdAt || '',
         };
-      })
-      .sort((a, b) => {
-        const tA = new Date(a.createdAt || a.date || a.updatedAt || 0).getTime();
-        const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
-        return tB - tA;
       });
+
+    const sortedAppts = mappedAppts.sort((a, b) => {
+      const aIsTerminal = ['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) ||
+        ['student_withdrawal', 'industry_rejected', 'student_missed', 'not_suitable_site'].includes(a.appointmentOutcome);
+      const bIsTerminal = ['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(b.status) ||
+        ['student_withdrawal', 'industry_rejected', 'student_missed', 'not_suitable_site'].includes(b.appointmentOutcome);
+
+      if (aIsTerminal !== bIsTerminal) {
+        return aIsTerminal ? 1 : -1;
+      }
+
+      const tA = new Date(a.createdAt || a.date || a.updatedAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
+      return tB - tA;
+    });
+
+    // Deduplicate appointments by student: each student appears at most once in Step 3
+    // with their active appointment (or latest appointment if terminal)
+    const dedupedAppts = [];
+    const seenStudentKeys = new Set();
+    for (const appt of sortedAppts) {
+      const sKey = norm(appt.studentId) || norm(appt.email) || norm(appt.student);
+      if (sKey && seenStudentKeys.has(sKey)) {
+        continue;
+      }
+      if (sKey) {
+        seenStudentKeys.add(sKey);
+      }
+      dedupedAppts.push(appt);
+    }
+    return dedupedAppts;
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, inactiveSnoozedStudentKeys, isRecordInactiveOrSnoozed]);
 
   // ─── ✅ Map ALL appointments to internships ──────────────────────────────
@@ -1189,15 +1269,29 @@ export default function WorkflowPage() {
     });
 
     result.sort((a, b) => {
-      const aIsActive = !['Student Withdraw', 'Withdrawn', 'Cancelled', 'Industry Rejected', 'Declined', 'Not Suitable Site'].includes(a.status) ? 1 : 0;
-      const bIsActive = !['Student Withdraw', 'Withdrawn', 'Cancelled', 'Industry Rejected', 'Declined', 'Not Suitable Site'].includes(b.status) ? 1 : 0;
+      const aIsActive = !['Student Withdraw', 'Withdrawn', 'Cancelled', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(a.status) ? 1 : 0;
+      const bIsActive = !['Student Withdraw', 'Withdrawn', 'Cancelled', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(b.status) ? 1 : 0;
       if (bIsActive !== aIsActive) return bIsActive - aIsActive;
       const tA = new Date(a.createdAt || a.start || a.updatedAt || 0).getTime();
       const tB = new Date(b.createdAt || b.start || b.updatedAt || 0).getTime();
       return tB - tA;
     });
 
-    return result;
+    // Deduplicate placements by student: each student appears at most once in Step 4
+    // with their active placement (or latest placement if terminal)
+    const dedupedResult = [];
+    const seenStudentKeys = new Set();
+    for (const item of result) {
+      const stuKey = norm(item.studentId) || norm(item.student);
+      if (stuKey && seenStudentKeys.has(stuKey)) {
+        continue;
+      }
+      if (stuKey) {
+        seenStudentKeys.add(stuKey);
+      }
+      dedupedResult.push(item);
+    }
+    return dedupedResult;
   }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, visibleWorkflowStudents, inactiveSnoozedStudentKeys, isRecordInactiveOrSnoozed]);
 
   // ─── Request handlers ──────────────────────────────────────────────────────

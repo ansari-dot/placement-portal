@@ -430,6 +430,12 @@ export default function StudentPortalPage() {
 
       // Sort so confirmed/active or newest scheduled appointment appears first
       matchedAppointments.sort((a, b) => {
+        const aTerminal = ['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) ||
+          ['student_withdrawal', 'industry_rejected', 'student_missed', 'not_suitable_site'].includes(a.appointmentOutcome) ? 1 : 0;
+        const bTerminal = ['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(b.status) ||
+          ['student_withdrawal', 'industry_rejected', 'student_missed', 'not_suitable_site'].includes(b.appointmentOutcome) ? 1 : 0;
+        if (aTerminal !== bTerminal) return aTerminal - bTerminal;
+
         const aConfirmed = a.status === 'Confirmed' || a.appointmentOutcome === 'successful' ? 1 : 0;
         const bConfirmed = b.status === 'Confirmed' || b.appointmentOutcome === 'successful' ? 1 : 0;
         if (bConfirmed !== aConfirmed) return bConfirmed - aConfirmed;
@@ -438,8 +444,8 @@ export default function StudentPortalPage() {
 
       // Sort internships so active placements appear first, followed by newest
       matchedInternships.sort((a, b) => {
-        const aActive = !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(a.status) ? 1 : 0;
-        const bActive = !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(b.status) ? 1 : 0;
+        const aActive = !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(a.status) ? 1 : 0;
+        const bActive = !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(b.status) ? 1 : 0;
         if (bActive !== aActive) return bActive - aActive;
         return new Date(b.createdAt || b.start || b.updatedAt || 0) - new Date(a.createdAt || a.start || a.updatedAt || 0);
       });
@@ -623,8 +629,8 @@ export default function StudentPortalPage() {
 
     if (isSnoozedOrInactive) return 'N/A';
 
-    const activeInts = studentInternships.filter(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(i.status));
-    const activeAppts = studentAppointments.filter(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show'].includes(a.status));
+    const activeInts = studentInternships.filter(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(i.status));
+    const activeAppts = studentAppointments.filter(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) && a.appointmentOutcome !== 'student_withdrawal' && a.appointmentOutcome !== 'industry_rejected' && a.appointmentOutcome !== 'student_missed' && a.appointmentOutcome !== 'not_suitable_site');
 
     if (activeInts.length > 0) {
       const anyDone = activeInts.some(i => ['Completed', 'Placement Completed'].includes(i.status));
@@ -880,10 +886,18 @@ export default function StudentPortalPage() {
                         </div>
                       </div>
                       <p className="text-xl font-extrabold text-slate-900">
-                        {studentAppointments.length} <span className="text-xs font-normal text-slate-500">Scheduled</span>
+                        {(() => {
+                          const activeAppts = studentAppointments.filter(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) && a.appointmentOutcome !== 'student_withdrawal' && a.appointmentOutcome !== 'industry_rejected' && a.appointmentOutcome !== 'student_missed' && a.appointmentOutcome !== 'not_suitable_site');
+                          return activeAppts.length;
+                        })()} <span className="text-xs font-normal text-slate-500">Scheduled</span>
                       </p>
                       <p className="text-[11px] text-indigo-700 font-semibold mt-1 truncate flex items-center justify-between">
-                        <span>{studentAppointments[0]?.date ? `Next: ${studentAppointments[0].date}` : 'None Scheduled'}</span>
+                        <span>
+                          {(() => {
+                            const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) && a.appointmentOutcome !== 'student_withdrawal' && a.appointmentOutcome !== 'industry_rejected' && a.appointmentOutcome !== 'student_missed' && a.appointmentOutcome !== 'not_suitable_site');
+                            return activeAppt?.date ? `Next: ${activeAppt.date}` : 'None Scheduled';
+                          })()}
+                        </span>
                         <ArrowRight className="w-3.5 h-3.5 text-indigo-500" />
                       </p>
                     </div>
@@ -900,19 +914,19 @@ export default function StudentPortalPage() {
                       </div>
                       <p className="text-xl font-extrabold text-slate-900 truncate">
                         {(() => {
-                          const activeInt = studentInternships.find(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(i.status));
-                          const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show'].includes(a.status));
-                          return activeInt?.company || activeAppt?.company || studentInternships[0]?.company || studentAppointments[0]?.company || 'Pending Match';
+                          const activeInt = studentInternships.find(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(i.status));
+                          const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) && a.appointmentOutcome !== 'student_withdrawal' && a.appointmentOutcome !== 'industry_rejected' && a.appointmentOutcome !== 'student_missed' && a.appointmentOutcome !== 'not_suitable_site');
+                          return activeInt?.company || activeAppt?.company || 'Pending Match';
                         })()}
                       </p>
                       <p className="text-[11px] text-teal-700 font-semibold mt-1 truncate flex items-center justify-between">
                         <span>
                           {(() => {
-                            const activeInt = studentInternships.find(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(i.status));
-                            const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show'].includes(a.status));
+                            const activeInt = studentInternships.find(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(i.status));
+                            const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) && a.appointmentOutcome !== 'student_withdrawal' && a.appointmentOutcome !== 'industry_rejected' && a.appointmentOutcome !== 'student_missed' && a.appointmentOutcome !== 'not_suitable_site');
                             if (activeInt) return `${liveProgressPct}% Hours Completed (${totalVerifiedHours}/${requiredPlacementHours}h)`;
                             if (activeAppt) return activeAppt.appointmentOutcome === 'successful' || activeAppt.status === 'Confirmed' ? 'Appointment Successful' : 'Appointment Scheduled';
-                            return studentInternships[0] ? (studentInternships[0].status || 'Withdrawn') : 'In Preparation';
+                            return 'In Preparation';
                           })()}
                         </span>
                         <ArrowRight className="w-3.5 h-3.5 text-teal-500" />
@@ -1104,7 +1118,12 @@ export default function StudentPortalPage() {
                       </p>
                     </div>
                   ) : (
-                    studentRequests.map((req, idx) => (
+                    studentRequests.map((req, idx) => {
+                      const activeInt = studentInternships.find(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(i.status));
+                      const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) && a.appointmentOutcome !== 'student_withdrawal' && a.appointmentOutcome !== 'industry_rejected' && a.appointmentOutcome !== 'student_missed' && a.appointmentOutcome !== 'not_suitable_site');
+                      const resolvedReqCompany = activeAppt?.company || activeInt?.company || (req.company && req.company !== 'Pending Assignment' && !['Student Withdraw', 'Withdrawn', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(req.status) ? req.company : 'Matching In Progress');
+
+                      return (
                       <div key={req._id || req.reqId || idx} className="p-5 rounded-2xl border border-slate-200 bg-white shadow-2xs space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                           <div>
@@ -1115,7 +1134,7 @@ export default function StudentPortalPage() {
                               </span>
                             </div>
                             <p className="text-xs text-slate-500 mt-1">
-                              Appointed Host Facility: <strong className="text-slate-800">{studentInternships[0]?.company || studentAppointments[0]?.company || 'Matching In Progress'}</strong> • RTO: {req.rto}
+                              Appointed Host Facility: <strong className="text-slate-800">{resolvedReqCompany}</strong> • RTO: {req.rto}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1150,7 +1169,7 @@ export default function StudentPortalPage() {
                         </div>
 
                         {/* Appointed Host Facility (Only show the industry that currently has their active appointment/placement) */}
-                        {studentAppointments.length > 0 ? (
+                        {activeAppt ? (
                           <div className="pt-2">
                             <h5 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
                               <Building2 className="w-3.5 h-3.5 text-blue-600" />
@@ -1159,18 +1178,18 @@ export default function StudentPortalPage() {
                             <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-extrabold text-slate-900 text-sm">{studentAppointments[0].company}</p>
+                                  <p className="font-extrabold text-slate-900 text-sm">{activeAppt.company}</p>
                                   <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    {studentAppointments[0].status || 'Appointment Scheduled'}
+                                    {activeAppt.status || 'Appointment Scheduled'}
                                   </span>
                                 </div>
                                 <p className="text-slate-600 text-[11px] flex items-center gap-2">
-                                  <span>Date: <strong>{studentAppointments[0].date}</strong> at <strong>{studentAppointments[0].time}</strong></span>
-                                  {studentAppointments[0].meetingType && <span>• Format: {studentAppointments[0].meetingType}</span>}
+                                  <span>Date: <strong>{activeAppt.date}</strong> at <strong>{activeAppt.time}</strong></span>
+                                  {activeAppt.meetingType && <span>• Format: {activeAppt.meetingType}</span>}
                                 </p>
                                 <p className="text-slate-500 text-[11px]">
-                                  Location: {studentAppointments[0].location || 'Facility Premises'}
-                                  {(studentAppointments[0].interviewer || studentAppointments[0].contactPerson) && ` • Interviewer: ${studentAppointments[0].interviewer || studentAppointments[0].contactPerson}`}
+                                  Location: {activeAppt.location || 'Facility Premises'}
+                                  {(activeAppt.interviewer || activeAppt.contactPerson) && ` • Interviewer: ${activeAppt.interviewer || activeAppt.contactPerson}`}
                                 </p>
                               </div>
                               <button
@@ -1183,7 +1202,7 @@ export default function StudentPortalPage() {
                               </button>
                             </div>
                           </div>
-                        ) : studentInternships.length > 0 ? (
+                        ) : activeInt ? (
                           <div className="pt-2">
                             <h5 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
                               <Building2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -1191,9 +1210,9 @@ export default function StudentPortalPage() {
                             </h5>
                             <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div className="space-y-1">
-                                <p className="font-extrabold text-slate-900 text-sm">{studentInternships[0].company}</p>
+                                <p className="font-extrabold text-slate-900 text-sm">{activeInt.company}</p>
                                 <p className="text-slate-600 text-[11px]">
-                                  Program: {studentInternships[0].title} • Required Hours: {studentInternships[0].duration || `${formData.placementHours || 120} Hours`}
+                                  Program: {activeInt.title} • Required Hours: {activeInt.duration || `${formData.placementHours || 120} Hours`}
                                 </p>
                               </div>
                               <button
@@ -1220,7 +1239,8 @@ export default function StudentPortalPage() {
                           </div>
                         )}
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
