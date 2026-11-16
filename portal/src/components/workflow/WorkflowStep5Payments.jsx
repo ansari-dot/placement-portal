@@ -170,6 +170,7 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
     isOpen: false,
     payment: null,
     newPrice: '',
+    chargePercentage: '100',
     reason: '',
     saving: false,
   });
@@ -179,6 +180,7 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
       isOpen: true,
       payment: paymentRecord,
       newPrice: paymentRecord.originalPrice !== undefined ? String(paymentRecord.originalPrice) : '',
+      chargePercentage: paymentRecord.isPercentageOverridden ? String(paymentRecord.chargePercentage ?? 100) : 'auto',
       reason: paymentRecord.feeOverrideReason || '',
       saving: false,
     });
@@ -195,17 +197,49 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
     const pId = feeOverrideModal.payment._id || feeOverrideModal.payment.id;
     try {
       setFeeOverrideModal(prev => ({ ...prev, saving: true }));
-      const res = await updatePaymentStatus(pId, {
+      const updatePayload = {
         originalPrice: priceNum,
         feeOverrideReason: feeOverrideModal.reason,
-      });
-      toast.success(res?.message || 'Placement fee updated successfully');
-      setFeeOverrideModal({ isOpen: false, payment: null, newPrice: '', reason: '', saving: false });
+      };
+
+      if (feeOverrideModal.chargePercentage === 'auto') {
+        updatePayload.isPercentageOverridden = false;
+      } else {
+        updatePayload.chargePercentage = Number(feeOverrideModal.chargePercentage);
+        updatePayload.isPercentageOverridden = true;
+      }
+
+      const res = await updatePaymentStatus(pId, updatePayload);
+      toast.success(res?.message || 'Placement fee & charge percentage updated successfully');
+      setFeeOverrideModal({ isOpen: false, payment: null, newPrice: '', chargePercentage: '100', reason: '', saving: false });
       loadData();
     } catch (err) {
       console.error('Failed to update fee override:', err);
       toast.error(err?.response?.data?.message || 'Failed to update fee override');
       setFeeOverrideModal(prev => ({ ...prev, saving: false }));
+    }
+  };
+
+  // Quick Charge Percentage change from row dropdown
+  const handleChargePercentageChange = async (paymentId, value) => {
+    try {
+      if (value === 'auto') {
+        await updatePaymentStatus(paymentId, {
+          isPercentageOverridden: false,
+        });
+        toast.success('Charge percentage reset to auto (status-based)');
+      } else {
+        const pct = Number(value);
+        await updatePaymentStatus(paymentId, {
+          chargePercentage: pct,
+          isPercentageOverridden: true,
+        });
+        toast.success(`Charge percentage set to ${pct}%`);
+      }
+      loadData();
+    } catch (err) {
+      console.error('Failed to change charge percentage:', err);
+      toast.error(err?.response?.data?.message || 'Failed to update charge percentage');
     }
   };
 
@@ -903,15 +937,26 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
                               </button>
                             </div>
                             <div className="flex items-center space-x-1">
-                              <span
-                                className={`text-[10px] font-semibold px-1.5 py-0.2 rounded ${
+                              <select
+                                value={p.isPercentageOverridden ? String(p.chargePercentage ?? 100) : 'auto'}
+                                onChange={(e) => handleChargePercentageChange(pId, e.target.value)}
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded border cursor-pointer shadow-2xs focus:outline-none transition ${
                                   is30Pct
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-emerald-100 text-emerald-800'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
                                 }`}
+                                title={
+                                  p.isPercentageOverridden
+                                    ? `Manual Override: ${p.chargePercentage}% charge (Click to switch to 100%, 30%, or Auto)`
+                                    : `Auto (${is30Pct ? '30%' : '100%'} based on status). Click to change.`
+                                }
                               >
-                                {is30Pct ? `30% Charge` : '100% Charge'}
-                              </span>
+                                <option value="100" className="bg-white text-slate-800 font-semibold">100% Charge</option>
+                                <option value="30" className="bg-white text-slate-800 font-semibold">30% Charge</option>
+                                <option value="auto" className="bg-white text-slate-500 font-normal italic">
+                                  Auto ({is30Pct ? '30%' : '100%'})
+                                </option>
+                              </select>
 
                               {p.gstEnabled ? (
                                 <button
@@ -1114,6 +1159,43 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
                   This custom fee will persist across workflow syncs and will be used to compute 100% or 30% milestone invoices.
                 </p>
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Charge Percentage
+                </label>
+                <select
+                  value={feeOverrideModal.chargePercentage}
+                  onChange={(e) => setFeeOverrideModal(prev => ({ ...prev, chargePercentage: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 font-semibold text-xs text-slate-800"
+                >
+                  <option value="100">100% Charge (Full Placement Fee)</option>
+                  <option value="30">30% Charge (Withdrawal / Admin Fee)</option>
+                  <option value="auto">Auto (Calculate based on Student Placement Status)</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Select 100% to charge the full placement amount, 30% for withdrawal/cancellation admin fee, or Auto to follow workflow status.
+                </p>
+              </div>
+
+              {feeOverrideModal.newPrice && (
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-500 font-medium">Estimated Payment Amount:</span>
+                    <span className="font-bold text-slate-900 font-mono">
+                      AUD ${(
+                        (Number(feeOverrideModal.newPrice) *
+                          (feeOverrideModal.chargePercentage === '30'
+                            ? 0.3
+                            : feeOverrideModal.chargePercentage === 'auto'
+                            ? (feeOverrideModal.payment?.chargePercentage === 30 ? 0.3 : 1.0)
+                            : 1.0)
+                        ).toFixed(2)
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">

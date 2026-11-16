@@ -160,6 +160,7 @@ export class InvoiceService {
         const pIdStr = String(p._id);
         if (percentageMap.has(pIdStr)) {
           p.chargePercentage = percentageMap.get(pIdStr);
+          p.isPercentageOverridden = true;
         }
         const pct = p.chargePercentage ?? 100;
         const orig = p.originalPrice;

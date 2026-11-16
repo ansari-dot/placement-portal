@@ -522,9 +522,17 @@ export const syncChargeableStudents = async () => {
         existingPaymentMap.get(stuDbId) || (stuBizId ? existingPaymentMap.get(stuBizId) : null);
 
       if (existingPayment) {
-        const isOverridden = Boolean(existingPayment.isPriceOverridden);
-        const finalPrice = isOverridden ? existingPayment.originalPrice : originalPrice;
-        const finalPercentage = existingPayment.chargePercentage ?? chargePercentage;
+        const isPriceOverridden = Boolean(existingPayment.isPriceOverridden);
+        const isPercentageOverridden = Boolean(existingPayment.isPercentageOverridden);
+        const finalPrice = isPriceOverridden ? existingPayment.originalPrice : originalPrice;
+        
+        // If the percentage was manually overridden by user, respect that manual choice.
+        // Otherwise, dynamically recalculate based on the student's current placementStatus
+        // (100% for active appointments/placements, 30% for withdrawals/missed appointments).
+        const finalPercentage = isPercentageOverridden
+          ? (existingPayment.chargePercentage ?? chargePercentage)
+          : chargePercentage;
+
         const calculatedPaymentAmount = Number(((finalPrice * finalPercentage) / 100).toFixed(2));
         const gstAmount = existingPayment.gstEnabled
           ? Number((calculatedPaymentAmount * 0.10).toFixed(2))
@@ -543,7 +551,8 @@ export const syncChargeableStudents = async () => {
                 course: stu.courseQualification || stu.courses || existingPayment.course,
                 placementStatus: canonicalStatus,
                 defaultPlacementFee: originalPrice,
-                ...(isOverridden ? {} : { originalPrice, priceConfigured, pricingError }),
+                ...(isPriceOverridden ? {} : { originalPrice, priceConfigured, pricingError }),
+                chargePercentage: finalPercentage,
                 paymentAmount: calculatedPaymentAmount,
                 gstAmount,
                 totalAmount,
@@ -755,7 +764,15 @@ export const getPaymentTotalsService = async (queryParams = {}) => {
  * Service: Update status & pricing details of an individual payment record
  */
 export const updatePaymentStatusService = async (id, updateBody, currentUser = null) => {
-  const { paymentStatus, chargePercentage, originalPrice, gstEnabled, feeOverrideReason } = updateBody;
+  const {
+    paymentStatus,
+    chargePercentage,
+    isPercentageOverridden,
+    originalPrice,
+    gstEnabled,
+    feeOverrideReason,
+    percentageOverrideReason,
+  } = updateBody;
 
   const payment = await PaymentModel.findById(id);
   if (!payment) {
@@ -763,15 +780,28 @@ export const updatePaymentStatusService = async (id, updateBody, currentUser = n
   }
 
   if (paymentStatus) {
+    let normalizedStatus = paymentStatus;
+    if (paymentStatus === '30% Advance Invoiced') normalizedStatus = 'Invoice Sent';
+    else if (paymentStatus === '30% Advance Received') normalizedStatus = '30% Received';
+
     const validStatuses = ['Pending', 'Invoice Generated', 'Invoice Sent', '30% Received', 'Full Payment Received'];
-    if (!validStatuses.includes(paymentStatus)) {
+    if (!validStatuses.includes(normalizedStatus)) {
       throw new BadRequestError(`Invalid payment status. Must be one of: ${validStatuses.join(', ')}`);
     }
-    payment.paymentStatus = paymentStatus;
+    payment.paymentStatus = normalizedStatus;
   }
 
   if (chargePercentage !== undefined) {
     payment.chargePercentage = Number(chargePercentage);
+    payment.isPercentageOverridden = isPercentageOverridden !== undefined ? Boolean(isPercentageOverridden) : true;
+    if (percentageOverrideReason) {
+      payment.percentageOverrideReason = String(percentageOverrideReason).trim();
+    }
+  } else if (isPercentageOverridden === false) {
+    payment.isPercentageOverridden = false;
+    payment.percentageOverrideReason = '';
+    const isWithdrawal = THIRTY_PERCENT_STATUSES.includes(payment.placementStatus);
+    payment.chargePercentage = isWithdrawal ? 30 : 100;
   }
 
   if (originalPrice !== undefined) {
@@ -946,9 +976,17 @@ export const syncSingleStudentPayment = async (studentDoc) => {
 
   if (!existingPayment) return;
 
-  const isOverridden = Boolean(existingPayment.isPriceOverridden);
-  const finalPrice = isOverridden ? existingPayment.originalPrice : originalPrice;
-  const finalPercentage = existingPayment.chargePercentage ?? 100;
+  const isPriceOverridden = Boolean(existingPayment.isPriceOverridden);
+  const isPercentageOverridden = Boolean(existingPayment.isPercentageOverridden);
+  const finalPrice = isPriceOverridden ? existingPayment.originalPrice : originalPrice;
+
+  const currentStatus = studentDoc.placementStatus || existingPayment.placementStatus;
+  const isWithdrawal = THIRTY_PERCENT_STATUSES.includes(currentStatus);
+  const autoPercentage = isWithdrawal ? 30 : 100;
+  const finalPercentage = isPercentageOverridden
+    ? (existingPayment.chargePercentage ?? autoPercentage)
+    : autoPercentage;
+
   const calculatedPaymentAmount = Number(((finalPrice * finalPercentage) / 100).toFixed(2));
   const gstAmount = existingPayment.gstEnabled ? Number((calculatedPaymentAmount * 0.10).toFixed(2)) : 0;
   const totalAmount = Number((calculatedPaymentAmount + gstAmount).toFixed(2));
@@ -963,11 +1001,12 @@ export const syncSingleStudentPayment = async (studentDoc) => {
         course: studentDoc.courseQualification || studentDoc.courses || existingPayment.course,
         spokesperson: spokesperson || matchedRto?.contactName || existingPayment.spokesperson || '',
         defaultPlacementFee: originalPrice,
-        ...(isOverridden ? {} : { originalPrice, priceConfigured, pricingError }),
+        ...(isPriceOverridden ? {} : { originalPrice, priceConfigured, pricingError }),
+        chargePercentage: finalPercentage,
         paymentAmount: calculatedPaymentAmount,
         gstAmount,
         totalAmount,
-        placementStatus: studentDoc.placementStatus || existingPayment.placementStatus,
+        placementStatus: currentStatus,
       },
     }
   );

@@ -3,10 +3,12 @@ import { z } from 'zod';
 export const updatePaymentStatusSchema = z.object({
   paymentStatus: z.enum([
     'Pending',
+    'Invoice Generated',
+    'Invoice Sent',
+    '30% Received',
+    'Full Payment Received',
     '30% Advance Invoiced',
     '30% Advance Received',
-    'Invoice Sent',
-    'Full Payment Received',
     'Payment Overdue',
     'Refunded',
     'Cancelled',
@@ -14,6 +16,9 @@ export const updatePaymentStatusSchema = z.object({
   originalPrice: z.coerce.number().min(0, 'Original price cannot be negative').optional(),
   feeOverrideReason: z.string().trim().optional(),
   chargePercentage: z.coerce.number().min(0).max(100).optional(),
+  isPercentageOverridden: z.boolean().optional(),
+  percentageOverrideReason: z.string().trim().optional(),
+  gstEnabled: z.boolean().optional(),
   comments: z.string().trim().optional(),
 });
 

@@ -67,6 +67,15 @@ const paymentSchema = new mongoose.Schema(
       type: Number,
       default: 100,
     },
+    isPercentageOverridden: {
+      type: Boolean,
+      default: false,
+    },
+    percentageOverrideReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     paymentAmount: {
       type: Number,
       default: 0,
