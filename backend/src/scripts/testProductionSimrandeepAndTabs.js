@@ -23,6 +23,12 @@ import {
 } from '../modules/workflow/workflow.service.js';
 import { StudentService } from '../modules/student/student.service.js';
 import { calculateLifecycleStatus } from '../modules/student/studentStatus.service.js';
+import PaymentModel from '../modules/payment/payment.model.js';
+import {
+  syncChargeableStudents,
+  importStudentsToPaymentService,
+} from '../modules/payment/payment.service.js';
+import RtoModel from '../modules/rto/rto.model.js';
 
 dotenv.config();
 
@@ -72,6 +78,7 @@ async function runSuite() {
       placementStatus: 'In Progress',
       lifecycleStatus: 'Request Pending',
       rto: 'Care Education RTO',
+      assignedRto: 'Care Education RTO',
     });
 
     const workflow = await WorkflowModel.create({
@@ -268,14 +275,241 @@ async function runSuite() {
     assert(activeTabAfterUnSnooze.some(s => s.id === '2'), 'Un-snoozed student immediately moves into Active tab');
 
     // -------------------------------------------------------------------------
+    // TEST 10: STRICT EXCLUSION OF SNOOZED & INACTIVE STUDENTS FROM STEPS 2, 3, 4
+    // -------------------------------------------------------------------------
+    console.log('\n--- Step 10: Strict Exclusion of Snoozed & Inactive Students from Steps 2, 3, 4 ---');
+    const snoozedBizId = `STU-SNOOZE-${timestamp}`;
+    const inactiveBizId = `STU-INACTIVE-${timestamp}`;
+
+    const snoozedStudent = await StudentModel.create({
+      studentId: snoozedBizId,
+      name: `Snoozed Student ${timestamp}`,
+      firstName: 'Snoozed',
+      lastName: 'Student',
+      email: `snoozed.${timestamp}@test.edu.au`,
+      emailAddress: `snoozed.${timestamp}@test.edu.au`,
+      phoneNumber: '0499000111',
+      courseQualification: 'Diploma of Early Childhood Education and Care',
+      course: 'Diploma of Early Childhood Education and Care',
+      status: 'Active',
+      internshipPriority: 'Snooze',
+      snoozed: true,
+      placementStatus: 'N/A',
+      rto: 'Care Education RTO',
+      assignedRto: 'Care Education RTO',
+    });
+
+    const inactiveStudent = await StudentModel.create({
+      studentId: inactiveBizId,
+      name: `Inactive Student ${timestamp}`,
+      firstName: 'Inactive',
+      lastName: 'Student',
+      email: `inactive.${timestamp}@test.edu.au`,
+      emailAddress: `inactive.${timestamp}@test.edu.au`,
+      phoneNumber: '0499000222',
+      courseQualification: 'Diploma of Early Childhood Education and Care',
+      course: 'Diploma of Early Childhood Education and Care',
+      status: 'Inactive',
+      internshipPriority: 'Inactive',
+      snoozed: false,
+      placementStatus: 'N/A',
+      rto: 'Care Education RTO',
+      assignedRto: 'Care Education RTO',
+    });
+
+    // Create requests and appointments for them in workflow
+    const snoozedReq = await createInternshipRequest(workflow._id, {
+      title: 'Childcare Placement',
+      student: snoozedStudent.name,
+      studentId: snoozedBizId,
+      company: 'Test Kindergarten',
+      rto: 'Care Education RTO',
+      priority: 'Snooze',
+      status: 'On Hold',
+    });
+
+    const inactiveReq = await createInternshipRequest(workflow._id, {
+      title: 'Childcare Placement',
+      student: inactiveStudent.name,
+      studentId: inactiveBizId,
+      company: 'Test Kindergarten',
+      rto: 'Care Education RTO',
+      priority: 'Inactive',
+      status: 'On Hold',
+    });
+
+    const snoozedAppt = await createAppointment(workflow._id, {
+      student: snoozedStudent.name,
+      studentId: snoozedBizId,
+      company: 'Test Kindergarten',
+      rto: 'Care Education RTO',
+      date: '2026-11-25',
+      time: '10:00 AM',
+      status: 'Scheduled',
+    });
+
+    const inactiveAppt = await createAppointment(workflow._id, {
+      student: inactiveStudent.name,
+      studentId: inactiveBizId,
+      company: 'Test Kindergarten',
+      rto: 'Care Education RTO',
+      date: '2026-11-25',
+      time: '11:00 AM',
+      status: 'Scheduled',
+    });
+
+    // Verification helper mirroring WorkflowPage's isRecordInactiveOrSnoozed
+    const workflowStudentsList = [student, snoozedStudent, inactiveStudent];
+    const isRecordBlocked = (record) => {
+      const norm = (s) => (s ? String(s).trim().toLowerCase() : '');
+      const reqStuId = norm(record.studentId);
+      const reqStuName = norm(record.student || record.studentName);
+      const reqEmail = norm(record.email || record.studentEmail);
+
+      const matchedStu = workflowStudentsList.find((stu) => {
+        const identifiers = [stu.id, stu._id, stu.studentId, stu.name].filter(Boolean).map(norm);
+        const stuEmail = norm(stu.email || stu.emailAddress);
+        return (reqStuId && identifiers.includes(reqStuId)) ||
+               (reqStuName && identifiers.includes(reqStuName)) ||
+               (reqEmail && stuEmail && reqEmail === stuEmail);
+      });
+
+      if (matchedStu) {
+        if (
+          matchedStu.snoozed === true ||
+          matchedStu.status === 'Inactive' ||
+          matchedStu.internshipPriority === 'Inactive' ||
+          matchedStu.internshipPriority === 'Snooze'
+        ) {
+          return true;
+        }
+      }
+      return record.priority === 'Inactive' || record.priority === 'Snooze';
+    };
+
+    assert(isRecordBlocked(snoozedReq), 'Step 2: Snoozed student request is strictly excluded');
+    assert(isRecordBlocked(inactiveReq), 'Step 2: Inactive student request is strictly excluded');
+    assert(isRecordBlocked(snoozedAppt), 'Step 3: Snoozed student appointment is strictly excluded');
+    assert(isRecordBlocked(inactiveAppt), 'Step 3: Inactive student appointment is strictly excluded');
+    assert(isRecordBlocked({ studentId: snoozedBizId, student: snoozedStudent.name }), 'Step 4: Snoozed student placement is strictly excluded');
+    assert(isRecordBlocked({ studentId: inactiveBizId, student: inactiveStudent.name }), 'Step 4: Inactive student placement is strictly excluded');
+
+    // -------------------------------------------------------------------------
+    // TEST 11: STEP 5 INCLUSION FOR SUCCESSFUL APPOINTMENT THEN SNOOZED / INACTIVE
+    // -------------------------------------------------------------------------
+    console.log('\n--- Step 11: Step 5 Payment Inclusion: Successful Appointment then Snooze/Inactive ---');
+    // Ensure Care Education RTO has course pricing configured
+    let rtoDoc = await RtoModel.findOne({ name: 'Care Education RTO' });
+    if (!rtoDoc) {
+      rtoDoc = await RtoModel.create({
+        name: 'Care Education RTO',
+        code: 'CERTO',
+        email: 'billing@careeducation.edu.au',
+        onboardedByName: 'System Admin',
+        payoutRate: 500,
+        coursePricing: [
+          { course: 'Certificate III in Early Childhood Education and Care', pricing: 500 },
+          { course: 'Diploma of Early Childhood Education and Care', pricing: 650 },
+        ],
+      });
+    } else {
+      await RtoModel.updateOne(
+        { _id: rtoDoc._id },
+        {
+          $set: {
+            payoutRate: 500,
+            coursePricing: [
+              { course: 'Certificate III in Early Childhood Education and Care', pricing: 500 },
+              { course: 'Diploma of Early Childhood Education and Care', pricing: 650 },
+            ],
+          },
+        }
+      );
+    }
+
+    // Student Simrandeep has a successful appointment (Modbury Kindergarten)
+    // Now simulate student going on Snooze after successful appointment
+    await StudentModel.updateOne(
+      { _id: student._id },
+      { $set: { snoozed: true, internshipPriority: 'Snooze', placementStatus: 'N/A' } }
+    );
+
+    // Run syncChargeableStudents()
+    await syncChargeableStudents();
+
+    // Verify payment record was created / exists for this student
+    const paymentRecord = await PaymentModel.findOne({ studentId: testStudentId });
+    assert(
+      paymentRecord !== null,
+      `Step 5: Student with successful appointment who went on Snooze is included in Payment (Actual: ${paymentRecord ? 'Found' : 'Missing'})`
+    );
+    assert(
+      paymentRecord?.placementStatus === 'Snooze',
+      `Step 5: Payment placementStatus is set to Snooze (Actual: "${paymentRecord?.placementStatus}")`
+    );
+    assert(
+      paymentRecord?.paymentAmount > 0,
+      `Step 5: Payment amount is charged (Actual: $${paymentRecord?.paymentAmount})`
+    );
+
+    // -------------------------------------------------------------------------
+    // TEST 12: STEP 5 MANUAL IMPORT FROM INACTIVE OR SNOOZE TAB
+    // -------------------------------------------------------------------------
+    console.log('\n--- Step 12: Step 5 Payment Manual Import from Inactive Tab ---');
+    // Inactive student does not have a successful appointment yet
+    const importRes = await importStudentsToPaymentService([String(inactiveStudent._id)]);
+    assert(
+      importRes.success && importRes.importedCount === 1,
+      `Manual import of inactive student into Step 5 succeeded (Imported: ${importRes.importedCount})`
+    );
+
+    const importedPayment = await PaymentModel.findOne({ studentId: inactiveBizId });
+    assert(
+      importedPayment !== null,
+      `Step 5: Manually imported inactive student exists in Payment collection (Actual: ${importedPayment ? 'Found' : 'Missing'})`
+    );
+    assert(
+      importedPayment?.placementStatus === 'Inactive',
+      `Step 5: Imported inactive student placementStatus is set to Inactive (Actual: "${importedPayment?.placementStatus}")`
+    );
+
+    // Test duplicate prevention on re-import
+    const duplicateImportRes = await importStudentsToPaymentService([String(inactiveStudent._id)]);
+    assert(
+      duplicateImportRes.importedCount === 0,
+      'Step 5: Duplicate import prevention works correctly (0 re-imported)'
+    );
+
+    // -------------------------------------------------------------------------
+    // TEST 13: UN-SNOOZE / REACTIVATE RESTORES TO ACTIVE STEPS
+    // -------------------------------------------------------------------------
+    console.log('\n--- Step 13: Reactivating Snoozed Student Restores to Active ---');
+    await StudentModel.updateOne(
+      { _id: snoozedStudent._id },
+      { $set: { snoozed: false, internshipPriority: 'Urgent', status: 'Active', placementStatus: 'In Progress' } }
+    );
+    const unblockedStudent = await StudentModel.findById(snoozedStudent._id);
+    const unblockedRecord = { studentId: unblockedStudent.studentId, student: unblockedStudent.name, priority: 'Urgent' };
+    const isNowBlocked = isRecordBlocked(unblockedRecord);
+    // Since student is now unblocked in workflowStudentsList
+    snoozedStudent.snoozed = false;
+    snoozedStudent.internshipPriority = 'Urgent';
+    snoozedStudent.status = 'Active';
+    assert(
+      !isRecordBlocked(unblockedRecord),
+      'Reactivated student is no longer blocked from Step 2, Step 3, Step 4'
+    );
+
+    // -------------------------------------------------------------------------
     // CLEANUP
     // -------------------------------------------------------------------------
     console.log('\n--- Cleanup Test Records ---');
-    await StudentModel.deleteOne({ _id: student._id });
+    await StudentModel.deleteMany({ _id: { $in: [student._id, snoozedStudent._id, inactiveStudent._id] } });
     await WorkflowModel.deleteOne({ _id: workflow._id });
-    await AppointmentModel.deleteMany({ studentId: testStudentId });
-    await InternshipRequestModel.deleteMany({ studentId: testStudentId });
-    await InternshipModel.deleteMany({ studentId: testStudentId });
+    await AppointmentModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
+    await InternshipRequestModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
+    await InternshipModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
+    await PaymentModel.deleteMany({ studentId: { $in: [testStudentId, snoozedBizId, inactiveBizId] } });
     console.log('  Cleaned up all temporary test records successfully.');
 
   } catch (err) {

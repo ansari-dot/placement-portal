@@ -421,13 +421,18 @@ export default function WorkflowPage() {
         (dbId && latestByStudent.get(dbId)?.priority) ||
         (name && latestByStudent.get(name)?.priority);
 
+      // Student is snoozed if student document says snoozed/Snooze, or latest request priority is Snooze
       const isSnoozed =
-        (stu.snoozed === true || stu.internshipPriority === 'Snooze' || reqPriority === 'Snooze') &&
-        reqPriority !== 'Normal' && reqPriority !== 'Urgent';
+        stu.snoozed === true ||
+        stu.internshipPriority === 'Snooze' ||
+        (reqPriority === 'Snooze' && stu.status !== 'Inactive' && stu.internshipPriority !== 'Inactive');
 
+      // Student is inactive if student document says inactive, or latest request priority is Inactive
       const isInactive =
-        (stu.internshipPriority === 'Inactive' || stu.status === 'Inactive' || reqPriority === 'Inactive') &&
-        reqPriority !== 'Normal' && reqPriority !== 'Urgent' && !isSnoozed;
+        !isSnoozed &&
+        (stu.status === 'Inactive' ||
+         stu.internshipPriority === 'Inactive' ||
+         reqPriority === 'Inactive');
 
       const statusType = isSnoozed ? 'Snooze' : isInactive ? 'Inactive' : null;
 
@@ -438,11 +443,14 @@ export default function WorkflowPage() {
         if (fullName) map.set(fullName, statusType);
         if (email) map.set(email, statusType);
       } else {
-        if (dbId) map.delete(dbId);
-        if (bizId) map.delete(bizId);
-        if (name) map.delete(name);
-        if (fullName) map.delete(fullName);
-        if (email) map.delete(email);
+        // Only remove if student is explicitly active
+        if (reqPriority === 'Normal' || reqPriority === 'Urgent') {
+          if (dbId) map.delete(dbId);
+          if (bizId) map.delete(bizId);
+          if (name) map.delete(name);
+          if (fullName) map.delete(fullName);
+          if (email) map.delete(email);
+        }
       }
     });
 
@@ -453,6 +461,60 @@ export default function WorkflowPage() {
   const inactiveSnoozedStudentKeys = React.useMemo(() => {
     return new Set(inactiveSnoozedStudentMap.keys());
   }, [inactiveSnoozedStudentMap]);
+
+  // Helper: Strictly check whether a request, appointment, or placement row belongs to an Inactive or Snoozed student
+  const isRecordInactiveOrSnoozed = useCallback((record) => {
+    if (!record) return false;
+    const reqStuId = norm(record.studentId);
+    const reqStuDbId = norm(record.studentDbId || record.studentId || record._id);
+    const reqStuName = norm(record.student || record.studentName);
+    const reqEmail = norm(record.email || record.studentEmail);
+
+    if (
+      inactiveSnoozedStudentKeys.has(reqStuId) ||
+      inactiveSnoozedStudentKeys.has(reqStuDbId) ||
+      inactiveSnoozedStudentKeys.has(reqStuName) ||
+      inactiveSnoozedStudentKeys.has(reqEmail) ||
+      record.priority === 'Inactive' ||
+      record.priority === 'Snooze'
+    ) {
+      return true;
+    }
+
+    // Match against workflowStudents to ensure no snoozed/inactive student slips through
+    const matchedStu = (workflowStudents || []).find((stu) => {
+      const identifiers = [
+        stu.id,
+        stu._id,
+        stu.studentId,
+        stu.name,
+        `${stu.firstName || ''} ${stu.lastName || ''}`.trim()
+      ].filter(Boolean).map(norm);
+      const stuEmail = norm(stu.email || stu.emailAddress);
+      return (
+        (reqStuId && identifiers.includes(reqStuId)) ||
+        (reqStuDbId && identifiers.includes(reqStuDbId)) ||
+        (reqStuName && identifiers.includes(reqStuName)) ||
+        (reqEmail && stuEmail && reqEmail === stuEmail)
+      );
+    });
+
+    if (matchedStu) {
+      if (
+        matchedStu.snoozed === true ||
+        matchedStu.status === 'Inactive' ||
+        matchedStu.internshipPriority === 'Inactive' ||
+        matchedStu.internshipPriority === 'Snooze' ||
+        inactiveSnoozedStudentKeys.has(norm(matchedStu.id || matchedStu._id)) ||
+        inactiveSnoozedStudentKeys.has(norm(matchedStu.studentId)) ||
+        inactiveSnoozedStudentKeys.has(norm(matchedStu.name))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [inactiveSnoozedStudentKeys, workflowStudents]);
 
   // ─── Mapping helpers ───────────────────────────────────────────────────────
   // ID-only matching — name fallback is intentionally removed because two students
@@ -749,9 +811,10 @@ export default function WorkflowPage() {
     const filtered = workflow.requests
       .filter((req) => {
         // Hide Inactive/Snoozed students from Step 2
+        if (isRecordInactiveOrSnoozed(req)) return false;
+
         const reqStuId = norm(req.studentId);
         const reqStuName = norm(req.student);
-        if (inactiveSnoozedStudentKeys.has(reqStuId) || inactiveSnoozedStudentKeys.has(reqStuName) || req.priority === 'Inactive' || req.priority === 'Snooze') return false;
 
         // If specifically snoozed/inactive, exclude
         if (excludeReturnedToStep1 && ['Inactive', 'Snooze'].includes(req.priority)) return false;
@@ -856,7 +919,7 @@ export default function WorkflowPage() {
         const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
         return tB - tA;
       });
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators, inactiveSnoozedStudentKeys]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, coordinators, inactiveSnoozedStudentKeys, isRecordInactiveOrSnoozed]);
 
   const mapAppointmentsForStep3 = useCallback(() => {
     if (!workflow?.appointments || workflow.appointments.length === 0) {
@@ -865,11 +928,11 @@ export default function WorkflowPage() {
 
     return workflow.appointments
       .filter((appt) => {
-        // Hide Inactive/Snoozed students from Step 3
+        // Strict exclusion: Hide Inactive/Snoozed students from Step 3
+        if (isRecordInactiveOrSnoozed(appt)) return false;
+
         const apptStuId = norm(appt.studentId);
         const apptStuName = norm(appt.student);
-        const apptEmail = norm(appt.email);
-        if (inactiveSnoozedStudentKeys.has(apptStuId) || inactiveSnoozedStudentKeys.has(apptStuName) || inactiveSnoozedStudentKeys.has(apptEmail)) return false;
         const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
         if (!shouldFilter) return true;
         return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
@@ -977,7 +1040,7 @@ export default function WorkflowPage() {
         const tB = new Date(b.createdAt || b.date || b.updatedAt || 0).getTime();
         return tB - tA;
       });
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, inactiveSnoozedStudentKeys]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, workflowStudents, inactiveSnoozedStudentKeys, isRecordInactiveOrSnoozed]);
 
   // ─── ✅ Map ALL appointments to internships ──────────────────────────────
   const mapInternshipsForStep4 = useCallback(() => {
@@ -985,10 +1048,11 @@ export default function WorkflowPage() {
     const allAppointments = workflow?.appointments || [];
 
     const filteredAppointments = allAppointments.filter((appt) => {
-      // Hide Inactive/Snoozed students from Step 4
+      // Strict exclusion: Hide Inactive/Snoozed students from Step 4
+      if (isRecordInactiveOrSnoozed(appt)) return false;
+
       const apptStuId = norm(appt.studentId);
       const apptStuName = norm(appt.student);
-      if (inactiveSnoozedStudentKeys.has(apptStuId) || inactiveSnoozedStudentKeys.has(apptStuName)) return false;
       const shouldFilter = !isAdmin || selectedCoordinator !== 'All';
       if (!shouldFilter) return true;
       return visibleStudentKeySet.has(apptStuId) || visibleStudentKeySet.has(apptStuName);
@@ -1010,6 +1074,8 @@ export default function WorkflowPage() {
           (sName && targetName && sName === targetName)
         );
       });
+
+      if (isRecordInactiveOrSnoozed(stuMatch)) return;
 
       const startDate = appt.commencementDate || '';
       let calculatedEnd = appt.expectedCompletionDate || '';
@@ -1132,7 +1198,7 @@ export default function WorkflowPage() {
     });
 
     return result;
-  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, visibleWorkflowStudents, inactiveSnoozedStudentKeys]);
+  }, [workflow, isAdmin, selectedCoordinator, visibleStudentKeySet, visibleWorkflowStudents, inactiveSnoozedStudentKeys, isRecordInactiveOrSnoozed]);
 
   // ─── Request handlers ──────────────────────────────────────────────────────
 

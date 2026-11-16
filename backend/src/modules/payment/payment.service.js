@@ -156,6 +156,8 @@ export const syncChargeableStudents = async () => {
 
     // 1. Auto-sync / derive student placementStatus from live Workflow & Appointment/Internship models
     let requestsByStudent = new Map();
+    const chargeableFromEventsDbIds = [];
+    const chargeableFromEventsBizIds = [];
     try {
       const workflowModule = await import('../workflow/workflow.model.js');
       const WorkflowModel = workflowModule.default;
@@ -319,6 +321,20 @@ export const syncChargeableStudents = async () => {
           derivedStatus = 'Not Suitable Site';
         }
 
+        // Track students who had a successful appointment or reached placement even if later snoozed or inactive
+        const hadSuccessfulApptOrPlacement =
+          studentInts.length > 0 ||
+          studentAppts.some(
+            (a) =>
+              ['Successful', 'Appointment Successful', 'Confirmed', 'Completed', 'Placement Completed', 'Placement Started', 'Active', 'Joined', 'Waiting to Join'].includes(a.status) ||
+              a.appointmentOutcome === 'successful' ||
+              a.appointmentOutcome === 'completed'
+          );
+        if (hadSuccessfulApptOrPlacement) {
+          chargeableFromEventsDbIds.push(stu._id);
+          if (keyId) chargeableFromEventsBizIds.push(keyId);
+        }
+
         if (!isSnoozedOrInactive && derivedStatus && stu.placementStatus !== derivedStatus) {
           statusSyncOps.push({
             updateOne: {
@@ -336,14 +352,14 @@ export const syncChargeableStudents = async () => {
       logger.warn(`[SyncPayments] Dynamic status sync skipped: ${syncErr.message}`);
     }
 
-    // 2. Fetch all eligible students (chargeable placement status OR students with existing payment records)
+    // 2. Fetch all eligible students (chargeable placement status OR students with existing payment records OR students who had successful appointment)
     const existingPaymentStudentIds = allPayments.map((p) => p.student).filter(Boolean);
     const existingPaymentStudentBizIds = allPayments.map((p) => p.studentId).filter(Boolean);
     const eligibleStudents = await StudentModel.find({
       $or: [
         { placementStatus: { $in: CHARGEABLE_PLACEMENT_STATUSES } },
-        { _id: { $in: existingPaymentStudentIds } },
-        { studentId: { $in: existingPaymentStudentBizIds } },
+        { _id: { $in: [...existingPaymentStudentIds, ...chargeableFromEventsDbIds] } },
+        { studentId: { $in: [...existingPaymentStudentBizIds, ...chargeableFromEventsBizIds] } },
       ],
     }).lean();
 

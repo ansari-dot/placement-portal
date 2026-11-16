@@ -1145,7 +1145,7 @@ export default function WorkflowStep1Students({
               <div>
                 <h4 className="text-sm font-bold text-blue-900">Payment Section — Import Students</h4>
                 <p className="text-xs text-blue-700 mt-0.5">
-                  Select eligible students from any tab (All, Inactive Students, Snooze) to import into the Payment section. Students already in Payment are automatically hidden.
+                  Select eligible students from any tab (Active, Inactive Students, Snooze) to import into the Payment section. Students already in Payment are automatically hidden.
                 </p>
               </div>
             </div>
