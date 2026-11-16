@@ -315,6 +315,10 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
     // Push new contact records — never overwrite the existing array
     if (Array.isArray(newContacts) && newContacts.length > 0) {
         matchedRequest.contactedIndustries.push(...newContacts);
+        matchedRequest.returnedToStep1 = false;
+        if (['Student Withdraw', 'Student Withdrawn', 'Withdrawn', 'New', 'On Hold'].includes(matchedRequest.status)) {
+            matchedRequest.status = 'Industry Contacted';
+        }
     }
 
     Object.keys(otherFields).forEach((key) => {
@@ -337,7 +341,22 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
             if (mongoose.Types.ObjectId.isValid(matchedRequest.studentId)) {
                 studentQuery.push({ _id: matchedRequest.studentId });
             }
+            if (matchedRequest.student) {
+                studentQuery.push({ name: matchedRequest.student });
+            }
             
+            // Reactivate student if in Student Withdraw, Awaiting, or On Hold
+            await StudentModel.updateMany(
+                {
+                    $and: [
+                        { $or: studentQuery },
+                        { placementStatus: { $in: ["Student Withdraw", "Student Withdrawn", "Withdrawn", "Awaiting", "N/A", "", null] } },
+                    ],
+                },
+                { $set: { placementStatus: "In Progress", status: "Active" } },
+                { runValidators: false }
+            );
+
             // Update lifecycle status to "Request Pending" if not already in a more advanced state
             await StudentModel.findOneAndUpdate(
                 {
@@ -1367,11 +1386,12 @@ export const updateInternship = async (workflowId, internshipId, internshipData)
 
         // Upsert into workflow.internships
         const derivedIntId = appt.apptId ? `PL-${appt.apptId.substring(4)}` : null;
+        const targetCompany = internshipData.company || appt.company;
         const existingIntIndex = workflow.internships.findIndex(
             (i) =>
                 (derivedIntId && i.intId === derivedIntId) ||
-                (appt.studentId && i.studentId === appt.studentId && i.company === (internshipData.company || appt.company)) ||
-                (appt.student && i.student === appt.student)
+                (appt.studentId && i.studentId === appt.studentId && targetCompany && i.company === targetCompany) ||
+                (appt.student && i.student === appt.student && targetCompany && i.company === targetCompany)
         );
 
         const intRecord = {

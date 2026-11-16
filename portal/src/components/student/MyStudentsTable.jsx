@@ -264,6 +264,8 @@ export default function MyStudentsTable() {
 
       toast.info(`Student ${stuName} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setGenTargetStudent(null);
+      setActiveMainTab('snooze');
+      setCurrentPage(1);
       return;
     }
 
@@ -304,6 +306,8 @@ export default function MyStudentsTable() {
 
         toast.info(`Student ${stuName} marked as Inactive`);
         setGenTargetStudent(null);
+        setActiveMainTab('inactive');
+        setCurrentPage(1);
       } catch (err) {
         console.error('Failed to mark student inactive:', err);
         toast.error(err?.response?.data?.message || 'Failed to update student');
@@ -486,6 +490,8 @@ export default function MyStudentsTable() {
 
       toast.info(`Student ${stuName} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setGenTargetStudent(null);
+      setActiveMainTab('snooze');
+      setCurrentPage(1);
       return;
     }
 
@@ -541,6 +547,8 @@ export default function MyStudentsTable() {
 
         toast.info(`Student ${stuName} marked as Inactive`);
         setGenTargetStudent(null);
+        setActiveMainTab('inactive');
+        setCurrentPage(1);
       } catch (err) {
         console.error('Failed to mark student inactive:', err);
         toast.error(err?.response?.data?.message || 'Failed to update priority');
@@ -650,6 +658,8 @@ export default function MyStudentsTable() {
 
       toast.success(`Placement priority updated to ${genPriority} for ${stuName}`);
       setGenTargetStudent(null);
+      setActiveMainTab('all');
+      setCurrentPage(1);
     } catch (err) {
       console.error('Failed to change placement priority:', err);
       toast.error(err?.response?.data?.message || 'Failed to update placement priority');
@@ -1268,10 +1278,10 @@ export default function MyStudentsTable() {
             </div>
           ) : null}
 
-          {/* ─── Student Tabs: All / Inactive / Snooze ───────────────────────── */}
+          {/* ─── Student Tabs: Active / Inactive / Snooze ───────────────────────── */}
           <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
             {[
-              { key: 'all', label: 'All', count: activeStudentsCount },
+              { key: 'all', label: 'Active', count: activeStudentsCount },
               { key: 'inactive', label: 'Inactive Students', count: inactiveStudentsCount },
               { key: 'snooze', label: 'Snooze', count: snoozedCount },
             ].map((tab) => (

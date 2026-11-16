@@ -436,6 +436,14 @@ export default function StudentPortalPage() {
         return new Date(b.date || b.updatedAt || 0) - new Date(a.date || a.updatedAt || 0);
       });
 
+      // Sort internships so active placements appear first, followed by newest
+      matchedInternships.sort((a, b) => {
+        const aActive = !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(a.status) ? 1 : 0;
+        const bActive = !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(b.status) ? 1 : 0;
+        if (bActive !== aActive) return bActive - aActive;
+        return new Date(b.createdAt || b.start || b.updatedAt || 0) - new Date(a.createdAt || a.start || a.updatedAt || 0);
+      });
+
       setStudentRequests(matchedRequests);
       setStudentAppointments(matchedAppointments);
       setStudentInternships(matchedInternships);
@@ -615,19 +623,25 @@ export default function StudentPortalPage() {
 
     if (isSnoozedOrInactive) return 'N/A';
 
-    const direct = studentProfile?.placementStatus;
-    if (studentInternships.length > 0) {
-      const anyDone = studentInternships.some(i => ['Completed', 'Placement Completed'].includes(i.status));
-      if (anyDone || direct === 'Placement Completed' || direct === 'Completed') return 'Placement Completed';
-      return direct || studentInternships[0].status || 'Placement Started';
+    const activeInts = studentInternships.filter(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(i.status));
+    const activeAppts = studentAppointments.filter(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show'].includes(a.status));
+
+    if (activeInts.length > 0) {
+      const anyDone = activeInts.some(i => ['Completed', 'Placement Completed'].includes(i.status));
+      if (anyDone) return 'Placement Completed';
+      return activeInts[0].status || 'Placement Started';
     }
-    if (studentAppointments.length > 0) {
-      const anySuccess = studentAppointments.some(a => a.appointmentOutcome === 'successful' || a.status === 'Confirmed');
-      if (direct && direct !== 'Awaiting') return direct;
+    if (activeAppts.length > 0) {
+      const anySuccess = activeAppts.some(a => a.appointmentOutcome === 'successful' || a.status === 'Confirmed');
       return anySuccess ? 'Appointment Successful' : 'Appointment Scheduled';
     }
+
+    const direct = studentProfile?.placementStatus;
+    if (direct && direct !== 'Awaiting') return direct;
+    if (studentInternships.length > 0) {
+      return studentInternships[0].status || 'Student Withdraw';
+    }
     if (studentRequests.length > 0) {
-      if (direct && direct !== 'Awaiting') return direct;
       return studentRequests[0].status || 'In Progress';
     }
     return direct || 'Awaiting';
@@ -885,13 +899,21 @@ export default function StudentPortalPage() {
                         </div>
                       </div>
                       <p className="text-xl font-extrabold text-slate-900 truncate">
-                        {studentInternships[0]?.company || studentAppointments[0]?.company || 'Pending Match'}
+                        {(() => {
+                          const activeInt = studentInternships.find(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(i.status));
+                          const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show'].includes(a.status));
+                          return activeInt?.company || activeAppt?.company || studentInternships[0]?.company || studentAppointments[0]?.company || 'Pending Match';
+                        })()}
                       </p>
                       <p className="text-[11px] text-teal-700 font-semibold mt-1 truncate flex items-center justify-between">
                         <span>
-                          {studentInternships[0]
-                            ? `${liveProgressPct}% Hours Completed (${totalVerifiedHours}/${requiredPlacementHours}h)`
-                            : (studentAppointments[0] ? 'Appointment Scheduled' : 'In Preparation')}
+                          {(() => {
+                            const activeInt = studentInternships.find(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected'].includes(i.status));
+                            const activeAppt = studentAppointments.find(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show'].includes(a.status));
+                            if (activeInt) return `${liveProgressPct}% Hours Completed (${totalVerifiedHours}/${requiredPlacementHours}h)`;
+                            if (activeAppt) return activeAppt.appointmentOutcome === 'successful' || activeAppt.status === 'Confirmed' ? 'Appointment Successful' : 'Appointment Scheduled';
+                            return studentInternships[0] ? (studentInternships[0].status || 'Withdrawn') : 'In Preparation';
+                          })()}
                         </span>
                         <ArrowRight className="w-3.5 h-3.5 text-teal-500" />
                       </p>

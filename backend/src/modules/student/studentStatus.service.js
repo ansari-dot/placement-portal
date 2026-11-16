@@ -272,8 +272,47 @@ export const calculateLifecycleStatus = (student, workflowData = null) => {
   ) {
     return STUDENT_LIFECYCLE_STATUSES.PLACEMENT_COMPLETED;
   }
+
+  // 2. Check for Active Placement / Appointment first — forward progress takes precedence over past terminal events
+  const now = new Date();
+  const hasActivePlacement =
+    studentInternships.some(i => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
+    sortedAppointments.some(a => {
+      if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
+      if (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') {
+        return a.commencementDate && new Date(a.commencementDate) <= now;
+      }
+      return false;
+    });
+
+  if (hasActivePlacement) {
+    return STUDENT_LIFECYCLE_STATUSES.PLACEMENT_IN_PROGRESS;
+  }
   
-  // 2. Check for Placement Unsuccessful / Withdrawn / Rejected (terminal outcomes)
+  // 3. Check for Appointment Successful
+  const hasApptSuccessful =
+    sortedAppointments.some(a => {
+      if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status)) return false;
+      return a.appointmentOutcome === 'successful' || a.status === 'Confirmed';
+    });
+
+  if (hasApptSuccessful) {
+    return STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_SUCCESSFUL;
+  }
+  
+  // 4. Check for Appointment Scheduled
+  const hasApptScheduled =
+    sortedAppointments.some(a =>
+      ['Scheduled', 'Rescheduled'].includes(a.status) &&
+      !['Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status) &&
+      a.appointmentOutcome !== 'student_withdrawal'
+    );
+
+  if (hasApptScheduled) {
+    return STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_SCHEDULED;
+  }
+
+  // 5. Check for Placement Unsuccessful / Withdrawn / Rejected (terminal outcomes only apply when no active appointment/placement)
   const isWithdrawn =
     ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(student.placementStatus) ||
     studentInternships.some(i => ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(i.status)) ||
@@ -308,36 +347,6 @@ export const calculateLifecycleStatus = (student, workflowData = null) => {
 
   if (isMissed) {
     return STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_MISSED;
-  }
-
-  // 3. Check for Placement In Progress
-  const now = new Date();
-  if (
-    studentInternships.some(i => ['Active', 'Placement Started', 'Joined', 'Waiting to Join'].includes(i.status)) ||
-    sortedAppointments.some(a => {
-      if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
-      if (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') {
-        return a.commencementDate && new Date(a.commencementDate) <= now;
-      }
-      return false;
-    })
-  ) {
-    return STUDENT_LIFECYCLE_STATUSES.PLACEMENT_IN_PROGRESS;
-  }
-  
-  // 4. Check for Appointment Successful (no commencement date yet)
-  if (
-    sortedAppointments.some(a => {
-      if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status)) return false;
-      return a.appointmentOutcome === 'successful' && !a.commencementDate;
-    })
-  ) {
-    return STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_SUCCESSFUL;
-  }
-  
-  // 5. Check for Appointment Scheduled
-  if (sortedAppointments.some(a => ['Scheduled', 'Rescheduled'].includes(a.status))) {
-    return STUDENT_LIFECYCLE_STATUSES.APPOINTMENT_SCHEDULED;
   }
   
   // 6. Check for Request Approved/Active

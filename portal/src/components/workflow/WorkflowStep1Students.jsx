@@ -526,8 +526,9 @@ export default function WorkflowStep1Students({
   // Decides what the Generate/Change/Regenerate action should say & do for a student.
   const getRequestActionInfo = (stu) => {
     const reqVal = getStudentPriority(stu);
-    const isRegenerable = REGENERATE_STATUSES.includes(stu?.placementStatus);
-    const isChange = Boolean(reqVal) && !isRegenerable;
+    const hasActiveReq = reqVal === 'Normal' || reqVal === 'Urgent';
+    const isRegenerable = REGENERATE_STATUSES.includes(stu?.placementStatus) && !hasActiveReq;
+    const isChange = hasActiveReq;
     const label = isChange
       ? 'Change Placement Request'
       : (isRegenerable ? 'Regenerate Placement Request' : 'Generate Request');
@@ -901,6 +902,8 @@ export default function WorkflowStep1Students({
       showToast(`Student ${genTargetStudent.name} snoozed for ${durationLabels[snoozeDuration] || '7 Days'}`);
       setShowGenRequestModal(false);
       setSnoozeReason('');
+      setActiveMainTab('snooze');
+      setCurrentPage(1);
       return;
     }
 
@@ -935,6 +938,8 @@ export default function WorkflowStep1Students({
 
       showToast(`Student ${genTargetStudent.name} marked as Inactive`);
       setShowGenRequestModal(false);
+      setActiveMainTab('inactive');
+      setCurrentPage(1);
       return;
     }
 
@@ -978,6 +983,8 @@ export default function WorkflowStep1Students({
       if (onNext) setTimeout(() => onNext(genTargetStudent, genPriority), 600);
     }
 
+    setActiveMainTab('all');
+    setCurrentPage(1);
     setShowGenRequestModal(false);
   };
 
@@ -1036,6 +1043,8 @@ export default function WorkflowStep1Students({
     });
 
     showToast(`Student ${stuName || ''} un-snoozed & restored to active workflow`);
+    setActiveMainTab('all');
+    setCurrentPage(1);
   };
 
   const handleImportSingleStudent = async (student) => {
@@ -1161,10 +1170,10 @@ export default function WorkflowStep1Students({
           </div>
         )}
 
-        {/* ─── Student Tabs: All / Inactive / Snooze ───────────────────────── */}
+        {/* ─── Student Tabs: Active / Inactive / Snooze ───────────────────────── */}
         <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
           {[
-            { key: 'all', label: 'All', count: activeStudentsCount },
+            { key: 'all', label: 'Active', count: activeStudentsCount },
             { key: 'inactive', label: 'Inactive Students', count: inactiveStudentsCount },
             { key: 'snooze', label: 'Snooze', count: snoozedCount },
           ].map((tab) => (
@@ -2147,14 +2156,32 @@ export default function WorkflowStep1Students({
                       <Building2 className="w-3.5 h-3.5 text-blue-600" />
                       <span>Contacted Industries</span>
                     </h5>
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
-                      Total: {(selectedStudent?.contactedIndustries || []).length}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                        Total: {(selectedStudent?.contactedIndustries || []).length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/workflow?step=2&studentId=${encodeURIComponent(selectedStudent?.id || selectedStudent?.studentId || '')}&openContact=true`)}
+                        className="px-2.5 py-1 bg-[#0147A6] hover:bg-blue-700 text-white font-bold rounded-lg flex items-center space-x-1 text-[10px] shadow-xs cursor-pointer transition"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add Industry</span>
+                      </button>
+                    </div>
                   </div>
 
                   {(!selectedStudent?.contactedIndustries || selectedStudent.contactedIndustries.length === 0) ? (
-                    <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px]">
-                      No industries contacted yet for this student.
+                    <div className="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-[11px] space-y-2">
+                      <p>No industries contacted yet for this student.</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/workflow?step=2&studentId=${encodeURIComponent(selectedStudent?.id || selectedStudent?.studentId || '')}&openContact=true`)}
+                        className="inline-flex items-center space-x-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add Industry Contact</span>
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-3">
