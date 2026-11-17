@@ -51,7 +51,8 @@ export const internshipRequestSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, 'Internship title is required'),
+    .optional()
+    .default('Internship Placement'),
 
   student: z
     .string()
@@ -66,7 +67,8 @@ export const internshipRequestSchema = z.object({
   company: z
     .string()
     .trim()
-    .min(1, 'Company is required'),
+    .optional()
+    .default('Pending Assignment'),
 
   rto: z
     .string()
@@ -75,7 +77,8 @@ export const internshipRequestSchema = z.object({
     .default(''),
 
   status: z
-    .enum(['New', 'Coordinator Review', 'RTO Review', 'Appointment', 'Approved', 'Rejected', 'On Hold'])
+    .string()
+    .trim()
     .optional()
     .default('New'),
 
@@ -117,6 +120,7 @@ export const internshipRequestSchema = z.object({
 
   priority: z
     .enum(['Normal', 'Urgent', 'Snooze', 'Inactive'])
+    .or(z.string().trim())
     .optional()
     .default('Normal'),
 
@@ -125,6 +129,8 @@ export const internshipRequestSchema = z.object({
   contactedIndustries: z
     .array(
       z.object({
+        id: z.string().trim().optional(),
+        _id: z.any().optional(),
         organizationName: z.string().trim().optional().default(''),
         email: z.string().trim().optional().default(''),
         address: z.string().trim().optional().default(''),
@@ -142,7 +148,7 @@ export const internshipRequestSchema = z.object({
         appointmentTime: z.string().trim().optional().default(''),
         addedByName: z.string().trim().optional().default(''),
         addedByUserId: z.string().trim().optional().default(''),
-      })
+      }).passthrough()
     )
     .optional()
     .default([]),
@@ -152,7 +158,10 @@ export const internshipRequestSchema = z.object({
     .trim()
     .optional()
     .default(''),
-});
+
+  changeHistory: z.array(z.any()).optional(),
+  studentDbId: z.string().trim().optional(),
+}).passthrough();
 
 // ===== Appointment Schema (Step 3) =====
 export const appointmentSchema = z.object({

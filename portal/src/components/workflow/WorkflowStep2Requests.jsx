@@ -54,20 +54,82 @@ export default function WorkflowStep2Requests({
     const studentName = searchParams.get('studentName') || searchParams.get('prefillStudentName');
     const openContact = searchParams.get('openContact') === 'true';
 
-    if (openContact && (studentId || studentName) && requests && requests.length > 0) {
+    if (openContact && (studentId || studentName) && requests) {
       const norm = (v) => String(v || '').trim().toLowerCase();
-      const matchedReq = requests.find((r) =>
-        (studentId && (norm(r.studentId) === norm(studentId) || norm(r.id) === norm(studentId))) ||
-        (studentName && norm(r.student) === norm(studentName))
+      const sIdNorm = studentId ? norm(studentId) : '';
+      const sNameNorm = studentName ? norm(studentName) : '';
+
+      let matchedReq = requests.find((r) =>
+        (sIdNorm && (
+          norm(r.studentId) === sIdNorm ||
+          norm(r.studentDbId) === sIdNorm ||
+          norm(r.id) === sIdNorm ||
+          norm(r.reqId) === sIdNorm
+        )) ||
+        (sNameNorm && (
+          norm(r.student) === sNameNorm ||
+          norm(r.studentName) === sNameNorm
+        ))
       );
+
       if (matchedReq) {
-        setSelectedRequest(matchedReq);
+        setSelectedRequest({
+          ...matchedReq,
+          id: matchedReq.reqId || matchedReq.id,
+          dbId: matchedReq.id || matchedReq.reqId || matchedReq._id,
+        });
         setShowDrawer(true);
         setActiveTab('Contact History');
         setShowAddOrgModal(true);
+      } else if (students && students.length > 0 && onCreateRequest) {
+        // If student exists in students list but no request yet in Step 2, create a request for them on the fly
+        const matchedStu = students.find((s) =>
+          (sIdNorm && (
+            norm(s.id) === sIdNorm ||
+            norm(s._id) === sIdNorm ||
+            norm(s.studentId) === sIdNorm
+          )) ||
+          (sNameNorm && (
+            norm(s.name) === sNameNorm ||
+            norm(`${s.firstName || ''} ${s.lastName || ''}`.trim()) === sNameNorm
+          ))
+        );
+
+        if (matchedStu) {
+          const reqPayload = {
+            title: `${matchedStu.course || matchedStu.courseQualification || 'Internship'} Placement`,
+            student: matchedStu.name || `${matchedStu.firstName || ''} ${matchedStu.lastName || ''}`.trim() || 'Student',
+            studentId: matchedStu.studentId || String(matchedStu.id || matchedStu._id),
+            company: 'Pending Assignment',
+            rto: matchedStu.rto || matchedStu.assignedRto || 'TBD',
+            priority: 'Normal',
+            status: 'New',
+            returnedToStep1: false,
+          };
+          onCreateRequest(reqPayload).then((created) => {
+            if (created) {
+              const reqItem = {
+                ...created,
+                id: created.reqId || created.id || created._id,
+                dbId: created._id || created.id || created.reqId,
+                student: reqPayload.student,
+                studentId: reqPayload.studentId,
+                company: reqPayload.company,
+                status: reqPayload.status,
+                contactedIndustries: [],
+              };
+              setSelectedRequest(reqItem);
+              setShowDrawer(true);
+              setActiveTab('Contact History');
+              setShowAddOrgModal(true);
+            }
+          }).catch((err) => {
+            console.error('Failed to auto-create request for student:', err);
+          });
+        }
       }
     }
-  }, [searchParams, requests]);
+  }, [searchParams, requests, students, onCreateRequest]);
 
   useEffect(() => {
     fetchJobs({ status: 'Open' })

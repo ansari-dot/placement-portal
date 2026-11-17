@@ -2162,7 +2162,7 @@ export default function WorkflowStep1Students({
                       </span>
                       <button
                         type="button"
-                        onClick={() => navigate(`/workflow?step=2&studentId=${encodeURIComponent(selectedStudent?.id || selectedStudent?.studentId || '')}&openContact=true`)}
+                        onClick={() => navigate(`/workflow?step=2&studentId=${encodeURIComponent(selectedStudent?.studentId || selectedStudent?.id || '')}&studentName=${encodeURIComponent(selectedStudent?.name || '')}&openContact=true`)}
                         className="px-2.5 py-1 bg-[#0147A6] hover:bg-blue-700 text-white font-bold rounded-lg flex items-center space-x-1 text-[10px] shadow-xs cursor-pointer transition"
                       >
                         <Plus className="w-3 h-3" />
@@ -2176,7 +2176,7 @@ export default function WorkflowStep1Students({
                       <p>No industries contacted yet for this student.</p>
                       <button
                         type="button"
-                        onClick={() => navigate(`/workflow?step=2&studentId=${encodeURIComponent(selectedStudent?.id || selectedStudent?.studentId || '')}&openContact=true`)}
+                        onClick={() => navigate(`/workflow?step=2&studentId=${encodeURIComponent(selectedStudent?.studentId || selectedStudent?.id || '')}&studentName=${encodeURIComponent(selectedStudent?.name || '')}&openContact=true`)}
                         className="inline-flex items-center space-x-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
