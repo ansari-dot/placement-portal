@@ -11,6 +11,7 @@ import { deleteStudent, snoozeStudent, updateStudent, bulkUpdateStudentStatus, b
 import { fetchPayments, importStudentsToPayment } from '../../api/paymentApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 import AssignRtoModal from './AssignRtoModal';
+import CanonicalStatusBadge from '../common/CanonicalStatusBadge';
 
 const STEP1_DRAWER_DOCS = [
   { field: 'policeCheckDoc', label: 'Police Check' },
@@ -1647,31 +1648,16 @@ export default function WorkflowStep1Students({
                           stu.internshipPriority === 'Inactive' ||
                           stu.status === 'Inactive'
                         );
-                        const statusVal = isSnoozedOrInactive ? 'N/A' : (stu.placementStatus || 'None');
-                        const statusConfig = {
-                          'N/A': { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-300' },
-                          'Awaiting': { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-300' },
-                          'In Progress': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-                          'Appointment Scheduled': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
-                          'Appointment Successful': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
-                          'Student Withdraw': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300' },
-                          'Student Withdrawn': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300' },
-                          'Withdrawn': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300' },
-                          'Student Missed Appointment': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-300' },
-                          'Industry Rejected': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
-                          'Placement Started': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300' },
-                          'Placement Completed': { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300' },
-                          // Legacy / fallback values
-                          'Ready': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-                          'Industry Contacted': { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
-                          'Not Suitable Site': { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-400' },
-                          'None': { bg: 'bg-slate-50', text: 'text-slate-400', border: 'border-slate-200' },
-                        };
-                        const cfg = statusConfig[statusVal] || statusConfig['None'];
+                        const statusVal = isSnoozedOrInactive ? 'N/A' : (stu.canonicalStatus || stu.placementStatus || 'Awaiting');
                         return (
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-                            {statusVal}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <CanonicalStatusBadge status={statusVal} />
+                            {stu.canonicalStatus && stu.placementStatus && stu.canonicalStatus !== stu.placementStatus && (
+                              <span className="text-[9px] text-slate-400" title={`Stored DB status: ${stu.placementStatus}`}>
+                                Stored: {stu.placementStatus}
+                              </span>
+                            )}
+                          </div>
                         );
                       })()}
                     </td>
@@ -2039,14 +2025,14 @@ export default function WorkflowStep1Students({
                           <CheckCircle2 className="w-2.5 h-2.5" />
                           <span>{selectedStudent.status}</span>
                         </span>
-                        <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] font-bold rounded-full border border-blue-400/20 flex items-center space-x-1">
-                          <Award className="w-2.5 h-2.5" />
-                          <span>
-                            {(snoozedStudentIds[selectedStudent.id] || selectedStudent.snoozed || getStudentPriority(selectedStudent) === 'Snooze' || getStudentPriority(selectedStudent) === 'Inactive' || selectedStudent.internshipPriority === 'Snooze' || selectedStudent.internshipPriority === 'Inactive' || selectedStudent.status === 'Inactive')
+                        <CanonicalStatusBadge
+                          status={
+                            (snoozedStudentIds[selectedStudent.id] || selectedStudent.snoozed || getStudentPriority(selectedStudent) === 'Snooze' || getStudentPriority(selectedStudent) === 'Inactive' || selectedStudent.internshipPriority === 'Snooze' || selectedStudent.internshipPriority === 'Inactive' || selectedStudent.status === 'Inactive')
                               ? 'N/A'
-                              : (selectedStudent.placementStatus || 'Awaiting')}
-                          </span>
-                        </span>
+                              : (selectedStudent.canonicalStatus || selectedStudent.placementStatus || 'Awaiting')
+                          }
+                          size="xs"
+                        />
                       </div>
                     </div>
                   </div>

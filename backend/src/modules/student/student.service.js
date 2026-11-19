@@ -18,6 +18,8 @@ import {
   updateStudentLifecycleStatus,
   getStatusConfig,
 } from './studentStatus.service.js';
+import { CANONICAL_STATUSES } from './canonicalStatus.constants.js';
+import { resolveCanonicalStudentStatus } from './canonicalStatus.service.js';
 
 const STUDENT_ID_PREFIX = 'STU';
 
@@ -260,6 +262,19 @@ export class StudentService {
 
     // Derive live dynamic statuses from workflows so student status is never stale
     try {
+      const nameCounts = new Map();
+      rawStudents.forEach((stu) => {
+        const sName = (stu.name || `${stu.firstName || ''} ${stu.lastName || ''}`.trim()).toLowerCase();
+        if (sName) nameCounts.set(sName, (nameCounts.get(sName) || 0) + 1);
+      });
+
+      const canonicalContext = {
+        requests: allRequests,
+        appointments: allAppointments,
+        internships: allInternships,
+        nameCounts,
+      };
+
       const allAppts = workflows.flatMap((wf) => wf.appointments || []);
       const allInts = workflows.flatMap((wf) => wf.internships || []);
 
@@ -292,6 +307,16 @@ export class StudentService {
 
       const now = new Date();
       rawStudents.forEach((s) => {
+        // Resolve authoritative canonical lifecycle status FIRST before any legacy mutations
+        try {
+          const canonicalRes = resolveCanonicalStudentStatus(s, canonicalContext, now);
+          s.canonicalStatus = canonicalRes.canonicalStatus;
+          s.canonicalPlacementStatus = canonicalRes.canonicalStatus;
+          s.canonicalReason = canonicalRes.reason;
+        } catch (cErr) {
+          s.canonicalStatus = s.placementStatus || CANONICAL_STATUSES.AWAITING;
+        }
+
         const sFullName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
         const sName = (s.name || sFullName).trim().toLowerCase();
         const keys = [s.studentId, String(s._id || ''), sName, sFullName].filter(Boolean);

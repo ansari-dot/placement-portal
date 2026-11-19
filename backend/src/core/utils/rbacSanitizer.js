@@ -15,6 +15,17 @@ export const sanitizeStudentDataForRole = (studentDoc, role) => {
   if (!studentDoc) return studentDoc;
   const s = typeof studentDoc.toObject === 'function' ? studentDoc.toObject() : { ...studentDoc };
 
+  // Explicitly preserve dynamic canonical status fields
+  if (studentDoc.canonicalStatus !== undefined && s.canonicalStatus === undefined) {
+    s.canonicalStatus = studentDoc.canonicalStatus;
+  }
+  if (studentDoc.canonicalPlacementStatus !== undefined && s.canonicalPlacementStatus === undefined) {
+    s.canonicalPlacementStatus = studentDoc.canonicalPlacementStatus;
+  }
+  if (studentDoc.canonicalReason !== undefined && s.canonicalReason === undefined) {
+    s.canonicalReason = studentDoc.canonicalReason;
+  }
+
   if (role === 'Administrator' || role === 'Admin') {
     return s;
   }

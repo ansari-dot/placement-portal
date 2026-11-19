@@ -11,6 +11,7 @@ import {
   Info, ExternalLink, MessageCircle
 } from 'lucide-react';
 import PlacementRequestStudentDetails from './PlacementRequestStudentDetails';
+import CanonicalStatusBadge from '../common/CanonicalStatusBadge';
 
 export default function WorkflowStep4Internships({
   internships = [],
@@ -1223,8 +1224,9 @@ export default function WorkflowStep4Internships({
                             )}
                           </div>
                           <div>
-                            <div className="flex items-center space-x-1.5">
+                            <div className="flex items-center space-x-1.5 flex-wrap">
                               <p className="font-bold text-slate-900">{item.student}</p>
+                              <CanonicalStatusBadge status={item.studentCanonicalStatus || item.canonicalStatus || 'Awaiting'} size="xs" />
                               {isStudentOnline(item.studentId, item.student) && (
                                 <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 inline-flex items-center">
                                   ● Online
@@ -1493,8 +1495,9 @@ export default function WorkflowStep4Internships({
                 )}
               </div>
               <div>
-                <div className="flex items-center space-x-1.5">
+                <div className="flex items-center space-x-1.5 flex-wrap">
                   <p className="font-bold text-white text-xs">{selectedInternship.student}</p>
+                  <CanonicalStatusBadge status={selectedInternship.studentCanonicalStatus || selectedInternship.canonicalStatus || 'Awaiting'} size="xs" />
                   {isStudentOnline(selectedInternship.studentId, selectedInternship.student) && (
                     <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold rounded-full">
                       ● Online

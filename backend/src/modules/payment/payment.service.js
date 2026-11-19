@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import PaymentModel from './payment.model.js';
 import StudentModel from '../student/student.model.js';
 import RtoModel from '../rto/rto.model.js';
+import WorkflowModel from '../workflow/workflow.model.js';
+import { buildCanonicalStatusMap } from '../student/canonicalStatus.service.js';
 import { getNextSequence } from '../invoice/counter.model.js';
 import { sendPaymentInvoiceEmail } from '../email/email.service.js';
 import { acquireDistributedLock, releaseDistributedLock } from '../../core/utils/distributedLock.js';
@@ -676,22 +678,54 @@ export const buildPaymentFilter = (queryParams = {}) => {
   return andClauses.length > 0 ? (andClauses.length === 1 ? andClauses[0] : { $and: andClauses }) : {};
 };
 
+let lastSyncTimestamp = 0;
+const SYNC_INTERVAL_MS = 60 * 1000;
+
 /**
  * Service: Retrieve payment records with filtering, searching, and optional pagination
  */
 export const getPaymentsService = async (queryParams = {}) => {
-  await syncChargeableStudents();
+  const now = Date.now();
+  if (
+    queryParams.sync === true ||
+    queryParams.sync === 'true' ||
+    (!queryParams.skipSync && now - lastSyncTimestamp > SYNC_INTERVAL_MS)
+  ) {
+    lastSyncTimestamp = now;
+    await syncChargeableStudents();
+  }
 
   const { page, limit } = queryParams;
   const filter = buildPaymentFilter(queryParams);
 
   const queryBuilder = PaymentModel.find(filter).sort({ updatedAt: -1, createdAt: -1 });
 
+  const attachCanonicalStatus = async (paymentList) => {
+    try {
+      const allStudents = await StudentModel.find({}, { studentId: 1, name: 1, firstName: 1, lastName: 1, status: 1, placementStatus: 1, snoozed: 1, internshipPriority: 1 }).lean();
+      const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+      const statusMap = buildCanonicalStatusMap(allStudents, workflows);
+      paymentList.forEach((p) => {
+        const sName = String(p.studentName || '').trim();
+        const sId = String(p.studentId || '').trim();
+        const sDbId = String(p.student || '').trim();
+        p.studentCanonicalStatus =
+          statusMap.get(sId) ||
+          statusMap.get(sId.toLowerCase()) ||
+          statusMap.get(sDbId) ||
+          statusMap.get(sName) ||
+          statusMap.get(sName.toLowerCase()) ||
+          p.placementStatus;
+      });
+    } catch (_) {}
+  };
+
   if (page || limit) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, parseInt(limit, 10) || 50);
     const total = await PaymentModel.countDocuments(filter);
     const data = await queryBuilder.skip((pageNum - 1) * limitNum).limit(limitNum).lean();
+    await attachCanonicalStatus(data);
 
     return {
       data,
@@ -705,6 +739,7 @@ export const getPaymentsService = async (queryParams = {}) => {
   }
 
   const data = await queryBuilder.lean();
+  await attachCanonicalStatus(data);
   return { data };
 };
 

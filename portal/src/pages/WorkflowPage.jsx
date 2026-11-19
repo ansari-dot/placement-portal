@@ -813,6 +813,8 @@ export default function WorkflowPage() {
         rto: stu.assignedRto || stu.rto || stu.institute || '',
         status: stu.status || 'Active',
         placementStatus: dynamicPlacementStatus,
+        canonicalStatus: stu.canonicalStatus || stu.canonicalPlacementStatus || dynamicPlacementStatus,
+        canonicalPlacementStatus: stu.canonicalPlacementStatus || stu.canonicalStatus || dynamicPlacementStatus,
         // ── Placement calculation fields — needed by Step3 outcome modal & Step4 end-date calc
         placementHours: stu.placementHours ?? null,
         availabilityDays: stu.availabilityDays ?? null,
@@ -952,6 +954,7 @@ export default function WorkflowPage() {
           rto: req.rto || '',
           priority: req.priority || 'Normal',
           status: req.status || 'New',
+          studentCanonicalStatus: student?.canonicalStatus || student?.canonicalPlacementStatus || req.studentCanonicalStatus || student?.placementStatus || 'Awaiting',
           notes: req.notes || '',
           contactedIndustries: (req.contactedIndustries || []).map(ind => ({
             ...ind,
@@ -1077,6 +1080,7 @@ export default function WorkflowPage() {
           linkedReqStatus: appt.linkedReqStatus || '',
           industryContactId: appt.industryContactId || '',
           status: appt.status || 'Scheduled',
+          studentCanonicalStatus: matchedStudent?.canonicalStatus || matchedStudent?.canonicalPlacementStatus || appt.studentCanonicalStatus || matchedStudent?.placementStatus || 'Awaiting',
           commencementDate: appt.commencementDate || '',
           expectedCompletionDate: appt.expectedCompletionDate || '',
           appointmentOutcome: appt.appointmentOutcome || '',
@@ -1235,6 +1239,8 @@ export default function WorkflowPage() {
         intId: (matchingInt && norm(matchingInt.company) === norm(appt.company) && matchingInt.intId) || (appt.apptId ? `PL-${appt.apptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`),
         student: studentName,
         studentId: studentId,
+        studentCanonicalStatus: stuMatch?.canonicalStatus || stuMatch?.canonicalPlacementStatus || appt.studentCanonicalStatus || matchingInt?.studentCanonicalStatus || stuMatch?.placementStatus || 'Awaiting',
+        canonicalStatus: stuMatch?.canonicalStatus || stuMatch?.canonicalPlacementStatus || appt.studentCanonicalStatus || matchingInt?.studentCanonicalStatus || stuMatch?.placementStatus || 'Awaiting',
         company: appt.company || matchingInt?.company || 'Unknown Company',
         title: matchingInt?.title || appt.position || 'Internship Placement',
         rto: matchingInt?.rto || appt.rto || 'TBD',

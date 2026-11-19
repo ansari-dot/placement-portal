@@ -13,6 +13,7 @@ import { createIndustry, fetchIndustries } from '../../api/industryApi';
 import { snoozeStudent, updateStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 import PlacementRequestStudentDetails from './PlacementRequestStudentDetails';
+import CanonicalStatusBadge from '../common/CanonicalStatusBadge';
 import { AUSTRALIAN_STATES } from '../../constants/australianStates';
 
 const getSnoozeUntil = (durationDays) => {
@@ -1153,7 +1154,10 @@ export default function WorkflowStep2Requests({
                           {(item.student || 'S')[0]}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-900">{item.student}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-slate-900">{item.student}</p>
+                            <CanonicalStatusBadge status={item.studentCanonicalStatus || item.canonicalStatus || 'Awaiting'} size="xs" />
+                          </div>
                           {item.studentEmail && (
                             <button type="button" title="Copy email" onClick={() => handleCopyStudentContact(item.studentEmail, 'Email')} className="flex items-center gap-1 mt-0.5 text-left text-[10px] text-slate-500 hover:text-blue-700">
                               <span className="break-all">{item.studentEmail}</span><Copy className="w-2.5 h-2.5 shrink-0" />
@@ -1365,10 +1369,13 @@ export default function WorkflowStep2Requests({
                     {selectedRequest.status}
                   </span>
                 </div>
-                <p className="text-sm font-bold text-white mt-1.5 flex items-center space-x-1.5">
-                  <User className="w-3.5 h-3.5 text-blue-300 shrink-0" />
-                  <span>{selectedRequest.student}</span>
-                </p>
+                <div className="flex items-center space-x-1.5 flex-wrap mt-1.5">
+                  <p className="text-sm font-bold text-white flex items-center space-x-1.5">
+                    <User className="w-3.5 h-3.5 text-blue-300 shrink-0" />
+                    <span>{selectedRequest.student}</span>
+                  </p>
+                  <CanonicalStatusBadge status={selectedRequest.studentCanonicalStatus || selectedRequest.canonicalStatus || 'Awaiting'} size="xs" />
+                </div>
                 <p className="text-xs font-semibold text-slate-200 mt-0.5">{selectedRequest.title}</p>
                 {selectedRequest.notes && <p className="mt-2 whitespace-pre-wrap text-[10px] text-slate-300">{selectedRequest.notes}</p>}
                 <p className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { calculatePlacementEndDate, getCalculationSummary } from '../../utils/dateCalculation';
 import { fetchStudentById } from '../../api/studentsApi';
+import CanonicalStatusBadge from '../common/CanonicalStatusBadge';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Calendar as CalendarIcon,
   FileText, CheckCircle2, UserX, Clock, Plus,
@@ -1651,7 +1652,10 @@ export default function WorkflowStep3Appointments({
                             {appt.apptId || appt.id || `APPT-${i + 1}`}
                           </td>
                           <td className="p-4">
-                            <p className="font-semibold text-slate-900">{appt.student}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-semibold text-slate-900">{appt.student}</p>
+                              <CanonicalStatusBadge status={appt.studentCanonicalStatus || appt.canonicalStatus || 'Awaiting'} size="xs" />
+                            </div>
                             <p className="text-[10px] text-slate-400 font-mono">{appt.studentId} • {appt.rto}</p>
                           </td>
                           <td className="p-4">
@@ -1909,7 +1913,10 @@ export default function WorkflowStep3Appointments({
                 {selectedAppointment.student ? selectedAppointment.student.charAt(0) : 'S'}
               </div>
               <div>
-                <p className="font-bold text-white text-xs">{selectedAppointment.student}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="font-bold text-white text-xs">{selectedAppointment.student}</p>
+                  <CanonicalStatusBadge status={selectedAppointment.studentCanonicalStatus || selectedAppointment.canonicalStatus || 'Awaiting'} size="xs" />
+                </div>
                 <p className="text-[10px] text-slate-400 font-mono">{selectedAppointment.studentId}</p>
                 <p className="text-[10px] text-slate-300">{selectedAppointment.rto}</p>
               </div>

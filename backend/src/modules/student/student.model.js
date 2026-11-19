@@ -505,6 +505,18 @@ const studentSchema = new mongoose.Schema(
       },
       default: "Awaiting",
     },
+    canonicalStatus: {
+      type: String,
+      trim: true,
+    },
+    canonicalPlacementStatus: {
+      type: String,
+      trim: true,
+    },
+    canonicalReason: {
+      type: String,
+      trim: true,
+    },
     // Lifecycle status - centralized, authoritative status across the entire portal
     lifecycleStatus: {
       type: String,
@@ -624,6 +636,15 @@ studentSchema.set("toJSON", {
   transform: function (doc, ret) {
     ret.id = doc._id.toString();
     delete ret._id;
+    return ret;
+  },
+});
+
+studentSchema.set("toObject", {
+  virtuals: true,
+  versionKey: false,
+  transform: function (doc, ret) {
+    ret.id = doc._id.toString();
     return ret;
   },
 });

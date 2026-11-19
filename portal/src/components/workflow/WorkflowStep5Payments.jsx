@@ -34,6 +34,7 @@ import {
 import { fetchRtos } from '../../api/rtoApi';
 import { repairStudentRto } from '../../api/studentsApi';
 import PaymentInvoiceModal from './PaymentInvoiceModal';
+import CanonicalStatusBadge from '../common/CanonicalStatusBadge';
 
 const PLACEMENT_STATUSES = [
   'Appointment Scheduled',
@@ -830,7 +831,10 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
 
                       {/* Column 1 — Student Name */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        <div className="font-semibold text-slate-900">{p.studentName}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-slate-900">{p.studentName}</span>
+                          <CanonicalStatusBadge status={p.studentCanonicalStatus || p.canonicalStatus || 'Awaiting'} size="xs" />
+                        </div>
                         <div className="text-[10px] text-slate-500 flex items-center space-x-1.5 mt-0.5">
                           <span className="font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-600">
                             {p.studentId || 'N/A'}

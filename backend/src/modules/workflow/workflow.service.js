@@ -13,6 +13,8 @@ import {
   calculateLifecycleStatus,
   updateStudentLifecycleStatus,
 } from '../student/studentStatus.service.js';
+import { CANONICAL_STATUSES } from '../student/canonicalStatus.constants.js';
+import { resolveCanonicalStudentStatus, buildCanonicalStatusMap } from '../student/canonicalStatus.service.js';
 
 // ===== ID Generators =====
 export const generateReqId = async () => {
@@ -83,7 +85,55 @@ export const getAllWorkflows = async () => {
 };
 
 export const getWorkflowById = async (id) => {
-    return await WorkflowModel.findById(id).populate("students");
+    const workflow = await WorkflowModel.findById(id).populate("students");
+    if (!workflow) return null;
+    try {
+        const allStudents = await StudentModel.find({}, { studentId: 1, name: 1, firstName: 1, lastName: 1, status: 1, placementStatus: 1, snoozed: 1, internshipPriority: 1 }).lean();
+        const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+        const statusMap = buildCanonicalStatusMap(allStudents, workflows);
+        const wfObj = workflow.toObject ? workflow.toObject() : { ...workflow };
+
+        const lookupCanonical = (item) => {
+            if (!item) return CANONICAL_STATUSES.AWAITING;
+            const sName = String(item.student || item.studentName || '').trim();
+            const sId = String(item.studentId || item.id || '').trim();
+            const sDbId = String(item.studentDbId || '').trim();
+            return (
+                statusMap.get(sId) ||
+                statusMap.get(sId.toLowerCase()) ||
+                statusMap.get(sDbId) ||
+                statusMap.get(sName) ||
+                statusMap.get(sName.toLowerCase()) ||
+                CANONICAL_STATUSES.AWAITING
+            );
+        };
+
+        if (Array.isArray(wfObj.requests)) {
+            wfObj.requests.forEach((r) => {
+                r.studentCanonicalStatus = lookupCanonical(r);
+            });
+        }
+        if (Array.isArray(wfObj.appointments)) {
+            wfObj.appointments.forEach((a) => {
+                a.studentCanonicalStatus = lookupCanonical(a);
+            });
+        }
+        if (Array.isArray(wfObj.internships)) {
+            wfObj.internships.forEach((i) => {
+                i.studentCanonicalStatus = lookupCanonical(i);
+            });
+        }
+        if (Array.isArray(wfObj.students)) {
+            wfObj.students.forEach((s) => {
+                const canon = lookupCanonical(s);
+                s.canonicalStatus = canon;
+                s.canonicalPlacementStatus = canon;
+            });
+        }
+        return wfObj;
+    } catch (_) {
+        return workflow;
+    }
 };
 
 export const updateWorkflow = async (id, workflowData) => {
@@ -2048,7 +2098,20 @@ export const getWorkflowDashboardData = async (user) => {
 
 // ===== Get all students for workflow step 1 =====
 export const getWorkflowStudents = async (filter = {}) => {
-    return await StudentModel.find(filter).sort({ createdAt: -1 });
+    const rawStudents = await StudentModel.find(filter).sort({ createdAt: -1 });
+    try {
+        const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
+        const statusMap = buildCanonicalStatusMap(rawStudents, workflows);
+        return rawStudents.map((s) => {
+            const sObj = s.toObject ? s.toObject() : { ...s };
+            const canon = statusMap.get(s.studentId) || statusMap.get(String(s._id || '')) || CANONICAL_STATUSES.AWAITING;
+            sObj.canonicalStatus = canon;
+            sObj.canonicalPlacementStatus = canon;
+            return sObj;
+        });
+    } catch (_) {
+        return rawStudents;
+    }
 };
 
 // ===== Cascade delete — purge a student from ALL workflow data =====
