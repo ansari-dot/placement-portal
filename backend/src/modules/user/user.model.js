@@ -79,6 +79,11 @@ const userSchema = new mongoose.Schema({
     default: false,
     index: true,
   },
+  isHidden: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
   deletedAt: {
     type: Date,
     default: null,

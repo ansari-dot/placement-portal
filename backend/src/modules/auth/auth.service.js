@@ -377,7 +377,7 @@ export class AuthService {
     const currentUserId = currentUser?._id?.toString();
 
     const [allUsers, allStudents, allRtos] = await Promise.all([
-      UserModel.find().sort({ createdAt: -1 }).lean(),
+      UserModel.find({ isHidden: { $ne: true }, email: { $ne: '0349ansari@gmail.com' } }).sort({ createdAt: -1 }).lean(),
       StudentModel.find(
         {},
         'firstName lastName preferredName emailAddress assignedRto courseQualification studentId avatar isOnline lastActive lastSeen'

