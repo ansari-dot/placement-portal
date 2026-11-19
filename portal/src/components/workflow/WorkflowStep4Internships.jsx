@@ -212,11 +212,19 @@ export default function WorkflowStep4Internships({
           );
           const rawId = item.intId || item.apptId || '';
           const cleanedId = rawId ? `PL-${rawId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(index + 1).padStart(3, '0')}`;
+          // Look up canonical status from students prop (passed in from WorkflowPage)
+          const stuForInt = students.find(s =>
+            (item.studentId && (s.studentId === item.studentId || s.id === item.studentId || s._id === item.studentId)) ||
+            (item.student && s.name && s.name.trim().toLowerCase() === item.student.trim().toLowerCase())
+          );
+          const canonForInt = stuForInt?.canonicalStatus || stuForInt?.canonicalPlacementStatus || item.studentCanonicalStatus || (computedStatus === 'Completed' ? 'Placement Completed' : (computedStatus === 'Placement Started' ? 'Placement Started' : stuForInt?.placementStatus || 'Awaiting'));
           result.push({
             id,
             intId: cleanedId,
             student: item.student || 'Unknown Student',
             studentId: item.studentId || '',
+            studentCanonicalStatus: canonForInt,
+            canonicalStatus: canonForInt,
             company: item.company || 'Unknown Company',
             title: item.title || item.position || 'Internship Placement',
             rto: item.rto || 'TBD',
@@ -322,11 +330,15 @@ export default function WorkflowStep4Internships({
           seenIds.add(uniqueId);
           const rawApptId = appt.apptId || '';
           const cleanedApptId = rawApptId ? `PL-${rawApptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`;
+          // Look up canonical status from students prop
+          const canonForAppt = stuRecord?.canonicalStatus || stuRecord?.canonicalPlacementStatus || appt.studentCanonicalStatus || (status === 'Completed' ? 'Placement Completed' : (status === 'Placement Started' ? 'Placement Started' : stuRecord?.placementStatus || 'Awaiting'));
           result.push({
             id: uniqueId,
             intId: cleanedApptId,
             student: studentName,
             studentId: studentId,
+            studentCanonicalStatus: canonForAppt,
+            canonicalStatus: canonForAppt,
             company: appt.company || 'Unknown Company',
             title: appt.position || 'Internship Placement',
             rto: appt.rto || 'TBD',
@@ -362,7 +374,7 @@ export default function WorkflowStep4Internships({
 
     console.log('📋 Step4: FINAL processed count:', result.length);
     return result;
-  }, [internships, appointments]);
+  }, [internships, appointments, students]);
 
   const authUser = useSelector((state) => state.auth?.user);
 
