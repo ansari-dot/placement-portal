@@ -118,8 +118,8 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
   const pastEndDateAppt = sortedAppts.find((a) => {
     if (['Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
     const end = parseLocalDateNoon(a.expectedCompletionDate || a.end);
-    const commDate = parseLocalDateNoon(a.commencementDate);
-    return end && end < todayStart && (commDate ? commDate <= todayStart : true) && (a.appointmentOutcome === 'successful' || a.status === 'Confirmed');
+    const commDate = parseLocalDateNoon(a.commencementDate || a.start);
+    return end && end < todayStart && (commDate ? commDate <= todayStart : true);
   });
 
   if (completedInt || completedAppt || pastEndDateInt || pastEndDateAppt || ['Placement Completed', 'Completed'].includes(student.placementStatus)) {
@@ -152,8 +152,9 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
     if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
     const end = parseLocalDateNoon(a.expectedCompletionDate || a.end);
     if (end && end < todayStart) return false;
+    const commDate = parseLocalDateNoon(a.commencementDate || a.start);
+    if (['Placement Started', 'Active', 'Joined'].includes(a.status)) return true;
     if (a.appointmentOutcome === 'successful' || a.status === 'Confirmed') {
-      const commDate = parseLocalDateNoon(a.commencementDate);
       return commDate && commDate <= todayStart;
     }
     return false;

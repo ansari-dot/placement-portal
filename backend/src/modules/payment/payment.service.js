@@ -3,7 +3,7 @@ import PaymentModel from './payment.model.js';
 import StudentModel from '../student/student.model.js';
 import RtoModel from '../rto/rto.model.js';
 import WorkflowModel from '../workflow/workflow.model.js';
-import { buildCanonicalStatusMap } from '../student/canonicalStatus.service.js';
+import { buildCanonicalStatusMap, resolveCanonicalStudentStatus } from '../student/canonicalStatus.service.js';
 import { getNextSequence } from '../invoice/counter.model.js';
 import { sendPaymentInvoiceEmail } from '../email/email.service.js';
 import { acquireDistributedLock, releaseDistributedLock } from '../../core/utils/distributedLock.js';
@@ -275,53 +275,13 @@ export const syncChargeableStudents = async () => {
           ...(fullName ? (intsByStudent.get(fullName) || []) : []),
         ];
 
-        let derivedStatus = null;
-
-        if (
-          studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
-          studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status))
-        ) {
-          derivedStatus = 'Placement Completed';
-        } else if (
-          studentInts.some((i) =>
-            ['Active', 'Joined', 'Waiting to Join', 'Placement Started', 'Confirmed'].includes(i.status)
-          )
-        ) {
-          derivedStatus = 'Placement Started';
-        } else if (
-          studentAppts.some(
-            (a) =>
-              ['Successful', 'Appointment Successful'].includes(a.status) ||
-              a.appointmentOutcome === 'completed' ||
-              a.appointmentOutcome === 'successful'
-          )
-        ) {
-          derivedStatus = 'Appointment Successful';
-        } else if (studentAppts.some((a) => ['Scheduled', 'Rescheduled'].includes(a.status))) {
-          derivedStatus = 'Appointment Scheduled';
-        } else if (
-          studentAppts.some(
-            (a) =>
-              ['Student Withdraw', 'Withdrawn'].includes(a.status) ||
-              a.appointmentOutcome === 'student_withdrawal'
-          )
-        ) {
-          derivedStatus = 'Student Withdraw';
-        } else if (
-          studentAppts.some(
-            (a) =>
-              ['Student Missed Appointment', 'No Show'].includes(a.status) ||
-              a.appointmentOutcome === 'student_missed'
-          )
-        ) {
-          derivedStatus = 'Student Missed Appointment';
-        } else if (
-          studentAppts.some(
-            (a) => a.status === 'Not Suitable Site' || a.appointmentOutcome === 'not_suitable_site'
-          )
-        ) {
-          derivedStatus = 'Not Suitable Site';
-        }
+        // Dynamically resolve authoritative canonical status using unified canonical status engine
+        const canonResolution = resolveCanonicalStudentStatus(stu, {
+          requests: studentReqs,
+          appointments: studentAppts,
+          internships: studentInts,
+        });
+        const derivedStatus = canonResolution?.canonicalStatus || null;
 
         // Track students who had a successful appointment or reached placement even if later snoozed or inactive
         const hadSuccessfulApptOrPlacement =
@@ -709,13 +669,17 @@ export const getPaymentsService = async (queryParams = {}) => {
         const sName = String(p.studentName || '').trim();
         const sId = String(p.studentId || '').trim();
         const sDbId = String(p.student || '').trim();
-        p.studentCanonicalStatus =
+        const canon =
           statusMap.get(sId) ||
           statusMap.get(sId.toLowerCase()) ||
           statusMap.get(sDbId) ||
           statusMap.get(sName) ||
           statusMap.get(sName.toLowerCase()) ||
           p.placementStatus;
+        p.studentCanonicalStatus = canon;
+        p.canonicalPlacementStatus = canon;
+        p.canonicalStatus = canon;
+        p.placementStatus = canon;
       });
     } catch (_) {}
   };
