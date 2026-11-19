@@ -613,9 +613,25 @@ export default function WorkflowPage() {
 
       // ── Status determination: Active states take precedence over past terminal events ──
 
+      // ── Date-based placement completion check ──
+      const endPassed = sortedAppointments.some((a) => {
+        if (TERMINAL_APPT_STATUSES.includes(a.status)) return false;
+        const end = a.expectedCompletionDate ? new Date(a.expectedCompletionDate) : null;
+        const comm = a.commencementDate ? new Date(a.commencementDate) : null;
+        return end && !isNaN(end.getTime()) && end < now && (!comm || isNaN(comm.getTime()) || comm <= now);
+      }) || matchingInternships.some((i) => {
+        if (['Cancelled', 'Withdrawn', 'Declined'].includes(i.status)) return false;
+        const end = i.end ? new Date(i.end) : null;
+        const comm = i.start ? new Date(i.start) : null;
+        return end && !isNaN(end.getTime()) && end < now && (!comm || isNaN(comm.getTime()) || comm <= now);
+      });
+
       // Placement Completed
       const hasCompleted =
+        ['Placement Completed', 'Completed'].includes(stu.canonicalStatus) ||
+        ['Placement Completed', 'Completed'].includes(stu.canonicalPlacementStatus) ||
         ['Placement Completed', 'Completed'].includes(stu.placementStatus) ||
+        endPassed ||
         matchingInternships.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
         sortedAppointments.some(
           (a) =>
@@ -1183,13 +1199,20 @@ export default function WorkflowPage() {
 
       // ── Resolve the correct status from appointment fields ─────────────────
       const resolveApptStatus = (a) => {
+        const endDatePassed =
+          (calculatedEnd && !isNaN(new Date(calculatedEnd).getTime()) && new Date(calculatedEnd) < new Date()) ||
+          (a.expectedCompletionDate && !isNaN(new Date(a.expectedCompletionDate).getTime()) && new Date(a.expectedCompletionDate) < new Date());
+
         if (
           a.status === 'Completed' ||
           a.status === 'Placement Completed' ||
           matchingInt?.status === 'Completed' ||
           matchingInt?.status === 'Placement Completed' ||
+          stuMatch?.canonicalStatus === 'Placement Completed' ||
+          stuMatch?.canonicalPlacementStatus === 'Placement Completed' ||
           stuMatch?.placementStatus === 'Placement Completed' ||
-          stuMatch?.placementStatus === 'Completed'
+          stuMatch?.placementStatus === 'Completed' ||
+          endDatePassed
         ) {
           return { status: 'Completed', cancellationReason: '', cancellationType: '' };
         }
@@ -1239,8 +1262,8 @@ export default function WorkflowPage() {
         intId: (matchingInt && norm(matchingInt.company) === norm(appt.company) && matchingInt.intId) || (appt.apptId ? `PL-${appt.apptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`),
         student: studentName,
         studentId: studentId,
-        studentCanonicalStatus: stuMatch?.canonicalStatus || stuMatch?.canonicalPlacementStatus || appt.studentCanonicalStatus || matchingInt?.studentCanonicalStatus || (isCompletedPlacement ? 'Placement Completed' : (status === 'Placement Started' ? 'Placement Started' : (stuMatch?.placementStatus || 'Awaiting'))),
-        canonicalStatus: stuMatch?.canonicalStatus || stuMatch?.canonicalPlacementStatus || appt.studentCanonicalStatus || matchingInt?.studentCanonicalStatus || (isCompletedPlacement ? 'Placement Completed' : (status === 'Placement Started' ? 'Placement Started' : (stuMatch?.placementStatus || 'Awaiting'))),
+        studentCanonicalStatus: isCompletedPlacement ? 'Placement Completed' : (status === 'Placement Started' ? 'Placement Started' : (stuMatch?.canonicalStatus || stuMatch?.canonicalPlacementStatus || appt.studentCanonicalStatus || matchingInt?.studentCanonicalStatus || stuMatch?.placementStatus || 'Awaiting')),
+        canonicalStatus: isCompletedPlacement ? 'Placement Completed' : (status === 'Placement Started' ? 'Placement Started' : (stuMatch?.canonicalStatus || stuMatch?.canonicalPlacementStatus || appt.studentCanonicalStatus || matchingInt?.studentCanonicalStatus || stuMatch?.placementStatus || 'Awaiting')),
         company: appt.company || matchingInt?.company || 'Unknown Company',
         title: matchingInt?.title || appt.position || 'Internship Placement',
         rto: matchingInt?.rto || appt.rto || 'TBD',
