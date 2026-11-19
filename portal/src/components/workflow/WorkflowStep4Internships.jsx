@@ -217,7 +217,15 @@ export default function WorkflowStep4Internships({
             (item.studentId && (s.studentId === item.studentId || s.id === item.studentId || s._id === item.studentId)) ||
             (item.student && s.name && s.name.trim().toLowerCase() === item.student.trim().toLowerCase())
           );
-          const canonForInt = stuForInt?.canonicalStatus || stuForInt?.canonicalPlacementStatus || item.studentCanonicalStatus || (computedStatus === 'Completed' ? 'Placement Completed' : (computedStatus === 'Placement Started' ? 'Placement Started' : stuForInt?.placementStatus || 'Awaiting'));
+          // Row computed status takes priority: if the placement row is Completed (end date elapsed),
+          // the badge MUST show Placement Completed — never trust a stale backend canonical value.
+          const isRowCompleted = computedStatus === 'Completed' || computedStatus === 'Placement Completed';
+          const isRowStarted = !isRowCompleted && (computedStatus === 'Placement Started');
+          const canonForInt = isRowCompleted
+            ? 'Placement Completed'
+            : isRowStarted
+            ? (stuForInt?.canonicalStatus === 'Placement Completed' ? 'Placement Completed' : 'Placement Started')
+            : (stuForInt?.canonicalStatus || stuForInt?.canonicalPlacementStatus || item.studentCanonicalStatus || stuForInt?.placementStatus || 'Awaiting');
           result.push({
             id,
             intId: cleanedId,
@@ -331,7 +339,15 @@ export default function WorkflowStep4Internships({
           const rawApptId = appt.apptId || '';
           const cleanedApptId = rawApptId ? `PL-${rawApptId.replace(/^(APPT|INT|PL)[-_]*/i, '')}` : `PL-${String(result.length + 1).padStart(3, '0')}`;
           // Look up canonical status from students prop
-          const canonForAppt = stuRecord?.canonicalStatus || stuRecord?.canonicalPlacementStatus || appt.studentCanonicalStatus || (status === 'Completed' ? 'Placement Completed' : (status === 'Placement Started' ? 'Placement Started' : stuRecord?.placementStatus || 'Awaiting'));
+          // Row computed status takes priority: if the placement row is Completed (end date elapsed),
+          // the badge MUST show Placement Completed — never trust a stale backend canonical value.
+          const isApptRowCompleted = status === 'Completed' || status === 'Placement Completed';
+          const isApptRowStarted = !isApptRowCompleted && (status === 'Placement Started');
+          const canonForAppt = isApptRowCompleted
+            ? 'Placement Completed'
+            : isApptRowStarted
+            ? (stuRecord?.canonicalStatus === 'Placement Completed' ? 'Placement Completed' : 'Placement Started')
+            : (stuRecord?.canonicalStatus || stuRecord?.canonicalPlacementStatus || appt.studentCanonicalStatus || stuRecord?.placementStatus || 'Awaiting');
           result.push({
             id: uniqueId,
             intId: cleanedApptId,
@@ -1238,7 +1254,11 @@ export default function WorkflowStep4Internships({
                           <div>
                             <div className="flex items-center space-x-1.5 flex-wrap">
                               <p className="font-bold text-slate-900">{item.student}</p>
-                              <CanonicalStatusBadge status={item.studentCanonicalStatus || item.canonicalStatus || 'Awaiting'} size="xs" />
+                              <CanonicalStatusBadge status={
+                                (item.status === 'Completed' || item.status === 'Placement Completed')
+                                  ? 'Placement Completed'
+                                  : (item.studentCanonicalStatus || item.canonicalStatus || 'Awaiting')
+                              } size="xs" />
                               {isStudentOnline(item.studentId, item.student) && (
                                 <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 inline-flex items-center">
                                   ● Online
@@ -1509,7 +1529,11 @@ export default function WorkflowStep4Internships({
               <div>
                 <div className="flex items-center space-x-1.5 flex-wrap">
                   <p className="font-bold text-white text-xs">{selectedInternship.student}</p>
-                  <CanonicalStatusBadge status={selectedInternship.studentCanonicalStatus || selectedInternship.canonicalStatus || 'Awaiting'} size="xs" />
+                  <CanonicalStatusBadge status={
+                    (selectedInternship.status === 'Completed' || selectedInternship.status === 'Placement Completed')
+                      ? 'Placement Completed'
+                      : (selectedInternship.studentCanonicalStatus || selectedInternship.canonicalStatus || 'Awaiting')
+                  } size="xs" />
                   {isStudentOnline(selectedInternship.studentId, selectedInternship.student) && (
                     <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold rounded-full">
                       ● Online
