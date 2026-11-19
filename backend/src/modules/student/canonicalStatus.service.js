@@ -108,17 +108,24 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
   // 3. RULE 2: Placement Completed
   // Must be supported by verified completion state or reliable end-of-placement evidence
   const completedInt = sortedInts.find((i) => ['Completed', 'Placement Completed'].includes(i.status));
+  const completedAppt = sortedAppts.find((a) => ['Completed', 'Placement Completed'].includes(a.status));
   const pastEndDateInt = sortedInts.find((i) => {
     const end = parseLocalDateNoon(i.end);
     return end && end < todayStart && !['Cancelled', 'Withdrawn'].includes(i.status);
   });
+  const pastEndDateAppt = sortedAppts.find((a) => {
+    const end = parseLocalDateNoon(a.expectedCompletionDate || a.end);
+    return end && end < todayStart && !['Cancelled', 'Withdrawn', 'Declined', 'Industry Rejected'].includes(a.status);
+  });
 
-  if (completedInt || (pastEndDateInt && student.placementStatus === 'Placement Completed')) {
+  if (completedInt || completedAppt || ((pastEndDateInt || pastEndDateAppt) && ['Placement Completed', 'Completed'].includes(student.placementStatus))) {
     return {
       canonicalStatus: CANONICAL_STATUSES.PLACEMENT_COMPLETED,
       reason: completedInt
         ? `Internship marked Completed (${completedInt.intId || completedInt.id || 'record'}).`
-        : `Internship end date elapsed (${pastEndDateInt.end}) with verified completion.`,
+        : completedAppt
+        ? `Appointment placement marked Completed (${completedAppt.apptId || completedAppt.id || 'record'}).`
+        : `Placement end date elapsed with verified completion.`,
       isExceptional: false,
     };
   }
@@ -132,7 +139,7 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
   });
 
   const activeCommencementAppt = sortedAppts.find((a) => {
-    if (['Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
+    if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
     if (a.appointmentOutcome === 'successful' || a.status === 'Confirmed') {
       const commDate = parseLocalDateNoon(a.commencementDate);
       return commDate && commDate <= todayStart;
@@ -153,7 +160,7 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
   // 5. RULE 4: Appointment Successful
   // Interview completed successfully; awaiting placement commencement
   const successfulAppt = sortedAppts.find((a) => {
-    if (['Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
+    if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
     return a.appointmentOutcome === 'successful' || a.status === 'Confirmed';
   });
 

@@ -125,6 +125,20 @@ console.log('\x1b[36mTest Suite 1: Every Canonical Status\x1b[0m');
   assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_COMPLETED, 'Resolves Placement Completed when internship marked Completed');
 }
 
+// 1.8 Placement Completed via Appointment record
+{
+  const student = { studentId: 'STU-007B', name: 'Jonalyn Tuazon', placementStatus: 'None' };
+  const appointments = [{
+    studentId: 'STU-007B',
+    status: 'Completed',
+    appointmentOutcome: 'successful',
+    commencementDate: '2026-10-05',
+    expectedCompletionDate: '2026-10-21'
+  }];
+  const res = resolveCanonicalStudentStatus(student, { appointments }, refDate);
+  assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_COMPLETED, 'Resolves Placement Completed when appointment marked Completed (e.g. Step 4 placement workflow)');
+}
+
 // -------------------------------------------------------------
 // Test 2: Appointment withdrawal followed by successful appointment
 // -------------------------------------------------------------

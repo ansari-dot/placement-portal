@@ -477,7 +477,7 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
         }
       }
     }
-    return p.placementStatus || '—';
+    return p.canonicalPlacementStatus || p.studentCanonicalStatus || p.placementStatus || '—';
   }, [inactiveSnoozedMap]);
 
   // Payments are NEVER filtered out when students become inactive or snoozed
