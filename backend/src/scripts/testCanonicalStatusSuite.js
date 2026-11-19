@@ -139,6 +139,20 @@ console.log('\x1b[36mTest Suite 1: Every Canonical Status\x1b[0m');
   assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_COMPLETED, 'Resolves Placement Completed when appointment marked Completed (e.g. Step 4 placement workflow)');
 }
 
+// 1.9 Placement Completed via elapsed expectedCompletionDate on appointment
+{
+  const student = { studentId: '12710395', name: 'Jonalyn TUAZON', placementStatus: 'Placement Started' };
+  const appointments = [{
+    studentId: '12710395',
+    status: 'Confirmed',
+    appointmentOutcome: 'successful',
+    commencementDate: '2026-10-05',
+    expectedCompletionDate: '2026-10-21'
+  }];
+  const res = resolveCanonicalStudentStatus(student, { appointments }, refDate);
+  assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_COMPLETED, 'Resolves Placement Completed when expectedCompletionDate elapsed even if student document has legacy Placement Started');
+}
+
 // -------------------------------------------------------------
 // Test 2: Appointment withdrawal followed by successful appointment
 // -------------------------------------------------------------
