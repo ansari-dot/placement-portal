@@ -616,7 +616,18 @@ export default function WorkflowPage() {
       // ── Date-based placement completion check ──
       const endPassed = sortedAppointments.some((a) => {
         if (TERMINAL_APPT_STATUSES.includes(a.status)) return false;
-        const end = a.expectedCompletionDate ? new Date(a.expectedCompletionDate) : null;
+        let end = a.expectedCompletionDate ? new Date(a.expectedCompletionDate) : null;
+        if ((!end || isNaN(end.getTime())) && a.commencementDate) {
+          const derivedEndStr = calculatePlacementEndDate(
+            a.commencementDate,
+            stu.placementHours,
+            stu.availabilityDays,
+            stu.availabilityFrom,
+            stu.availabilityTo,
+            { requireCompleteSchedule: true }
+          );
+          if (derivedEndStr) end = new Date(derivedEndStr);
+        }
         const comm = a.commencementDate ? new Date(a.commencementDate) : null;
         return end && !isNaN(end.getTime()) && end < now && (!comm || isNaN(comm.getTime()) || comm <= now);
       }) || matchingInternships.some((i) => {
@@ -829,8 +840,8 @@ export default function WorkflowPage() {
         rto: stu.assignedRto || stu.rto || stu.institute || '',
         status: stu.status || 'Active',
         placementStatus: dynamicPlacementStatus,
-        canonicalStatus: stu.canonicalStatus || stu.canonicalPlacementStatus || dynamicPlacementStatus,
-        canonicalPlacementStatus: stu.canonicalPlacementStatus || stu.canonicalStatus || dynamicPlacementStatus,
+        canonicalStatus: dynamicPlacementStatus,
+        canonicalPlacementStatus: dynamicPlacementStatus,
         // ── Placement calculation fields — needed by Step3 outcome modal & Step4 end-date calc
         placementHours: stu.placementHours ?? null,
         availabilityDays: stu.availabilityDays ?? null,

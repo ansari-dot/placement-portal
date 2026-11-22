@@ -154,6 +154,24 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    isManuallyRemoved: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    removedAt: {
+      type: Date,
+      default: null,
+    },
+    removedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    removedByName: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

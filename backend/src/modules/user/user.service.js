@@ -511,11 +511,19 @@ export class UserService {
 
   static async getScoreStats(actingUser) {
     const isAdmin = actingUser?.role === 'Administrator';
+    const teamRoles = ['Administrator', 'Coordinator', 'Staff', 'Team Member'];
 
     let targetUsers;
     if (isAdmin) {
-      targetUsers = await UserModel.find({ isHidden: { $ne: true }, email: { $ne: '0349ansari@gmail.com' } }, { _id: 1, name: 1, role: 1, email: 1 }).lean();
-    } else if (actingUser) {
+      targetUsers = await UserModel.find(
+        {
+          isHidden: { $ne: true },
+          email: { $ne: '0349ansari@gmail.com' },
+          role: { $in: teamRoles },
+        },
+        { _id: 1, name: 1, role: 1, email: 1 }
+      ).lean();
+    } else if (actingUser && teamRoles.includes(actingUser.role)) {
       targetUsers = [{ _id: actingUser._id, name: actingUser.name, role: actingUser.role, email: actingUser.email }];
     } else {
       return [];

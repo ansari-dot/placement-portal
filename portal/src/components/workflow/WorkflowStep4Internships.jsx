@@ -224,8 +224,8 @@ export default function WorkflowStep4Internships({
           const canonForInt = isRowCompleted
             ? 'Placement Completed'
             : isRowStarted
-            ? (stuForInt?.canonicalStatus === 'Placement Completed' ? 'Placement Completed' : 'Placement Started')
-            : (stuForInt?.canonicalStatus || stuForInt?.canonicalPlacementStatus || item.studentCanonicalStatus || stuForInt?.placementStatus || 'Awaiting');
+              ? (stuForInt?.canonicalStatus === 'Placement Completed' ? 'Placement Completed' : 'Placement Started')
+              : (stuForInt?.canonicalStatus || stuForInt?.canonicalPlacementStatus || item.studentCanonicalStatus || stuForInt?.placementStatus || 'Awaiting');
           result.push({
             id,
             intId: cleanedId,
@@ -346,8 +346,8 @@ export default function WorkflowStep4Internships({
           const canonForAppt = isApptRowCompleted
             ? 'Placement Completed'
             : isApptRowStarted
-            ? (stuRecord?.canonicalStatus === 'Placement Completed' ? 'Placement Completed' : 'Placement Started')
-            : (stuRecord?.canonicalStatus || stuRecord?.canonicalPlacementStatus || appt.studentCanonicalStatus || stuRecord?.placementStatus || 'Awaiting');
+              ? (stuRecord?.canonicalStatus === 'Placement Completed' ? 'Placement Completed' : 'Placement Started')
+              : (stuRecord?.canonicalStatus || stuRecord?.canonicalPlacementStatus || appt.studentCanonicalStatus || stuRecord?.placementStatus || 'Awaiting');
           result.push({
             id: uniqueId,
             intId: cleanedApptId,
@@ -837,6 +837,12 @@ export default function WorkflowStep4Internships({
     }
     setIsSavingCommencement(true);
     try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const endParsed = commencementForm.endDate ? new Date(commencementForm.endDate) : null;
+      const isEndElapsed = endParsed && !isNaN(endParsed.getTime()) && endParsed < todayStart;
+      const derivedPlacementStatus = isEndElapsed ? 'Completed' : (commencementForm.startDate ? 'Placement Started' : 'Waiting to Join');
+
       await onUpdateInternship(dbId, {
         student: commencementItem.student,
         studentId: commencementItem.studentId,
@@ -846,7 +852,7 @@ export default function WorkflowStep4Internships({
         commencementDate: commencementForm.startDate,
         end: commencementForm.endDate,
         expectedCompletionDate: commencementForm.endDate,
-        status: 'Placement Started',
+        status: derivedPlacementStatus,
       });
       showToast('Commencement & Expected Completion Date updated!');
       setCommencementItem(null);
@@ -1070,11 +1076,10 @@ export default function WorkflowStep4Internships({
           <div className="relative shrink-0" data-bulk-actions>
             <button
               onClick={() => setShowBulkActions(!showBulkActions)}
-              className={`px-2.5 py-2 border text-[11px] font-semibold rounded-xl flex items-center space-x-1.5 transition whitespace-nowrap cursor-pointer ${
-                selectedRows.length > 0
-                  ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs'
-                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-              }`}
+              className={`px-2.5 py-2 border text-[11px] font-semibold rounded-xl flex items-center space-x-1.5 transition whitespace-nowrap cursor-pointer ${selectedRows.length > 0
+                ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
             >
               <span>{selectedRows.length > 0 ? `${selectedRows.length} Selected` : 'Bulk Actions'}</span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
@@ -1197,33 +1202,6 @@ export default function WorkflowStep4Internships({
                   const isSelected = selectedInternship ? selectedInternship.id === item.id : false;
                   const isRowSelected = selectedRows.includes(item.intId) || selectedRows.includes(item.id);
 
-                  // Derive sub-status under student name as per user specification:
-                  // Terminal status takes priority (e.g. Industry Rejected, Student Withdraw, etc.)
-                  // Otherwise:
-                  // Waiting to Join if commencement date not yet added.
-                  // Placement Started when commencement date entered and <= today.
-                  // Completed when expected completion date is over.
-                  const getStudentSubStatus = () => {
-                    const now = new Date();
-                    const terminalStatuses = ['Industry Rejected', 'Student Withdraw', 'Withdrawn', 'Student Missed Appointment', 'Not Suitable Site', 'Cancelled', 'Declined'];
-                    if (terminalStatuses.includes(item.status)) {
-                      return { label: item.status, color: getStatusColor(item.status) };
-                    }
-
-                    const hasCommencement = Boolean(item.start && item.start !== 'TBD');
-                    const endDate = item.end ? new Date(item.end) : null;
-                    const isEndPassed = endDate && !isNaN(endDate.getTime()) && endDate <= now;
-
-                    if (item.status === 'Completed' || item.status === 'Placement Completed' || isEndPassed) {
-                      return { label: 'Completed', color: 'bg-purple-50 text-purple-700 border-purple-200' };
-                    }
-                    if (hasCommencement && (item.status === 'Placement Started' || item.status === 'Active' || item.status === 'Joined')) {
-                      return { label: 'Placement Started', color: 'bg-emerald-50 text-emerald-800 border-emerald-300' };
-                    }
-                    return { label: 'Waiting to Join', color: 'bg-amber-50 text-amber-700 border-amber-200' };
-                  };
-                  const subStatus = getStudentSubStatus();
-
                   return (
                     <tr
                       key={i}
@@ -1266,10 +1244,7 @@ export default function WorkflowStep4Internships({
                               )}
                             </div>
                             <div className="flex items-center space-x-1.5 flex-wrap mt-0.5">
-                              <p className="text-[11px] text-slate-400">{item.studentId}</p>
-                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${subStatus.color}`}>
-                                {subStatus.label}
-                              </span>
+                              <p className="text-[11px] text-slate-400 font-mono">{item.studentId}</p>
                             </div>
                           </div>
                         </div>
@@ -1348,7 +1323,7 @@ export default function WorkflowStep4Internships({
                           <MoreVertical className="w-4 h-4" />
                         </button>
                         {showRowMenu === item.intId && (
-                          <div 
+                          <div
                             style={{
                               position: 'fixed',
                               top: rowMenuPos.top,
@@ -1486,12 +1461,12 @@ export default function WorkflowStep4Internships({
       {showDrawer && selectedInternship && (
         <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-hidden">
           <div className={`relative bg-gradient-to-br from-slate-900 via-slate-800 to-${selectedInternship.status === 'Completed' ? 'purple' :
-              selectedInternship.status === 'Declined' ? 'rose' :
-                selectedInternship.status === 'Industry Rejected' ? 'rose' :
-                  selectedInternship.status === 'Student Missed Appointment' ? 'orange' :
-                    selectedInternship.status === 'Not Suitable Site' ? 'amber' :
-                      selectedInternship.status === 'Withdrawn' ? 'orange' :
-                        selectedInternship.status === 'Cancelled' ? 'slate' : 'emerald'
+            selectedInternship.status === 'Declined' ? 'rose' :
+              selectedInternship.status === 'Industry Rejected' ? 'rose' :
+                selectedInternship.status === 'Student Missed Appointment' ? 'orange' :
+                  selectedInternship.status === 'Not Suitable Site' ? 'amber' :
+                    selectedInternship.status === 'Withdrawn' ? 'orange' :
+                      selectedInternship.status === 'Cancelled' ? 'slate' : 'emerald'
             }-900 p-5`}>
             <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
 

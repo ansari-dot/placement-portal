@@ -1,27 +1,15 @@
 import { Calendar, Filter, X } from 'lucide-react';
 import { inputClass, selectClass } from './studentData';
+import { PLACEMENT_STATUSES } from '../../constants/placementStatus.constants';
 
 const PLACEMENT_REQUEST_OPTIONS = ['Urgent', 'Normal', 'Snooze', 'Inactive'];
 
-const PLACEMENT_STATUS_OPTIONS = [
-  'In Progress',
-  'Appointment Scheduled',
-  'Appointment Successful',
-  'Waiting to Join',
-  'Placement Started',
-  'Student Withdraw',
-  'Student Missed Appointment',
-  'Industry Rejected',
-  'Not Suitable Site',
-  'Placement Completed',
-];
-
-export default function StudentFilters({ filters, onFilterChange, onClear, options, resultCount, selectedCount, onApply, placementStatusOptions = PLACEMENT_STATUS_OPTIONS }) {
+export default function StudentFilters({ filters, onFilterChange, onClear, options = {}, resultCount, selectedCount, onApply, placementStatusOptions = PLACEMENT_STATUSES }) {
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
 
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-      <div className="grid grid-cols-5 gap-4">
+    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
 
         {/* Assigned Date */}
         <div>
@@ -79,6 +67,21 @@ export default function StudentFilters({ filters, onFilterChange, onClear, optio
             onChange={(e) => onFilterChange('city', e.target.value)}
             className={inputClass}
           />
+        </div>
+
+        {/* RTO Provider */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">RTO Provider</label>
+          <select
+            value={filters.rto || ''}
+            onChange={(e) => onFilterChange('rto', e.target.value)}
+            className={selectClass}
+          >
+            <option value="">All RTOs</option>
+            {(options.rtoOptions || []).map(r => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
         </div>
 
         {/* Course */}

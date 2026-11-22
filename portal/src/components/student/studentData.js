@@ -1,9 +1,10 @@
-﻿export const defaultStudents = [];
+export const defaultStudents = [];
 
 export const emptyFilters = {
   assignedDate: '',
   placementRequest: '',
   placementStatus: '',
+  rto: '',
   city: '',
   course: '',
 };

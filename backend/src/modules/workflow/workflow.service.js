@@ -88,14 +88,14 @@ export const getWorkflowById = async (id) => {
     const workflow = await WorkflowModel.findById(id).populate("students");
     if (!workflow) return null;
     try {
-        const allStudents = await StudentModel.find({}, { studentId: 1, name: 1, firstName: 1, lastName: 1, status: 1, placementStatus: 1, snoozed: 1, internshipPriority: 1 }).lean();
+        const allStudents = await StudentModel.find({}, { studentId: 1, enrollmentId: 1, name: 1, firstName: 1, lastName: 1, status: 1, placementStatus: 1, snoozed: 1, internshipPriority: 1, placementHours: 1, availabilityDays: 1, availabilityFrom: 1, availabilityTo: 1 }).lean();
         const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
         const statusMap = buildCanonicalStatusMap(allStudents, workflows);
         const wfObj = workflow.toObject ? workflow.toObject() : { ...workflow };
 
         const lookupCanonical = (item) => {
             if (!item) return CANONICAL_STATUSES.AWAITING;
-            const sName = String(item.student || item.studentName || '').trim();
+            const sName = String(item.student || item.studentName || item.name || '').trim();
             const sId = String(item.studentId || item.id || '').trim();
             const sDbId = String(item.studentDbId || '').trim();
             return (
@@ -128,6 +128,7 @@ export const getWorkflowById = async (id) => {
                 const canon = lookupCanonical(s);
                 s.canonicalStatus = canon;
                 s.canonicalPlacementStatus = canon;
+                s.placementStatus = canon;
             });
         }
         return wfObj;
@@ -2104,9 +2105,19 @@ export const getWorkflowStudents = async (filter = {}) => {
         const statusMap = buildCanonicalStatusMap(rawStudents, workflows);
         return rawStudents.map((s) => {
             const sObj = s.toObject ? s.toObject() : { ...s };
-            const canon = statusMap.get(s.studentId) || statusMap.get(String(s._id || '')) || CANONICAL_STATUSES.AWAITING;
+            const canon =
+                statusMap.get(s.studentId) ||
+                statusMap.get(s.studentId?.toLowerCase()) ||
+                statusMap.get(s.enrollmentId) ||
+                statusMap.get(s.enrollmentId?.toLowerCase()) ||
+                statusMap.get(String(s._id || '')) ||
+                statusMap.get(s.name) ||
+                statusMap.get(s.name?.toLowerCase()) ||
+                s.placementStatus ||
+                CANONICAL_STATUSES.AWAITING;
             sObj.canonicalStatus = canon;
             sObj.canonicalPlacementStatus = canon;
+            sObj.placementStatus = canon;
             return sObj;
         });
     } catch (_) {

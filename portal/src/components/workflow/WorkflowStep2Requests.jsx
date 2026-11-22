@@ -14,6 +14,7 @@ import { snoozeStudent, updateStudent } from '../../api/studentsApi';
 import AssignCoordinatorModal from '../student/AssignCoordinatorModal';
 import PlacementRequestStudentDetails from './PlacementRequestStudentDetails';
 import CanonicalStatusBadge from '../common/CanonicalStatusBadge';
+import UnifiedIndustryModal from '../industry/UnifiedIndustryModal';
 import { AUSTRALIAN_STATES } from '../../constants/australianStates';
 
 const getSnoozeUntil = (durationDays) => {
@@ -1638,222 +1639,48 @@ export default function WorkflowStep2Requests({
       )}
 
       {showAddOrgModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Add Industry / Organisation Contact</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {selectedRequest?.student
-                    ? <>For <span className="font-semibold text-slate-600">{selectedRequest.student}</span> · {selectedRequest.title || selectedRequest.company || ''}</>
-                    : 'Record organisation contacted for student\'s placement'}
-                </p>
-              </div>
-              <button onClick={() => { setShowAddOrgModal(false); setOrgFormErrors({}); }} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Industry / Organisation Name <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sunnyside Aged Care Center"
-                  value={orgForm.organizationName}
-                  list="step2-industry-directory"
-                  onChange={(e) => { handleOrgNameChange(e.target.value); if (orgFormErrors.organizationName) setOrgFormErrors(p => ({...p, organizationName: ''})); }}
-                  className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.organizationName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
-                />
-                <datalist id="step2-industry-directory">
-                  {industryDirectory.map((industry) => <option key={industry._id || industry.id || industry.name} value={industry.name} />)}
-                </datalist>
-                {orgFormErrors.organizationName && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.organizationName}</p>}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Industry Type <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={orgForm.industryType}
-                    onChange={(e) => setOrgForm({ ...orgForm, industryType: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="Aged Care">Aged Care</option>
-                    <option value="Disability Centre">Disability Centre</option>
-                    <option value="Montessori School">Montessori School</option>
-                    <option value="Day Care">Day Care</option>
-                    <option value="Childcare/ECEC">Childcare/ECEC</option>
-                    <option value="Information Technology">Information Technology</option>
-                    <option value="Healthcare">Healthcare</option>
-                    <option value="Other">Other relevant types</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Contact Person Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Jane Smith"
-                    value={orgForm.contactPerson}
-                    onChange={(e) => { setOrgForm({ ...orgForm, contactPerson: e.target.value }); if (orgFormErrors.contactPerson) setOrgFormErrors(p => ({...p, contactPerson: ''})); }}
-                    className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.contactPerson ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
-                  />
-                  {orgFormErrors.contactPerson && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.contactPerson}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Email Address <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="contact@org.com.au"
-                    value={orgForm.email}
-                    onChange={(e) => { setOrgForm({ ...orgForm, email: e.target.value }); if (orgFormErrors.email) setOrgFormErrors(p => ({...p, email: ''})); }}
-                    className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.email ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
-                  />
-                  {orgFormErrors.email && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.email}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Phone Number <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 03 9123 4567"
-                    value={orgForm.phone}
-                    onChange={(e) => { setOrgForm({ ...orgForm, phone: e.target.value }); if (orgFormErrors.phone) setOrgFormErrors(p => ({...p, phone: ''})); }}
-                    className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.phone ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
-                  />
-                  {orgFormErrors.phone && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.phone}</p>}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Address <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Street address"
-                  value={orgForm.address}
-                  onChange={(e) => { setOrgForm({ ...orgForm, address: e.target.value }); if (orgFormErrors.address) setOrgFormErrors(p => ({...p, address: ''})); }}
-                  className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 ${orgFormErrors.address ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
-                />
-                {orgFormErrors.address && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.address}</p>}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">City / Suburb</label>
-                  <input type="text" value={orgForm.suburb} onChange={(e) => setOrgForm({ ...orgForm, suburb: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">State / Territory</label>
-                  <select
-                    value={orgForm.state}
-                    onChange={(e) => setOrgForm({ ...orgForm, state: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white text-xs"
-                  >
-                    <option value="">Select State</option>
-                    {AUSTRALIAN_STATES.map((s) => (
-                      <option key={s.code} value={s.code}>
-                        {s.code} - {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Zip Code</label>
-                  <input type="text" value={orgForm.postCode} onChange={(e) => setOrgForm({ ...orgForm, postCode: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Country</label>
-                  <input type="text" value={orgForm.country} onChange={(e) => setOrgForm({ ...orgForm, country: e.target.value })} className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Response Status</label>
-                <select
-                  value={orgForm.response}
-                  onChange={(e) => setOrgForm({ ...orgForm, response: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
-                >
-                  <option value="In Discussion">In Discussion</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Rejected">Rejected</option>
-                  <option value="Pending">Pending</option>
-                </select>
-              </div>
-
-              {/* Appointment Date & Time Fields */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Proposed Appointment Date
-                  </label>
-                  <input
-                    type="date"
-                    value={orgForm.appointmentDate}
-                    onChange={(e) => setOrgForm({ ...orgForm, appointmentDate: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                    Proposed Appointment Time
-                  </label>
-                  <input
-                    type="time"
-                    value={orgForm.appointmentTime}
-                    onChange={(e) => setOrgForm({ ...orgForm, appointmentTime: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Discussion Notes / Response <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Summary of the conversation, requirements, next steps..."
-                  value={orgForm.notes}
-                  onChange={(e) => { setOrgForm({ ...orgForm, notes: e.target.value }); if (orgFormErrors.notes) setOrgFormErrors(p => ({...p, notes: ''})); }}
-                  className={`w-full px-3.5 py-2 border rounded-xl focus:outline-none focus:border-blue-500 resize-none ${orgFormErrors.notes ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'}`}
-                />
-                {orgFormErrors.notes && <p className="mt-1 text-[10px] text-rose-500 font-medium flex items-center gap-1">⚠ {orgFormErrors.notes}</p>}
-              </div>
-            </div>
-
-            <div className="flex space-x-2 pt-2">
-              <button
-                onClick={handleAddOrgRecord}
-                className="flex-1 py-2.5 bg-[#0147A6] hover:bg-gradient-to-r hover:from-[#0147A6] hover:via-[#0B6DC8] hover:to-[#02AFA9] hover:bg-[length:200%_auto] hover:bg-[position:right_center] text-white text-xs font-semibold rounded-xl transition-all duration-500 cursor-pointer"
-              >
-                Save Contact Record
-              </button>
-              <button
-                onClick={() => { setShowAddOrgModal(false); setOrgFormErrors({}); }}
-                className="px-4 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <UnifiedIndustryModal
+          isOpen={showAddOrgModal}
+          onClose={() => {
+            setShowAddOrgModal(false);
+          }}
+          scopeStudent={selectedRequest ? {
+            id: selectedRequest.studentId || selectedRequest.id,
+            studentId: selectedRequest.studentId,
+            name: selectedRequest.student,
+            course: selectedRequest.title,
+          } : null}
+          onAddContactRecord={async (contactData) => {
+            const targetKey = selectedRequest?.reqId || selectedRequest?.id || selectedRequest?.studentId;
+            const newRecord = {
+              id: Date.now().toString(),
+              organizationName: contactData.organizationName,
+              contactPerson: contactData.contactPerson,
+              email: contactData.email,
+              phone: contactData.phone,
+              industryType: contactData.industryType,
+              address: contactData.address,
+              suburb: contactData.suburb,
+              state: contactData.state,
+              postCode: contactData.postCode,
+              notes: contactData.notes || '',
+              response: contactData.response || 'In Discussion',
+              contactedDate: new Date().toISOString(),
+              addedByName: authUser?.name || 'Coordinator',
+              addedByUserId: authUser?._id || null,
+            };
+            if (targetKey && onAddContact) {
+              await onAddContact(targetKey, newRecord);
+            }
+            try {
+              const res = await fetchIndustries();
+              if (res?.data) setIndustryDirectory(res.data);
+            } catch (_) {}
+          }}
+          onSuccess={() => {
+            setShowAddOrgModal(false);
+          }}
+        />
       )}
 
       {placementDetailsTarget && (

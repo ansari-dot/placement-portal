@@ -57,17 +57,19 @@ export default function LivePresenceHub() {
     let items = [];
 
     if (activeTab === 'all' || activeTab === 'admins' || activeTab === 'coordinators') {
-      const userList = presenceData.users.map(u => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        type: u.role,
-        roleCategory: u.role,
-        department: u.department || 'Operations',
-        avatar: u.avatar,
-        isOnline: u.isOnline,
-        lastSeen: u.lastSeen || u.lastActive,
-      }));
+      const userList = presenceData.users
+        .filter(u => !['Student', 'RTO', 'RTO Manager', 'Industry'].includes(u.role))
+        .map(u => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          type: u.role,
+          roleCategory: u.role,
+          department: u.department || 'Operations',
+          avatar: u.avatar,
+          isOnline: u.isOnline,
+          lastSeen: u.lastSeen || u.lastActive,
+        }));
 
       if (activeTab === 'admins') {
         items = userList.filter(u => u.roleCategory === 'Administrator');
@@ -110,6 +112,15 @@ export default function LivePresenceHub() {
 
     // Always show only currently online users in this Live Presence section
     items = items.filter(i => i.isOnline);
+
+    // Deduplicate by normalized email or id so no user appears twice
+    const seenMap = new Map();
+    items = items.filter(i => {
+      const key = (i.email || '').trim().toLowerCase() || String(i.id);
+      if (seenMap.has(key)) return false;
+      seenMap.set(key, true);
+      return true;
+    });
 
     // Apply search filter — searches only within online users
     if (searchQuery.trim()) {

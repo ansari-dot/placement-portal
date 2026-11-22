@@ -347,6 +347,7 @@ export class IndustryService {
     const {
       industryName,
       industryCode,
+      placementSite,
       industryType,
       contactPersonName,
       contactEmail,
@@ -417,7 +418,9 @@ export class IndustryService {
     const industry = new IndustryModel({
       name: industryName,
       code: finalCode,
-      sector: industryType,
+      sector: placementSite || industryType,
+      placementSite: placementSite || '',
+      industryType: industryType || '',
       contactPersonName,
       contactEmail,
       contactPhone,

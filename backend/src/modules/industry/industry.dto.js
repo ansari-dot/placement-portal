@@ -41,6 +41,7 @@ export const normalizeAndValidateState = (inputState, isRequired = false) => {
 export const createIndustrySchema = z.object({
   industryName: z.string().trim().min(1, 'Industry Name is required'),
   industryCode: z.string().trim().optional(),
+  placementSite: z.string().trim().optional(),
   industryType: z.string().trim().min(1, 'Industry Type is required'),
   contactPersonName: z.string().trim().min(1, 'Contact Person Name is required'),
   contactEmail: z.string().trim().email('Valid Email Address is required'),

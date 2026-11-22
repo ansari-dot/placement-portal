@@ -19,6 +19,8 @@ import {
   ChevronRight,
   CreditCard,
   FileSpreadsheet,
+  Globe,
+  ExternalLink,
   Star,
   User,
   ShieldCheck,
@@ -653,7 +655,7 @@ export default function Sidebar() {
 
 
       {/* =====================================================
-          LOGOUT
+          WEBSITE & LOGOUT
       ====================================================== */}
 
       <div
@@ -662,8 +664,36 @@ export default function Sidebar() {
           py-3
           border-t
           border-white/10
+          space-y-1.5
         "
       >
+
+        <a
+          href="https://mantisplacements.com.au"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="
+            group
+            flex
+            items-center
+            gap-2.5
+            w-full
+            px-2.5
+            py-1.5
+            rounded-md
+            text-[10px]
+            text-sky-300
+            hover:bg-sky-500/15
+            hover:text-white
+            transition-all
+            duration-200
+            cursor-pointer
+          "
+        >
+          <Globe className="w-3 h-3 shrink-0 text-sky-400 group-hover:text-white" />
+          <span className="flex-1 font-medium">Mantis Website</span>
+          <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+        </a>
 
         <button
           onClick={handleLogout}

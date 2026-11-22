@@ -20,6 +20,8 @@ import {
   X,
   Edit2,
   UserPlus,
+  Trash2,
+  UserMinus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -30,10 +32,12 @@ import {
   bulkGenerateInvoices,
   bulkMarkPaymentReceived,
   downloadInvoicePDF,
+  removePayment,
 } from '../../api/paymentApi';
 import { fetchRtos } from '../../api/rtoApi';
 import { repairStudentRto } from '../../api/studentsApi';
 import PaymentInvoiceModal from './PaymentInvoiceModal';
+import AddPaymentStudentModal from './AddPaymentStudentModal';
 import CanonicalStatusBadge from '../common/CanonicalStatusBadge';
 
 const PLACEMENT_STATUSES = [
@@ -165,6 +169,26 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
     isOpen: false,
     payments: [],
   });
+
+  // Add / Manage Students Modal State
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+
+  // Remove confirmation modal state
+  const [deleteConfirmPayment, setDeleteConfirmPayment] = useState(null);
+
+  const handleConfirmRemovePayment = async () => {
+    if (!deleteConfirmPayment) return;
+    try {
+      const pId = deleteConfirmPayment._id || deleteConfirmPayment.id;
+      const res = await removePayment(pId);
+      toast.success(res?.message || `${deleteConfirmPayment.studentName} removed from Payment`);
+      setDeleteConfirmPayment(null);
+      loadData();
+    } catch (err) {
+      console.error('Failed to remove student from payment:', err);
+      toast.error(err?.response?.data?.message || 'Failed to remove student from payment');
+    }
+  };
 
   // Fee Override Modal State
   const [feeOverrideModal, setFeeOverrideModal] = useState({
@@ -523,11 +547,18 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
         </div>
         <div className="flex items-center space-x-3 shrink-0">
           <button
-            onClick={() => navigate('/workflow?step=1&mode=paymentImport')}
+            onClick={() => setShowAddStudentModal(true)}
             className="flex items-center space-x-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
-            title="Import students into Payment (advance payments, unscheduled appointments)"
+            title="Manually add a student to payment or restore removed students"
           >
             <UserPlus className="w-3.5 h-3.5" />
+            <span>Manage / Add Students</span>
+          </button>
+          <button
+            onClick={() => navigate('/workflow?step=1&mode=paymentImport')}
+            className="flex items-center space-x-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 transition shadow-xs cursor-pointer"
+            title="Import students into Payment (advance payments, unscheduled appointments)"
+          >
             <span>Import Student</span>
           </button>
           <button
@@ -551,7 +582,60 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
       </div>
 
       {/* =========================================================
-          TOP METRICS CARDS (Matching Step 4 Internships Metric Cards)
+          FINANCIAL KPI SUMMARY CARDS (Client Requirement 5)
+      ========================================================= */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Total Revenue */}
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-5 rounded-2xl shadow-sm border border-emerald-500/30 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-emerald-100 font-bold uppercase tracking-wider">Total Revenue</p>
+            <h2 className="text-2xl font-black mt-1 text-white">
+              AUD ${(totals.totalRevenue || totals.totalAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+            </h2>
+            <p className="text-[11px] text-emerald-200 mt-1">
+              Active billable placement fees (100% + 30%)
+            </p>
+          </div>
+          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center shrink-0 border border-white/20">
+            <DollarSign className="w-6 h-6 text-white" />
+          </div>
+        </div>
+
+        {/* Total Received */}
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-5 rounded-2xl shadow-sm border border-blue-500/30 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-blue-100 font-bold uppercase tracking-wider">Total Received</p>
+            <h2 className="text-2xl font-black mt-1 text-white">
+              AUD ${(totals.paidAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+            </h2>
+            <p className="text-[11px] text-blue-200 mt-1">
+              Collected & confirmed payments
+            </p>
+          </div>
+          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center shrink-0 border border-white/20">
+            <CheckCircle2 className="w-6 h-6 text-white" />
+          </div>
+        </div>
+
+        {/* Total Pending */}
+        <div className="bg-gradient-to-br from-amber-600 to-orange-700 text-white p-5 rounded-2xl shadow-sm border border-amber-500/30 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-amber-100 font-bold uppercase tracking-wider">Total Pending</p>
+            <h2 className="text-2xl font-black mt-1 text-white">
+              AUD ${(totals.pendingAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+            </h2>
+            <p className="text-[11px] text-amber-200 mt-1">
+              Uninvoiced & outstanding invoices
+            </p>
+          </div>
+          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center shrink-0 border border-white/20">
+            <AlertTriangle className="w-6 h-6 text-white" />
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================
+          TOP METRICS CARDS (Status Breakdown)
       ========================================================= */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
@@ -1008,6 +1092,14 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
                               <span>PDF</span>
                             </button>
                           )}
+                          <button
+                            onClick={() => setDeleteConfirmPayment(p)}
+                            title="Remove student from Payment"
+                            className="inline-flex items-center space-x-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-semibold transition border border-rose-200 shadow-2xs cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Remove</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1037,36 +1129,37 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Total 100% Price */}
-          <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/60">
-            <div className="text-xs text-slate-400 font-medium">Total 100% Price</div>
-            <div className="text-xl font-bold text-white mt-1">
-              AUD {totals.total100Price?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
-            </div>
-            <div className="text-[10px] text-slate-400 mt-1">
-              Full price for Scheduled, Successful, Started, & Completed placements
-            </div>
-          </div>
-
-          {/* Total 30% Price */}
-          <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/60">
-            <div className="text-xs text-slate-400 font-medium">Total 30% Price</div>
-            <div className="text-xl font-bold text-amber-400 mt-1">
-              AUD {totals.total30Price?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
-            </div>
-            <div className="text-[10px] text-slate-400 mt-1">
-              30% price for Withdraw & Missed Appointment placements
-            </div>
-          </div>
-
           {/* Total Revenue */}
           <div className="bg-emerald-950/40 rounded-xl p-4 border border-emerald-500/30">
-            <div className="text-xs text-emerald-300 font-medium">Total Revenue</div>
+            <div className="text-xs text-emerald-300 font-bold uppercase tracking-wider">Total Revenue</div>
             <div className="text-2xl font-black text-emerald-400 mt-1">
-              AUD {totals.totalRevenue?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+              AUD ${(totals.totalRevenue || totals.totalAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
             </div>
-            <div className="text-[10px] text-emerald-300/80 mt-1">
-              Sum of Total 100% Price + Total 30% Price
+            <div className="text-[10px] text-emerald-300/80 mt-1 flex items-center justify-between">
+              <span>100%: AUD {totals.total100Price?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+              <span>30%: AUD {totals.total30Price?.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+
+          {/* Total Received */}
+          <div className="bg-blue-950/40 rounded-xl p-4 border border-blue-500/30">
+            <div className="text-xs text-blue-300 font-bold uppercase tracking-wider">Total Received</div>
+            <div className="text-2xl font-black text-blue-400 mt-1">
+              AUD ${(totals.paidAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+            </div>
+            <div className="text-[10px] text-blue-300/80 mt-1">
+              Collected & confirmed payment receipts
+            </div>
+          </div>
+
+          {/* Total Pending */}
+          <div className="bg-amber-950/40 rounded-xl p-4 border border-amber-500/30">
+            <div className="text-xs text-amber-300 font-bold uppercase tracking-wider">Total Pending</div>
+            <div className="text-2xl font-black text-amber-400 mt-1">
+              AUD ${(totals.pendingAmount || 0).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+            </div>
+            <div className="text-[10px] text-amber-300/80 mt-1">
+              Uninvoiced balance & sent invoices pending payment
             </div>
           </div>
         </div>
@@ -1243,6 +1336,53 @@ export default function WorkflowStep5Payments({ initialSearch = '', inactiveSnoo
         onClose={() => setInvoiceModal({ isOpen: false, payments: [] })}
         payments={invoiceModal.payments}
         onConfirmStatusUpdate={handleInvoiceModalConfirm}
+      />
+
+      {/* =========================================================
+          REMOVE FROM PAYMENT CONFIRMATION MODAL
+      ========================================================= */}
+      {deleteConfirmPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center space-x-3 text-slate-900 font-bold text-base">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3>Remove from Payment</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to remove <span className="font-bold text-slate-900">{deleteConfirmPayment.studentName}</span> from the Payment list?
+            </p>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+              <strong>Note:</strong> This student will NOT be automatically re-added by background sync. You can manually restore them at any time using the <em>"Manage / Add Students"</em> button.
+            </div>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmPayment(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemovePayment}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                Yes, Remove Student
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          ADD / MANAGE STUDENTS MODAL
+      ========================================================= */}
+      <AddPaymentStudentModal
+        isOpen={showAddStudentModal}
+        onClose={() => setShowAddStudentModal(false)}
+        onUpdated={loadData}
       />
     </div>
   );

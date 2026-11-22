@@ -6,7 +6,8 @@ import logo1 from '../../assets/logo1.png';
 import {
   Search, Bell, Settings, ChevronDown, ChevronRight, Menu, LogOut, User,
   HelpCircle, X, CheckCheck, Plus, Send, Users,
-  GraduationCap, ClipboardList, Calendar, Briefcase, CreditCard, School, Building2, Loader2
+  GraduationCap, ClipboardList, Calendar, Briefcase, CreditCard, School, Building2, Loader2,
+  Globe, ExternalLink
 } from 'lucide-react';
 import {
   fetchNotifications,
@@ -784,6 +785,18 @@ export default function Header({ title = 'Dashboard', breadcrumbs = [] }) {
                   <Settings className="w-3.5 h-3.5 text-slate-400" />
                   <span>{isAdmin ? 'Account & User Settings' : 'Account Settings'}</span>
                 </button>
+                <a
+                  href="https://mantisplacements.com.au"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  <div className="flex items-center space-x-2">
+                    <Globe className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Mantis Website</span>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                </a>
                 <div className="border-t border-slate-100 my-1" />
                 <button
                   onClick={handleLogout}

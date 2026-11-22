@@ -1,4 +1,6 @@
+import mongoose from 'mongoose';
 import UserLogModel from '../../modules/audit/audit.model.js';
+import { generateHumanDescription } from '../../modules/audit/auditDescription.js';
 
 const ignoredPaths = new Set(['/auth/login', '/auth/logout', '/auth/heartbeat']);
 const sensitiveKey = /password|token|secret|authorization|cookie/i;
@@ -39,10 +41,41 @@ const resourceName = (path) => {
   return segment.replace(/s$/, '') || segment;
 };
 
+const resolveModel = (resource) => {
+  try {
+    switch (resource) {
+      case 'student': return mongoose.model('Student');
+      case 'industry': return mongoose.model('Industry');
+      case 'payment': return mongoose.model('Payment');
+      case 'rto': return mongoose.model('RTO');
+      case 'user': return mongoose.model('User');
+      case 'workflow': return mongoose.model('Workflow');
+      default: return null;
+    }
+  } catch (_) {
+    return null;
+  }
+};
+
 export const auditMutations = (req, res, next) => {
   const method = req.method.toUpperCase();
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || ignoredPaths.has(req.path)) {
     return next();
+  }
+
+  // Pre-fetch existing document snapshot for mutations
+  const cleanPath = req.path.replace(/^\/api\/v1/, '');
+  const segments = cleanPath.split('?')[0].split('/').filter(Boolean);
+  const resource = resourceName(req.path);
+  const targetId = segments[1] && segments[1] !== 'undefined' ? segments[1] : (req.body?._id || req.body?.id || '');
+
+  if (['PUT', 'PATCH', 'DELETE'].includes(method) && targetId && mongoose.isValidObjectId(targetId)) {
+    const Model = resolveModel(resource);
+    if (Model) {
+      Model.findById(targetId).lean().then((doc) => {
+        if (doc) res.locals.previousDoc = doc;
+      }).catch(() => {});
+    }
   }
 
   const sendJson = res.json.bind(res);
@@ -55,15 +88,14 @@ export const auditMutations = (req, res, next) => {
     if (res.statusCode < 200 || res.statusCode >= 400) return;
 
     const actor = req.user;
-    const resource = resourceName(req.path);
     const actionVerb = { POST: 'created', PUT: 'updated', PATCH: 'updated', DELETE: 'deleted' }[method];
-    const routeId = req.params?.id || req.params?.studentId || req.params?.requestId || req.params?.appointmentId || '';
+    const routeId = req.params?.id || req.params?.studentId || req.params?.requestId || req.params?.appointmentId || targetId || '';
     const changes = safeValue({
       submitted: { body: req.body || {}, params: req.params || {} },
       result: res.locals.auditResponse || null,
     });
 
-    UserLogModel.create({
+    const logEntry = {
       actorId: actor?._id || null,
       actorName: actor?.name || (req.path === '/auth/signup' ? (req.body?.name || 'New signup') : 'Unauthenticated / system'),
       actorEmail: actor?.email || (req.path === '/auth/signup' ? (req.body?.email || '') : ''),
@@ -74,10 +106,16 @@ export const auditMutations = (req, res, next) => {
       resource,
       resourceId: String(routeId || req.body?._id || req.body?.id || ''),
       changes,
+      previousState: safeValue(res.locals.previousDoc || null),
+      isReverted: false,
       statusCode: res.statusCode,
       ipAddress: req.ip || req.socket?.remoteAddress || '',
       userAgent: req.get('user-agent') || '',
-    }).catch(error => console.error('[UserLog] Failed to record portal change:', error.message));
+    };
+
+    logEntry.humanDescription = generateHumanDescription(logEntry);
+
+    UserLogModel.create(logEntry).catch(error => console.error('[UserLog] Failed to record portal change:', error.message));
   });
 
   next();

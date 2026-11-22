@@ -58,3 +58,23 @@ export const retrySendInvoiceEmail = async (invoiceNumber) => {
   const response = await api.post(`/payments/invoice/${invoiceNumber}/send`);
   return response.data;
 };
+
+export const removePayment = async (id) => {
+  const response = await api.patch(`/payments/${id}/remove`);
+  return response.data;
+};
+
+export const restorePayment = async (id) => {
+  const response = await api.post(`/payments/${id}/restore`);
+  return response.data;
+};
+
+export const fetchRemovedPayments = async () => {
+  const response = await api.get('/payments/removed');
+  return response.data;
+};
+
+export const manualAddPayment = async (data) => {
+  const response = await api.post('/payments/manual-add', data);
+  return response.data;
+};

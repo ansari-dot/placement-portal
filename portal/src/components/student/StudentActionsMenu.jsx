@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { Eye, Pencil, Trash2, UserCheck, FileText, Calendar, Building2, Moon, RotateCcw } from 'lucide-react';
+import { Eye, Pencil, Trash2, UserCheck, FileText, Calendar, Building2, Moon, RotateCcw, Layers, History } from 'lucide-react';
 
 export default function StudentActionsMenu({
   student,
@@ -112,6 +112,24 @@ export default function StudentActionsMenu({
           >
             <Building2 size={14} className="text-sky-500" />
             <span>Add Industry</span>
+          </button>
+
+          {/* 5. Edit Industry */}
+          <button
+            onClick={() => { onClose(); onAction('editIndustry', student); }}
+            className="w-full px-3 py-2 text-left text-xs font-semibold text-teal-700 hover:bg-teal-50 flex items-center space-x-2 transition cursor-pointer"
+          >
+            <Layers size={14} className="text-teal-500" />
+            <span>Edit Industry</span>
+          </button>
+
+          {/* 6. Contacted Industries History */}
+          <button
+            onClick={() => { onClose(); onAction('viewContactedIndustries', student); }}
+            className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-700 hover:bg-blue-50 flex items-center space-x-2 transition cursor-pointer"
+          >
+            <History size={14} className="text-blue-500" />
+            <span>Contacted Industries</span>
           </button>
 
           {allowCreateAppointment && (

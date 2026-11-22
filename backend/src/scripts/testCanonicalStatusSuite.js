@@ -153,6 +153,72 @@ console.log('\x1b[36mTest Suite 1: Every Canonical Status\x1b[0m');
   assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_COMPLETED, 'Resolves Placement Completed when expectedCompletionDate elapsed even if student document has legacy Placement Started');
 }
 
+// 1.10 Placement Completed via schedule-derived completion date elapsed (missing expectedCompletionDate)
+{
+  const student = {
+    studentId: '12718395',
+    name: 'Jonalyn TUAZON',
+    placementHours: 120,
+    availabilityDays: { Mon: true, Tue: true, Wed: true, Thu: true, Fri: true },
+    availabilityFrom: '09:00 AM',
+    availabilityTo: '05:00 PM',
+    placementStatus: 'Placement Started'
+  };
+  const appointments = [{
+    studentId: '12718395',
+    status: 'Confirmed',
+    appointmentOutcome: 'successful',
+    commencementDate: '2026-10-05',
+    expectedCompletionDate: '' // not saved in DB!
+  }];
+  const res = resolveCanonicalStudentStatus(student, { appointments }, refDate);
+  assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_COMPLETED, 'Resolves Placement Completed when schedule-derived completion date elapsed even if expectedCompletionDate is missing');
+}
+
+// 1.11 Placement Started when commencement passed but schedule completion date is in future
+{
+  const student = {
+    studentId: 'STU-FUTURE-END',
+    name: 'Active Learner',
+    placementHours: 240, // 30 working days = 6 weeks
+    availabilityDays: { Mon: true, Tue: true, Wed: true, Thu: true, Fri: true },
+    availabilityFrom: '09:00 AM',
+    availabilityTo: '05:00 PM',
+    placementStatus: 'None'
+  };
+  const appointments = [{
+    studentId: 'STU-FUTURE-END',
+    status: 'Confirmed',
+    appointmentOutcome: 'successful',
+    commencementDate: '2026-11-10', // commenced 9 days before refDate (2026-11-19)
+    expectedCompletionDate: ''
+  }];
+  const res = resolveCanonicalStudentStatus(student, { appointments }, refDate);
+  assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_STARTED, 'Resolves Placement Started when placement commenced but required hours schedule is still ongoing');
+}
+
+// 1.12 Placement Completed via verified attendance hours meeting required hours
+{
+  const student = {
+    studentId: 'STU-ATT-MET',
+    name: 'Diligent Student',
+    placementHours: 80,
+    placementStatus: 'Placement Started'
+  };
+  const appointments = [{
+    studentId: 'STU-ATT-MET',
+    status: 'Confirmed',
+    commencementDate: '2026-11-01',
+    expectedCompletionDate: '2026-12-01' // future end date
+  }];
+  const attendances = [
+    { studentId: 'STU-ATT-MET', status: 'Present', totalHours: 40 },
+    { studentId: 'STU-ATT-MET', status: 'Completed', totalHours: 40 }
+  ];
+  const res = resolveCanonicalStudentStatus(student, { appointments, attendances }, refDate);
+  assert(res.canonicalStatus === CANONICAL_STATUSES.PLACEMENT_COMPLETED, 'Resolves Placement Completed when total verified attendance hours meet or exceed required hours');
+}
+
 // -------------------------------------------------------------
 // Test 2: Appointment withdrawal followed by successful appointment
 // -------------------------------------------------------------

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import IndustryLayout from '../components/layout/IndustryLayout';
 import IndustriesDashboard from '../components/industry/IndustriesDashboard';
 import AddNewIndustryWizard from '../components/industry/AddNewIndustryWizard';
+import UnifiedIndustryModal from '../components/industry/UnifiedIndustryModal';
 // CHANGED: ScoreTab import and Trophy icon removed - Score now lives on its own page (ScorePage.jsx)
 import { fetchIndustries, createIndustry, updateIndustry, fetchIndustryStats, deleteIndustry } from '../api/industryApi';
 import { toast } from 'react-toastify';
@@ -16,6 +17,8 @@ export default function IndustryPage() {
   // Industries directory category tabs.
   const [activeTab, setActiveTab] = useState('all');
   const [users, setUsers] = useState([]);
+  const [isUnifiedModalOpen, setIsUnifiedModalOpen] = useState(false);
+  const [unifiedModalCategory, setUnifiedModalCategory] = useState('Random');
   const [partnerForm, setPartnerForm] = useState({ industryName: '', industryType: '', address: '', suburb: '', state: '', postCode: '', country: 'Australia', contactPersonName: '', contactPhone: '', contactEmail: '', onboardedByName: '', onboardedBy: '', partnershipInfo: '', documents: [] });
 
   const [industries, setIndustries] = useState([]);
@@ -95,8 +98,8 @@ export default function IndustryPage() {
   }, [loadData]);
 
   const handleAddNewIndustry = () => {
-    setActiveTab('random');
-    setCurrentView('add-wizard');
+    setUnifiedModalCategory(activeTab === 'partner' ? 'Partner' : 'Random');
+    setIsUnifiedModalOpen(true);
   };
   const updatePartner = (key, value) => setPartnerForm(old => ({ ...old, [key]: value }));
 
@@ -178,7 +181,10 @@ export default function IndustryPage() {
           {/* ── Tab content ── */}
           {(activeTab === 'all' || activeTab === 'random' || activeTab === 'partner') && (
             <IndustriesDashboard
-              onAddNewIndustry={() => activeTab === 'partner' ? setCurrentView('add-partner') : handleAddNewIndustry()}
+              onAddNewIndustry={() => {
+                setUnifiedModalCategory(activeTab === 'partner' ? 'Partner' : 'Random');
+                setIsUnifiedModalOpen(true);
+              }}
               industries={activeTab === 'all' ? industries : industries.filter(i => i.industryCategory === (activeTab === 'partner' ? 'Partner' : 'Random'))}
               stats={stats}
               onFilterChange={loadData}
@@ -192,6 +198,16 @@ export default function IndustryPage() {
 
         </div>
       )}
+
+      {/* Standardized Unified Industry Modal */}
+      <UnifiedIndustryModal
+        isOpen={isUnifiedModalOpen}
+        onClose={() => setIsUnifiedModalOpen(false)}
+        defaultCategory={unifiedModalCategory}
+        onSuccess={() => {
+          loadData();
+        }}
+      />
     </IndustryLayout>
   );
 }

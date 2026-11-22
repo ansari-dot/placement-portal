@@ -8,6 +8,10 @@ import {
   updatePaymentStatusService,
   bulkPaymentReceivedService,
   importStudentsToPaymentService,
+  removePaymentService,
+  restorePaymentService,
+  getRemovedPaymentsService,
+  manualAddPaymentService,
 } from './payment.service.js';
 import {
   bulkGenerateInvoiceController,
@@ -173,6 +177,58 @@ export const importStudentsController = async (req, res, next) => {
     return res.status(200).json(result);
   } catch (error) {
     logger.error(`importStudentsController error: ${error.message}`);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    return next ? next(error) : res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const removePaymentController = async (req, res, next) => {
+  try {
+    const result = await removePaymentService(req.params.id, req.user);
+    return res.status(200).json(result);
+  } catch (error) {
+    logger.error(`removePaymentController error: ${error.message}`);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    return next ? next(error) : res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const restorePaymentController = async (req, res, next) => {
+  try {
+    const result = await restorePaymentService(req.params.id, req.user);
+    return res.status(200).json(result);
+  } catch (error) {
+    logger.error(`restorePaymentController error: ${error.message}`);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    return next ? next(error) : res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getRemovedPaymentsController = async (req, res, next) => {
+  try {
+    const result = await getRemovedPaymentsService();
+    return res.status(200).json(result);
+  } catch (error) {
+    logger.error(`getRemovedPaymentsController error: ${error.message}`);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    return next ? next(error) : res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const manualAddPaymentController = async (req, res, next) => {
+  try {
+    const result = await manualAddPaymentService(req.body, req.user);
+    return res.status(200).json(result);
+  } catch (error) {
+    logger.error(`manualAddPaymentController error: ${error.message}`);
     if (error.statusCode) {
       return res.status(error.statusCode).json({ success: false, message: error.message });
     }

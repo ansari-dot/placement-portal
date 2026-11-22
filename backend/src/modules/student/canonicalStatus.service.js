@@ -17,26 +17,161 @@ function parseLocalDateNoon(str) {
 const norm = (v) => String(v || '').trim().toLowerCase();
 
 /**
+ * Parses time string like "09:00 AM" or "5:00 PM" into decimal hours
+ */
+function parseTimeToHours(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return null;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const period = match[3] ? match[3].toUpperCase() : null;
+
+  if (period === 'PM' && hours < 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+
+  return hours + minutes / 60;
+}
+
+/**
+ * Calculates daily working hours from availabilityFrom and availabilityTo.
+ * Defaults to 8 hours/day if not specified or invalid.
+ */
+export function getDailyWorkingHours(fromStr, toStr) {
+  const from = parseTimeToHours(fromStr);
+  const to = parseTimeToHours(toStr);
+  if (from !== null && to !== null && to > from) {
+    const diff = to - from;
+    if (diff >= 1 && diff <= 12) return diff;
+  }
+  return 8;
+}
+
+/**
+ * Normalizes availability days into an array of JS day numbers (0 = Sun, 1 = Mon, ..., 6 = Sat)
+ */
+export function getAvailableDayIndices(availabilityDays, requireExplicitDays = false) {
+  const DAY_MAP = {
+    sun: 0, sunday: 0,
+    mon: 1, monday: 1,
+    tue: 2, tuesday: 2,
+    wed: 3, wednesday: 3,
+    thu: 4, thursday: 4,
+    fri: 5, friday: 5,
+    sat: 6, saturday: 6,
+  };
+
+  if (!availabilityDays) {
+    return requireExplicitDays ? [] : [1, 2, 3, 4, 5];
+  }
+
+  const indices = new Set();
+
+  if (Array.isArray(availabilityDays)) {
+    availabilityDays.forEach((d) => {
+      const k = String(d).trim().toLowerCase();
+      if (DAY_MAP[k] !== undefined) indices.add(DAY_MAP[k]);
+    });
+  } else if (typeof availabilityDays === 'object') {
+    const entries = availabilityDays instanceof Map
+      ? Array.from(availabilityDays.entries())
+      : Object.entries(availabilityDays);
+
+    entries.forEach(([key, val]) => {
+      if (val === true || val === 'true') {
+        const k = String(key).trim().toLowerCase();
+        if (DAY_MAP[k] !== undefined) indices.add(DAY_MAP[k]);
+      }
+    });
+  }
+
+  return indices.size > 0 ? Array.from(indices).sort() : (requireExplicitDays ? [] : [1, 2, 3, 4, 5]);
+}
+
+/**
+ * Calculates the exact expected completion Date for a student placement based on
+ * commencement date, required placement hours, and weekly availability schedule.
+ */
+export function calculatePlacementEndDate(
+  commencementDate,
+  placementHours,
+  availabilityDays,
+  availabilityFrom = '09:00 AM',
+  availabilityTo = '05:00 PM',
+  { requireCompleteSchedule = false } = {}
+) {
+  if (!commencementDate) return '';
+
+  const startText = String(commencementDate).split('T')[0];
+  const startParts = startText.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const startDate = startParts
+    ? new Date(Number(startParts[1]), Number(startParts[2]) - 1, Number(startParts[3]))
+    : new Date(commencementDate);
+  if (isNaN(startDate.getTime())) return '';
+
+  const totalHours = Number(placementHours);
+  if (!totalHours || totalHours <= 0) {
+    if (requireCompleteSchedule) return '';
+    const defaultEnd = new Date(startDate);
+    defaultEnd.setDate(defaultEnd.getDate() + 12 * 7);
+    return defaultEnd.toISOString().split('T')[0];
+  }
+
+  if (requireCompleteSchedule && (!availabilityDays || !availabilityFrom || !availabilityTo)) return '';
+
+  const hoursPerDay = getDailyWorkingHours(availabilityFrom, availabilityTo);
+  const availableDayIndices = getAvailableDayIndices(availabilityDays, requireCompleteSchedule);
+  if (requireCompleteSchedule && availableDayIndices.length === 0) return '';
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  let accumulatedHours = 0;
+  let safetyLimit = 730;
+
+  while (accumulatedHours < totalHours && safetyLimit > 0) {
+    safetyLimit--;
+    const dayOfWeek = current.getDay();
+
+    if (availableDayIndices.includes(dayOfWeek)) {
+      accumulatedHours += hoursPerDay;
+      if (accumulatedHours >= totalHours) {
+        break;
+      }
+    }
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  const year = current.getFullYear();
+  const month = String(current.getMonth() + 1).padStart(2, '0');
+  const day = String(current.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Filter items that strictly belong to this student using verified primary keys
- * (Student Business ID or Database ObjectId, with fallback to unique name).
+ * (Student Business ID, Enrollment ID, or Database ObjectId, with fallback to unique name).
  */
 export function matchStudentItems(items = [], student = {}, nameCounts = null) {
   const sId = norm(student.studentId);
+  const sEnrollmentId = norm(student.enrollmentId);
   const sDbId = norm(student._id || student.id);
   const sName = norm(student.name || `${student.firstName || ''} ${student.lastName || ''}`.trim());
-  const isNameUnique = nameCounts ? nameCounts.get(sName) === 1 : false;
+  const isNameUnique = nameCounts ? nameCounts.get(sName) === 1 : Boolean(sName);
 
   return items.filter((item) => {
     if (!item) return false;
     const itemStuId = norm(item.studentId || item.id);
     const itemStuDbId = norm(item.studentDbId);
-    const itemStudent = norm(item.student || item.studentName);
+    const itemStudent = norm(item.student || item.studentName || item.name);
 
-    // Primary: Exact ID match (Business ID or MongoDB ObjectId)
+    // Primary: Exact ID match (Business ID, Enrollment ID, or MongoDB ObjectId)
     if (sId && (itemStuId === sId || itemStuDbId === sId)) return true;
+    if (sEnrollmentId && (itemStuId === sEnrollmentId || itemStuDbId === sEnrollmentId)) return true;
     if (sDbId && (itemStuDbId === sDbId || itemStuId === sDbId)) return true;
 
-    // Secondary fallback: Only if student name is verified unique across the entire student population
+    // Secondary fallback: Only if student name is verified
     if (isNameUnique && itemStudent === sName) return true;
 
     return false;
@@ -47,7 +182,7 @@ export function matchStudentItems(items = [], student = {}, nameCounts = null) {
  * Pure business rule resolver for a single student's canonical lifecycle status.
  *
  * @param {Object} student - Student document or plain object
- * @param {Object} context - { requests: [], appointments: [], internships: [], nameCounts: Map }
+ * @param {Object} context - { requests: [], appointments: [], internships: [], attendances: [], nameCounts: Map }
  * @param {Date} [referenceDate] - Current reference date for commencement checks (defaults to now)
  * @returns {Object} { canonicalStatus: string, reason: string, isExceptional: boolean }
  */
@@ -91,6 +226,7 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
   const studentRequests = matchStudentItems(context.requests || [], student, context.nameCounts);
   const studentAppointments = matchStudentItems(context.appointments || [], student, context.nameCounts);
   const studentInternships = matchStudentItems(context.internships || [], student, context.nameCounts);
+  const studentAttendances = matchStudentItems(context.attendances || [], student, context.nameCounts);
 
   // Chronological sorting (newest first)
   const sortedAppts = [...studentAppointments].sort((a, b) => {
@@ -106,40 +242,113 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
   });
 
   // 3. RULE 2: Placement Completed
-  // Must be supported by verified completion state or elapsed placement period
+  // Verified by:
+  // A. Explicit Completed status on record
   const completedInt = sortedInts.find((i) => ['Completed', 'Placement Completed'].includes(i.status));
   const completedAppt = sortedAppts.find((a) => ['Completed', 'Placement Completed'].includes(a.status));
+
+  // B. Verified attendance hours meeting required placement hours
+  let attendanceVerified = false;
+  if (student.placementHours && Number(student.placementHours) > 0 && studentAttendances.length > 0) {
+    const totalAttHours = studentAttendances.reduce((acc, att) => {
+      if (['Present', 'Completed'].includes(att.status)) {
+        return acc + (Number(att.totalHours) || 0);
+      }
+      return acc;
+    }, 0);
+    if (totalAttHours >= Number(student.placementHours)) {
+      attendanceVerified = true;
+    }
+  }
+
+  // C. Explicitly saved expected completion date has elapsed
   const pastEndDateInt = sortedInts.find((i) => {
     if (['Cancelled', 'Withdrawn', 'Declined'].includes(i.status)) return false;
     const end = parseLocalDateNoon(i.end);
     const start = parseLocalDateNoon(i.start);
     return end && end < todayStart && (start ? start <= todayStart : true);
   });
-  const pastEndDateAppt = sortedAppts.find((a) => {
+  const pastExplicitEndDateAppt = sortedAppts.find((a) => {
     if (['Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
-    const end = parseLocalDateNoon(a.expectedCompletionDate || a.end);
+    const rawEnd = a.expectedCompletionDate || a.end;
+    if (!rawEnd) return false;
+    const end = parseLocalDateNoon(rawEnd);
     const commDate = parseLocalDateNoon(a.commencementDate || a.start);
     return end && end < todayStart && (commDate ? commDate <= todayStart : true);
   });
 
-  if (completedInt || completedAppt || pastEndDateInt || pastEndDateAppt || ['Placement Completed', 'Completed'].includes(student.placementStatus)) {
+  // D. Schedule-verified completion date has elapsed (when not explicitly saved)
+  let pastScheduleEndDateAppt = null;
+  if (!pastExplicitEndDateAppt) {
+    pastScheduleEndDateAppt = sortedAppts.find((a) => {
+      if (['Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
+      const commDate = parseLocalDateNoon(a.commencementDate || a.start);
+      if (!commDate || commDate > todayStart) return false;
+      const derivedEndStr = calculatePlacementEndDate(
+        a.commencementDate || a.start,
+        student.placementHours,
+        student.availabilityDays,
+        student.availabilityFrom,
+        student.availabilityTo,
+        { requireCompleteSchedule: true }
+      );
+      if (!derivedEndStr) return false;
+      const derivedEnd = parseLocalDateNoon(derivedEndStr);
+      return derivedEnd && derivedEnd < todayStart;
+    });
+  }
+
+  if (
+    completedInt ||
+    completedAppt ||
+    attendanceVerified ||
+    pastEndDateInt ||
+    pastExplicitEndDateAppt ||
+    pastScheduleEndDateAppt ||
+    ['Placement Completed', 'Completed'].includes(student.placementStatus)
+  ) {
     return {
       canonicalStatus: CANONICAL_STATUSES.PLACEMENT_COMPLETED,
       reason: completedInt
         ? `Internship marked Completed (${completedInt.intId || completedInt.id || 'record'}).`
         : completedAppt
-        ? `Appointment placement marked Completed (${completedAppt.apptId || completedAppt.id || 'record'}).`
-        : pastEndDateAppt
-        ? `Placement scheduled period elapsed (${pastEndDateAppt.expectedCompletionDate || pastEndDateAppt.end}).`
-        : pastEndDateInt
-        ? `Internship scheduled period elapsed (${pastEndDateInt.end}).`
-        : `Verified placement completion in student profile.`,
+          ? `Appointment placement marked Completed (${completedAppt.apptId || completedAppt.id || 'record'}).`
+          : attendanceVerified
+            ? `Placement attendance verified (${student.placementHours} hours logged).`
+            : pastExplicitEndDateAppt
+              ? `Placement scheduled period elapsed (${pastExplicitEndDateAppt.expectedCompletionDate || pastExplicitEndDateAppt.end}).`
+              : pastScheduleEndDateAppt
+                ? `Placement schedule-verified period elapsed.`
+                : pastEndDateInt
+                  ? `Internship scheduled period elapsed (${pastEndDateInt.end}).`
+                  : `Verified placement completion in student profile.`,
       isExceptional: false,
     };
   }
 
   // 4. RULE 3: Placement Started
-  // Must be supported by actual joining/commencement evidence (never inferred from future end date alone)
+  // Must be supported by actual joining/commencement evidence and placement period must NOT have ended
+  const isApptEndElapsed = (a) => {
+    const rawEnd = a.expectedCompletionDate || a.end;
+    if (rawEnd) {
+      const end = parseLocalDateNoon(rawEnd);
+      return end && end < todayStart;
+    }
+    const derivedEndStr = calculatePlacementEndDate(
+      a.commencementDate || a.start,
+      student.placementHours,
+      student.availabilityDays,
+      student.availabilityFrom,
+      student.availabilityTo,
+      { requireCompleteSchedule: true }
+    );
+    if (derivedEndStr) {
+      const end = parseLocalDateNoon(derivedEndStr);
+      return end && end < todayStart;
+    }
+    return false;
+  };
+
   const activeInt = sortedInts.find((i) => {
     if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Declined'].includes(i.status)) return false;
     const end = parseLocalDateNoon(i.end);
@@ -150,8 +359,7 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
 
   const activeCommencementAppt = sortedAppts.find((a) => {
     if (['Completed', 'Placement Completed', 'Cancelled', 'Withdrawn', 'Student Withdraw', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status)) return false;
-    const end = parseLocalDateNoon(a.expectedCompletionDate || a.end);
-    if (end && end < todayStart) return false;
+    if (isApptEndElapsed(a)) return false;
     const commDate = parseLocalDateNoon(a.commencementDate || a.start);
     if (['Placement Started', 'Active', 'Joined'].includes(a.status)) return true;
     if (a.appointmentOutcome === 'successful' || a.status === 'Confirmed') {
@@ -302,11 +510,14 @@ export function buildCanonicalStatusMap(students = [], workflows = [], reference
     const rawName = (s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim());
     const normName = norm(rawName);
     const sId = s.studentId ? String(s.studentId).trim() : '';
+    const sEnrollmentId = s.enrollmentId ? String(s.enrollmentId).trim() : '';
     const sDbId = String(s._id || s.id || '').trim();
 
     const keys = [
       sId,
       sId.toLowerCase(),
+      sEnrollmentId,
+      sEnrollmentId.toLowerCase(),
       sDbId,
       rawName,
       normName,

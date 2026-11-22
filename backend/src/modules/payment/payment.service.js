@@ -484,6 +484,10 @@ export const syncChargeableStudents = async () => {
         existingPaymentMap.get(stuDbId) || (stuBizId ? existingPaymentMap.get(stuBizId) : null);
 
       if (existingPayment) {
+        if (existingPayment.isManuallyRemoved) {
+          // Student was manually removed from payments; do not automatically re-add
+          continue;
+        }
         const isPriceOverridden = Boolean(existingPayment.isPriceOverridden);
         const isPercentageOverridden = Boolean(existingPayment.isPercentageOverridden);
         const finalPrice = isPriceOverridden ? existingPayment.originalPrice : originalPrice;
@@ -577,6 +581,10 @@ export const buildPaymentFilter = (queryParams = {}) => {
 
   const andClauses = [];
 
+  if (!queryParams.includeRemoved) {
+    andClauses.push({ isManuallyRemoved: { $ne: true } });
+  }
+
   const rtoConditions = [];
   if (Array.isArray(allowedStudentDbIds) && allowedStudentDbIds.length > 0) {
     rtoConditions.push({ student: { $in: allowedStudentDbIds } });
@@ -662,7 +670,7 @@ export const getPaymentsService = async (queryParams = {}) => {
 
   const attachCanonicalStatus = async (paymentList) => {
     try {
-      const allStudents = await StudentModel.find({}, { studentId: 1, name: 1, firstName: 1, lastName: 1, status: 1, placementStatus: 1, snoozed: 1, internshipPriority: 1 }).lean();
+      const allStudents = await StudentModel.find({}, { studentId: 1, enrollmentId: 1, name: 1, firstName: 1, lastName: 1, status: 1, placementStatus: 1, snoozed: 1, internshipPriority: 1, placementHours: 1, availabilityDays: 1, availabilityFrom: 1, availabilityTo: 1 }).lean();
       const workflows = await WorkflowModel.find({}, { requests: 1, appointments: 1, internships: 1 }).lean();
       const statusMap = buildCanonicalStatusMap(allStudents, workflows);
       paymentList.forEach((p) => {
@@ -1045,24 +1053,40 @@ export const importStudentsToPaymentService = async (studentIds = []) => {
     ],
   }).lean();
 
-  const existingStudentKeys = new Set();
+  // Restore any manually removed payments among selected students
+  const restoredPayments = [];
+  for (const p of existingPayments) {
+    if (p.isManuallyRemoved) {
+      await PaymentModel.updateOne(
+        { _id: p._id },
+        { $set: { isManuallyRemoved: false, removedAt: null, removedBy: null, removedByName: '' } }
+      );
+      restoredPayments.push(p);
+    }
+  }
+
+  const activeStudentKeys = new Set();
   existingPayments.forEach((p) => {
-    if (p.student) existingStudentKeys.add(String(p.student));
-    if (p.studentId) existingStudentKeys.add(String(p.studentId));
+    if (!p.isManuallyRemoved) {
+      if (p.student) activeStudentKeys.add(String(p.student));
+      if (p.studentId) activeStudentKeys.add(String(p.studentId));
+    }
   });
 
   const studentsToImport = students.filter((stu) => {
     const dbKey = String(stu._id);
     const bizKey = stu.studentId ? String(stu.studentId) : null;
-    return !existingStudentKeys.has(dbKey) && (!bizKey || !existingStudentKeys.has(bizKey));
+    return !activeStudentKeys.has(dbKey) && (!bizKey || !activeStudentKeys.has(bizKey));
   });
 
   if (studentsToImport.length === 0) {
     return {
       success: true,
-      importedCount: 0,
-      message: 'All selected students are already present in the Payment section.',
-      data: existingPayments,
+      importedCount: restoredPayments.length,
+      message: restoredPayments.length > 0
+        ? `Restored ${restoredPayments.length} student(s) to Payment.`
+        : 'All selected students are already present in the Payment section.',
+      data: [...restoredPayments, ...existingPayments.filter(p => !p.isManuallyRemoved)],
     };
   }
 
@@ -1217,6 +1241,140 @@ export const importStudentsToPaymentService = async (studentIds = []) => {
   };
 };
 
+/**
+ * Service: Mark payment as manually removed
+ */
+export const removePaymentService = async (id, user) => {
+  const payment = await PaymentModel.findById(id);
+  if (!payment) {
+    throw new NotFoundError('Payment record not found');
+  }
+  payment.isManuallyRemoved = true;
+  payment.removedAt = new Date();
+  payment.removedBy = user?._id || user?.id || null;
+  payment.removedByName = user?.name || '';
+  await payment.save();
+  return { success: true, message: 'Student removed from payments successfully', payment };
+};
+
+/**
+ * Service: Restore a manually removed payment record
+ */
+export const restorePaymentService = async (id, user) => {
+  const payment = await PaymentModel.findById(id);
+  if (!payment) {
+    throw new NotFoundError('Payment record not found');
+  }
+  payment.isManuallyRemoved = false;
+  payment.removedAt = null;
+  payment.removedBy = null;
+  payment.removedByName = '';
+  await payment.save();
+  return { success: true, message: 'Student restored to payments successfully', payment };
+};
+
+/**
+ * Service: Get all manually removed payments
+ */
+export const getRemovedPaymentsService = async () => {
+  const data = await PaymentModel.find({ isManuallyRemoved: true }).sort({ removedAt: -1, updatedAt: -1 }).lean();
+  return { success: true, data };
+};
+
+/**
+ * Service: Manually add or restore a student in payments
+ */
+export const manualAddPaymentService = async (payload, user) => {
+  const { studentId, studentDbId, fee, chargePercentage, notes } = payload;
+  const targetId = studentDbId || studentId;
+  const stu = await StudentModel.findOne({
+    $or: [
+      { _id: mongoose.isValidObjectId(targetId) ? targetId : null },
+      { studentId: targetId },
+    ],
+  }).lean();
+  if (!stu) {
+    throw new NotFoundError('Student not found');
+  }
+
+  // Check if payment record already exists
+  let existing = await PaymentModel.findOne({
+    $or: [{ student: stu._id }, { studentId: stu.studentId }],
+  });
+
+  const stuName = [stu.firstName, stu.middleName, stu.lastName].filter(Boolean).join(' ') || stu.name || 'Student';
+  const isIndependentStudent = stu.studentType === 'Independent Student';
+  const assignedRtoName = isIndependentStudent ? 'Independent Student' : (stu.assignedRto || '').trim();
+
+  let originalPrice = fee !== undefined && fee !== null && !isNaN(Number(fee)) && Number(fee) >= 0 ? Number(fee) : 0;
+  let priceConfigured = originalPrice > 0;
+  let pricingError = '';
+  let spokesperson = '';
+
+  if (!originalPrice) {
+    if (isIndependentStudent) {
+      originalPrice = Number(stu.independentFee || 0);
+      priceConfigured = originalPrice > 0;
+      spokesperson = stuName;
+    } else {
+      const rtoDoc = await RtoModel.findOne({ name: new RegExp(`^${assignedRtoName}$`, 'i') }).lean();
+      const pricingRes = resolveRtoCoursePrice(rtoDoc, stu);
+      originalPrice = pricingRes.originalPrice;
+      priceConfigured = pricingRes.priceConfigured;
+      pricingError = pricingRes.pricingError;
+      spokesperson = pricingRes.spokesperson;
+    }
+  }
+
+  const finalPct = chargePercentage ? Number(chargePercentage) : 100;
+  const paymentAmount = Number(((originalPrice * finalPct) / 100).toFixed(2));
+
+  if (existing) {
+    existing.isManuallyRemoved = false;
+    existing.removedAt = null;
+    existing.removedBy = null;
+    existing.removedByName = '';
+    if (originalPrice > 0) {
+      existing.originalPrice = originalPrice;
+      existing.isPriceOverridden = true;
+    }
+    existing.chargePercentage = finalPct;
+    existing.paymentAmount = paymentAmount;
+    existing.totalAmount = paymentAmount;
+    existing.studentName = stuName;
+    existing.rto = assignedRtoName;
+    if (notes) existing.notes = notes;
+    await existing.save();
+    return { success: true, message: 'Student restored to payment list', data: existing };
+  }
+
+  const newPayment = await PaymentModel.create({
+    studentId: stu.studentId || String(stu._id),
+    student: stu._id,
+    studentType: isIndependentStudent ? 'Independent Student' : stu.studentType || 'RTO Student',
+    studentName: stuName,
+    rto: assignedRtoName,
+    spokesperson: spokesperson,
+    course: stu.courseQualification || stu.courses || '',
+    placementStatus: stu.placementStatus || 'Awaiting',
+    service: 'Placement status',
+    originalPrice,
+    defaultPlacementFee: originalPrice,
+    isPriceOverridden: Boolean(fee),
+    chargePercentage: finalPct,
+    paymentAmount,
+    gstAmount: 0,
+    totalAmount: paymentAmount,
+    paymentStatus: 'Pending',
+    priceConfigured,
+    pricingError,
+    notes: notes || '',
+    isManuallyRemoved: false,
+  });
+
+  return { success: true, message: 'Student added to payments successfully', data: newPayment };
+};
+
 export class PaymentService {
   static getPayments = getPaymentsService;
   static getTotals = getPaymentTotalsService;
@@ -1226,4 +1384,8 @@ export class PaymentService {
   static resolveRtoCoursePrice = resolveRtoCoursePrice;
   static syncSingleStudentPayment = syncSingleStudentPayment;
   static importStudents = importStudentsToPaymentService;
+  static removePayment = removePaymentService;
+  static restorePayment = restorePaymentService;
+  static getRemovedPayments = getRemovedPaymentsService;
+  static manualAddPayment = manualAddPaymentService;
 }

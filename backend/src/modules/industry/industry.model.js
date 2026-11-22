@@ -4,6 +4,8 @@ const industrySchema = new mongoose.Schema({
   name: { type: String, required: true },
   code: { type: String, required: true },
   sector: { type: String, required: true },
+  placementSite: { type: String, trim: true, default: '' },
+  industryType: { type: String, trim: true, default: '' },
   // Contact details
   contactPersonName: { type: String, required: true },
   contactEmail: { type: String, required: true },

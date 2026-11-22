@@ -538,16 +538,25 @@ export default function WorkflowStep1Students({
 
   // ─── Tab counts & tab-scoped list ────────────────────────────────────────
   const activeStudentsCount = React.useMemo(() => (
-    studentList.filter((s) => !isStudentSnoozed(s) && !isStudentInactive(s)).length
-  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap]);
+    studentList.filter((s) => {
+      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      return !isStudentSnoozed(s) && !isStudentInactive(s);
+    }).length
+  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap, filters.rto]);
 
   const inactiveStudentsCount = React.useMemo(() => (
-    studentList.filter((s) => isStudentInactive(s) && !isStudentSnoozed(s)).length
-  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap]);
+    studentList.filter((s) => {
+      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      return isStudentInactive(s) && !isStudentSnoozed(s);
+    }).length
+  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap, filters.rto]);
 
   const snoozedCount = React.useMemo(() => (
-    studentList.filter((s) => isStudentSnoozed(s)).length
-  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap]);
+    studentList.filter((s) => {
+      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      return isStudentSnoozed(s);
+    }).length
+  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap, filters.rto]);
 
   const tabScopedStudents = React.useMemo(() => {
     if (activeMainTab === 'snooze') {
@@ -2831,10 +2840,11 @@ export default function WorkflowStep1Students({
 
             {/* List */}
             <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-              {Object.values(snoozedStudentIds).filter(item =>
-                (item.name || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase()) ||
-                (item.studentId || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase())
-              ).map((item) => (
+              {Object.values(snoozedStudentIds).filter(item => {
+                if (filters.rto && (item.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+                return (item.name || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase()) ||
+                  (item.studentId || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase());
+              }).map((item) => (
                 <div key={item.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
                   <div className="flex items-center space-x-3">
                     <div className="relative shrink-0">

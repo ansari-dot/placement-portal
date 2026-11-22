@@ -307,14 +307,16 @@ export class StudentService {
 
       const now = new Date();
       rawStudents.forEach((s) => {
-        // Resolve authoritative canonical lifecycle status FIRST before any legacy mutations
+        // Resolve authoritative canonical lifecycle status as single source of truth
         try {
           const canonicalRes = resolveCanonicalStudentStatus(s, canonicalContext, now);
           s.canonicalStatus = canonicalRes.canonicalStatus;
           s.canonicalPlacementStatus = canonicalRes.canonicalStatus;
           s.canonicalReason = canonicalRes.reason;
+          s.placementStatus = canonicalRes.canonicalStatus;
         } catch (cErr) {
           s.canonicalStatus = s.placementStatus || CANONICAL_STATUSES.AWAITING;
+          s.canonicalPlacementStatus = s.canonicalStatus;
         }
 
         const sFullName = `${s.firstName || ''} ${s.lastName || ''}`.trim().toLowerCase();
@@ -323,140 +325,18 @@ export class StudentService {
 
         const studentAppts = keys.flatMap((k) => apptsByStudent.get(k) || []);
         const studentInts = keys.flatMap((k) => intsByStudent.get(k) || []);
-        const studentReqs = keys.flatMap((k) => requestsByStudent.get(k) || []);
-        const sortedReqs = [...studentReqs].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-        const latestReqPriority = sortedReqs[0]?.priority;
 
-        const isSnoozedOrInactive =
-          s.snoozed === true ||
-          s.internshipPriority === 'Snooze' ||
-          s.internshipPriority === 'Inactive' ||
-          s.status === 'Inactive' ||
-          latestReqPriority === 'Snooze' ||
-          latestReqPriority === 'Inactive';
+        const latestAppt = studentAppts.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
+        if (latestAppt) {
+          if (!s.appointmentDate && latestAppt.date) s.appointmentDate = latestAppt.date;
+          if (!s.appointmentTime && latestAppt.time) s.appointmentTime = latestAppt.time;
+          if (!s.commencementDate && latestAppt.commencementDate) s.commencementDate = latestAppt.commencementDate;
+        }
 
-        if (isSnoozedOrInactive) {
-          s.placementStatus = 'N/A';
-        } else if (studentInts.length > 0 || studentAppts.length > 0) {
-          const hasActivePlacement =
-            studentInts.some((i) => ['Active', 'Placement Started', 'Joined'].includes(i.status)) ||
-            s.placementStatus === 'Placement Started' ||
-            studentAppts.some(
-              (a) =>
-                !['Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status) &&
-                (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
-                a.commencementDate &&
-                new Date(a.commencementDate) <= now
-            );
-
-          const hasWaitingToJoin =
-            !hasActivePlacement && (
-              studentInts.some((i) => i.status === 'Waiting to Join') ||
-              s.placementStatus === 'Waiting to Join' ||
-              studentAppts.some(
-                (a) =>
-                  !['Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status) &&
-                  (a.status === 'Confirmed' || a.appointmentOutcome === 'successful') &&
-                  a.commencementDate &&
-                  new Date(a.commencementDate) > now
-              )
-            );
-
-          const hasApptSuccessful =
-            !hasActivePlacement && !hasWaitingToJoin && (
-              studentAppts.some(
-                (a) =>
-                  !['Cancelled', 'Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site'].includes(a.status) &&
-                  (a.appointmentOutcome === 'successful' || a.status === 'Confirmed')
-              ) ||
-              s.placementStatus === 'Appointment Successful'
-            );
-
-          const hasApptScheduled =
-            !hasActivePlacement && !hasWaitingToJoin && !hasApptSuccessful && (
-              studentAppts.some((a) =>
-                ['Scheduled', 'Rescheduled'].includes(a.status) &&
-                !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled'].includes(a.status) &&
-                a.appointmentOutcome !== 'student_withdrawal'
-              ) ||
-              s.placementStatus === 'Appointment Scheduled'
-            );
-
-          const hasActiveContact = sortedReqs.some((r) =>
-            Array.isArray(r.contactedIndustries) &&
-            r.contactedIndustries.some((ci) =>
-              !['Student Withdraw', 'Student Withdrawn', 'Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(ci.response)
-            )
-          );
-
-          const hasActiveApptOrPlacement = hasActivePlacement || hasWaitingToJoin || hasApptSuccessful || hasApptScheduled || hasActiveContact;
-
-          if (
-            studentInts.some((i) => ['Completed', 'Placement Completed'].includes(i.status)) ||
-            studentAppts.some((a) => ['Completed', 'Placement Completed'].includes(a.status)) ||
-            ['Completed', 'Placement Completed'].includes(s.placementStatus)
-          ) {
-            s.placementStatus = 'Placement Completed';
-          } else if (hasActivePlacement) {
-            s.placementStatus = 'Placement Started';
-          } else if (hasWaitingToJoin) {
-            s.placementStatus = 'Waiting to Join';
-          } else if (hasApptSuccessful) {
-            s.placementStatus = 'Appointment Successful';
-          } else if (hasApptScheduled) {
-            s.placementStatus = 'Appointment Scheduled';
-          } else if (hasActiveContact) {
-            s.placementStatus = 'Industry Contacted';
-          } else if (
-            !hasActiveApptOrPlacement && (
-              studentInts.some((i) => ['Student Withdraw', 'Student Withdrawn', 'Withdrawn'].includes(i.status)) ||
-              studentAppts.some((a) => ['Withdrawn', 'Student Withdraw', 'Student Withdrawn'].includes(a.status) || a.appointmentOutcome === 'student_withdrawal') ||
-              ['Student Withdraw', 'Student Withdrawn', 'Withdrawn'].includes(s.placementStatus)
-            )
-          ) {
-            s.placementStatus = 'Student Withdraw';
-          } else if (
-            !hasActiveApptOrPlacement && (
-              studentInts.some((i) => i.status === 'Not Suitable Site') ||
-              studentAppts.some((a) => a.status === 'Not Suitable Site' || a.appointmentOutcome === 'not_suitable_site') ||
-              s.placementStatus === 'Not Suitable Site'
-            )
-          ) {
-            s.placementStatus = 'Not Suitable Site';
-          } else if (
-            !hasActiveApptOrPlacement && (
-              studentInts.some((i) => ['Industry Rejected', 'Declined'].includes(i.status)) ||
-              studentAppts.some((a) => ['Industry Rejected', 'Declined'].includes(a.status) || a.appointmentOutcome === 'industry_rejected') ||
-              ['Industry Rejected', 'Declined'].includes(s.placementStatus)
-            )
-          ) {
-            s.placementStatus = 'Industry Rejected';
-          } else if (
-            !hasActiveApptOrPlacement && (
-              studentInts.some((i) => ['Student Missed Appointment', 'No Show'].includes(i.status)) ||
-              studentAppts.some((a) => ['Student Missed Appointment', 'No Show'].includes(a.status) || a.appointmentOutcome === 'student_missed') ||
-              ['Student Missed Appointment', 'No Show'].includes(s.placementStatus)
-            )
-          ) {
-            s.placementStatus = 'Student Missed Appointment';
-          }
-
-          const latestAppt = studentAppts.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
-          if (latestAppt) {
-            if (!s.appointmentDate && latestAppt.date) s.appointmentDate = latestAppt.date;
-            if (!s.appointmentTime && latestAppt.time) s.appointmentTime = latestAppt.time;
-            if (!s.commencementDate && latestAppt.commencementDate) s.commencementDate = latestAppt.commencementDate;
-          }
-
-          const latestInt = studentInts.sort((a, b) => new Date(b.start || b.startDate || 0) - new Date(a.start || a.startDate || 0))[0];
-          if (latestInt) {
-            if (!s.commencementDate && (latestInt.start || latestInt.startDate)) {
-              s.commencementDate = latestInt.start || latestInt.startDate;
-            }
-          }
-        } else if (sortedReqs.length > 0) {
-          if (!s.placementStatus || s.placementStatus === 'Awaiting' || s.placementStatus === 'N/A') {
-            s.placementStatus = 'In Progress';
+        const latestInt = studentInts.sort((a, b) => new Date(b.start || b.startDate || 0) - new Date(a.start || a.startDate || 0))[0];
+        if (latestInt) {
+          if (!s.commencementDate && (latestInt.start || latestInt.startDate)) {
+            s.commencementDate = latestInt.start || latestInt.startDate;
           }
         }
 

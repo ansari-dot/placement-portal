@@ -377,7 +377,11 @@ export class AuthService {
     const currentUserId = currentUser?._id?.toString();
 
     const [allUsers, allStudents, allRtos] = await Promise.all([
-      UserModel.find({ isHidden: { $ne: true }, email: { $ne: '0349ansari@gmail.com' } }).sort({ createdAt: -1 }).lean(),
+      UserModel.find({
+        isHidden: { $ne: true },
+        email: { $ne: '0349ansari@gmail.com' },
+        role: { $nin: ['Student', 'RTO', 'RTO Manager', 'Industry'] },
+      }).sort({ createdAt: -1 }).lean(),
       StudentModel.find(
         {},
         'firstName lastName preferredName emailAddress assignedRto courseQualification studentId avatar isOnline lastActive lastSeen'
@@ -454,16 +458,9 @@ export class AuthService {
     const adminsOnline = mappedUsers.filter((u) => u.isOnline && u.role === 'Administrator').length;
     const coordinatorsOnline = mappedUsers.filter((u) => u.isOnline && u.role === 'Coordinator').length;
     const staffOnline = mappedUsers.filter((u) => u.isOnline && u.role === 'Staff').length;
-    const studentsOnline =
-      mappedStudents.filter((s) => s.isOnline).length +
-      mappedUsers.filter((u) => u.isOnline && u.role === 'Student').length;
-    const rtosOnline =
-      mappedRtos.filter((r) => r.isOnline).length +
-      mappedUsers.filter((u) => u.isOnline && u.role === 'RTO Manager').length;
-    const totalOnline =
-      mappedUsers.filter((u) => u.isOnline).length +
-      mappedStudents.filter((s) => s.isOnline).length +
-      mappedRtos.filter((r) => r.isOnline).length;
+    const studentsOnline = mappedStudents.filter((s) => s.isOnline).length;
+    const rtosOnline = mappedRtos.filter((r) => r.isOnline).length;
+    const totalOnline = adminsOnline + coordinatorsOnline + staffOnline + studentsOnline + rtosOnline;
 
     return {
       summary: {

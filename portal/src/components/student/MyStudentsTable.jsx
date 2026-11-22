@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Download, Columns, Users, UserCheck, Moon, X, Building2, Calendar, FileText, RotateCcw } from 'lucide-react';
+import { Download, Columns, Users, UserCheck, Moon, X, Building2, Calendar, FileText, RotateCcw, Search } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { defaultStudents, emptyFilters, parseDate, btnSecondary } from './studentData';
 import { downloadStudentsCSV } from './csvUtils';
@@ -22,6 +22,8 @@ import StudentTableRow from './StudentTableRow';
 import StudentPagination from './StudentPagination';
 import StudentColumnsMenu from './StudentColumnsMenu';
 import AssignCoordinatorModal from './AssignCoordinatorModal';
+import EditAssignedIndustryModal from './EditAssignedIndustryModal';
+import StudentContactedIndustriesModal from './StudentContactedIndustriesModal';
 
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
@@ -57,7 +59,8 @@ const mapBackendStudent = (s) => ({
   location: s.location || s.suburb || '',
   state: s.state || '',
   status: s.status || 'Active',
-  placementStatus: s.placementStatus || 'Awaiting',
+  placementStatus: s.canonicalStatus || s.canonicalPlacementStatus || s.placementStatus || 'Awaiting',
+  canonicalStatus: s.canonicalStatus || s.canonicalPlacementStatus || s.placementStatus || 'Awaiting',
   placementHours: s.placementHours ?? null,
   source: s.source || s.studentSource || '',
   created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
@@ -103,6 +106,9 @@ export default function MyStudentsTable() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const urlSearch = searchParams.get('search') || '';
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editIndustryStudent, setEditIndustryStudent] = useState(null);
+  const [contactedIndustriesStudent, setContactedIndustriesStudent] = useState(null);
   const authUser = useSelector((state) => state.auth.user);
   const isAdmin = authUser?.role === 'Administrator';
   const isCoordinator = authUser?.role === 'Coordinator';
@@ -739,6 +745,7 @@ export default function MyStudentsTable() {
   const [filters, setFilters] = useState(emptyFilters);
 
   const courseOptions = useMemo(() => [...new Set(students.map(s => s.course).filter(Boolean))].sort(), [students]);
+  const rtoOptions = useMemo(() => [...new Set(students.map(s => s.rto).filter(Boolean))].sort(), [students]);
 
   const updateFilter = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setCurrentPage(1); };
   const clearFilters = () => { setFilters(emptyFilters); setCurrentPage(1); };
@@ -826,16 +833,25 @@ export default function MyStudentsTable() {
   }, [students, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators]);
 
   const activeStudentsCount = useMemo(() => (
-    roleScopedStudents.filter(s => !isStudentSnoozed(s) && !isStudentInactive(s)).length
-  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap]);
+    roleScopedStudents.filter(s => {
+      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      return !isStudentSnoozed(s) && !isStudentInactive(s);
+    }).length
+  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap, filters.rto]);
 
   const inactiveStudentsCount = useMemo(() => (
-    roleScopedStudents.filter(s => isStudentInactive(s) && !isStudentSnoozed(s)).length
-  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap]);
+    roleScopedStudents.filter(s => {
+      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      return isStudentInactive(s) && !isStudentSnoozed(s);
+    }).length
+  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap, filters.rto]);
 
   const snoozedCount = useMemo(() => (
-    roleScopedStudents.filter(s => isStudentSnoozed(s)).length
-  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap]);
+    roleScopedStudents.filter(s => {
+      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      return isStudentSnoozed(s);
+    }).length
+  ), [roleScopedStudents, snoozedStudentIds, workflowRequestMap, filters.rto]);
 
   const filteredStudents = useMemo(() => {
     const currentUserId = authUser?._id || authUser?.id;
@@ -878,6 +894,8 @@ export default function MyStudentsTable() {
         }
       }
 
+      // ── RTO Filter (applies to Active, Snoozed, and Inactive students alike) ──
+      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
       if (filters.course && s.course !== filters.course) return false;
       if (filters.city && !(s.location || '').toLowerCase().includes(filters.city.toLowerCase())) return false;
       // Placement Request type filter (matches workflowRequestMap or snooze)
@@ -904,21 +922,24 @@ export default function MyStudentsTable() {
         const dayEnd   = new Date(filters.assignedDate).setHours(23, 59, 59, 999);
         if (assignedTime === null || assignedTime < dayStart || assignedTime > dayEnd) return false;
       }
-      if (urlSearch) {
-        const q = urlSearch.toLowerCase();
+
+      // Live search input (My Progress search bar) and URL query param
+      const effectiveSearch = (searchQuery || urlSearch || '').toLowerCase().trim();
+      if (effectiveSearch) {
         const matchesSearch =
-          (s.name || '').toLowerCase().includes(q) ||
-          (s.studentId || '').toLowerCase().includes(q) ||
-          (s.id || '').toLowerCase().includes(q) ||
-          (s.email || '').toLowerCase().includes(q) ||
-          (s.phone || '').toLowerCase().includes(q) ||
-          (s.rto || '').toLowerCase().includes(q) ||
-          (s.course || '').toLowerCase().includes(q);
+          (s.name || '').toLowerCase().includes(effectiveSearch) ||
+          (s.studentId || '').toLowerCase().includes(effectiveSearch) ||
+          (s.id || '').toLowerCase().includes(effectiveSearch) ||
+          (s.email || '').toLowerCase().includes(effectiveSearch) ||
+          (s.phone || '').toLowerCase().includes(effectiveSearch) ||
+          (s.rto || '').toLowerCase().includes(effectiveSearch) ||
+          (s.course || '').toLowerCase().includes(effectiveSearch) ||
+          (s.location || '').toLowerCase().includes(effectiveSearch);
         if (!matchesSearch) return false;
       }
       return true;
     });
-  }, [students, activeMainTab, filters, urlSearch, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
+  }, [students, activeMainTab, filters, urlSearch, searchQuery, isAdmin, isRtoManager, authUser, selectedCoordinator, coordinators, snoozedStudentIds, workflowRequestMap]);
 
   const sortedStudents = useMemo(() => {
     if (!sortField) {
@@ -1151,6 +1172,10 @@ export default function MyStudentsTable() {
         setSelectedRows(prev => prev.filter(id => id !== student.id));
         toast.success(`${student.name} deleted`);
       }
+    } else if (action === 'editIndustry') {
+      setEditIndustryStudent(student);
+    } else if (action === 'viewContactedIndustries') {
+      setContactedIndustriesStudent(student);
     }
   };
 
@@ -1278,25 +1303,47 @@ export default function MyStudentsTable() {
             </div>
           ) : null}
 
-          {/* ─── Student Tabs: Active / Inactive / Snooze ───────────────────────── */}
-          <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
-            {[
-              { key: 'all', label: 'Active', count: activeStudentsCount },
-              { key: 'inactive', label: 'Inactive Students', count: inactiveStudentsCount },
-              { key: 'snooze', label: 'Snooze', count: snoozedCount },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => { setActiveMainTab(tab.key); setCurrentPage(1); }}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeMainTab === tab.key
-                    ? 'bg-[#0147A6] text-white shadow-xs'
-                    : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-              >
-                {tab.label} <span className="opacity-80">({tab.count})</span>
-              </button>
-            ))}
+          {/* ─── Student Tabs: Active / Inactive / Snooze & Search ───────────────────────── */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
+              {[
+                { key: 'all', label: 'Active', count: activeStudentsCount },
+                { key: 'inactive', label: 'Inactive Students', count: inactiveStudentsCount },
+                { key: 'snooze', label: 'Snooze', count: snoozedCount },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => { setActiveMainTab(tab.key); setCurrentPage(1); }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeMainTab === tab.key
+                      ? 'bg-[#0147A6] text-white shadow-xs'
+                      : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                >
+                  {tab.label} <span className="opacity-80">({tab.count})</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="relative min-w-[260px] max-w-sm">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search students in this tab..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                className="w-full pl-9 pr-8 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition shadow-2xs"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           <StudentFilters
@@ -1304,7 +1351,7 @@ export default function MyStudentsTable() {
             onFilterChange={updateFilter}
             onClear={clearFilters}
             onApply={() => { setCurrentPage(1); toast.success(`Found ${filteredStudents.length} student(s)`); }}
-            options={{ courseOptions }}
+            options={{ courseOptions, rtoOptions }}
             resultCount={filteredStudents.length}
             selectedCount={selectedRows.length}
             placementStatusOptions={MY_PROGRESS_PLACEMENT_STATUS_OPTIONS}
@@ -1598,6 +1645,22 @@ export default function MyStudentsTable() {
           </div>
         </div>
       )}
+
+      {/* ─── Edit Assigned Industry Modal ─── */}
+      <EditAssignedIndustryModal
+        isOpen={Boolean(editIndustryStudent)}
+        student={editIndustryStudent}
+        onClose={() => setEditIndustryStudent(null)}
+        onSaved={loadStudents}
+      />
+
+      {/* ─── Contacted Industries History Modal ─── */}
+      <StudentContactedIndustriesModal
+        isOpen={Boolean(contactedIndustriesStudent)}
+        student={contactedIndustriesStudent}
+        onClose={() => setContactedIndustriesStudent(null)}
+        onStudentUpdated={loadStudents}
+      />
     </div>
   );
 }

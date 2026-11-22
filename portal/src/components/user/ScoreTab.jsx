@@ -49,8 +49,9 @@ export default function ScoreTab() {
     try {
       const res = await fetchScoreStats();
       if (res.success && Array.isArray(res.data)) {
-        // Sort descending by score so highest scorer appears first
-        setRows([...res.data].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)));
+        // Only internal team members appear on the score leaderboard
+        const teamRows = res.data.filter(r => !['Student', 'RTO', 'RTO Manager', 'Industry'].includes(r.userRole));
+        setRows(teamRows.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)));
       } else {
         setRows([]);
       }
