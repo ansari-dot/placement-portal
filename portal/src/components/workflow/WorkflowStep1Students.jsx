@@ -558,6 +558,34 @@ export default function WorkflowStep1Students({
     }).length
   ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap, filters.rto]);
 
+  // Deduplicated snoozed students list (guarantees each student appears exactly once)
+  const uniqueSnoozedStudents = React.useMemo(() => {
+    const seen = new Set();
+    const result = [];
+    Object.values(snoozedStudentIds).forEach((item) => {
+      if (!item) return;
+      const key = String(item.id || item.studentId || item.name || '').trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        result.push(item);
+      }
+    });
+    return result;
+  }, [snoozedStudentIds]);
+
+  const filteredSnoozedStudents = React.useMemo(() => {
+    return uniqueSnoozedStudents.filter((item) => {
+      if (filters.rto && (item.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      const q = (snoozedSearchQuery || '').trim().toLowerCase();
+      if (!q) return true;
+      return (
+        (item.name || '').toLowerCase().includes(q) ||
+        (item.studentId || '').toLowerCase().includes(q) ||
+        (item.rto || '').toLowerCase().includes(q)
+      );
+    });
+  }, [uniqueSnoozedStudents, filters.rto, snoozedSearchQuery]);
+
   const tabScopedStudents = React.useMemo(() => {
     if (activeMainTab === 'snooze') {
       return studentList.filter((s) => isStudentSnoozed(s));
@@ -2813,7 +2841,7 @@ export default function WorkflowStep1Students({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Snoozed Students ({snoozedCount})
+                    Snoozed Students ({filteredSnoozedStudents.length})
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">Students temporarily deferred from placement requests</p>
                 </div>
@@ -2840,12 +2868,8 @@ export default function WorkflowStep1Students({
 
             {/* List */}
             <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-              {Object.values(snoozedStudentIds).filter(item => {
-                if (filters.rto && (item.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
-                return (item.name || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase()) ||
-                  (item.studentId || '').toLowerCase().includes(snoozedSearchQuery.toLowerCase());
-              }).map((item) => (
-                <div key={item.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+              {filteredSnoozedStudents.map((item) => (
+                <div key={item.id || item.studentId} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
                   <div className="flex items-center space-x-3">
                     <div className="relative shrink-0">
                       <div className="w-9 h-9 rounded-full bg-slate-200 font-bold flex items-center justify-center text-slate-700 text-xs">
@@ -2895,11 +2919,13 @@ export default function WorkflowStep1Students({
                 </div>
               ))}
 
-              {snoozedCount === 0 && (
+              {filteredSnoozedStudents.length === 0 && (
                 <div className="py-12 text-center text-slate-400">
                   <PauseCircle className="w-10 h-10 mx-auto text-slate-300 mb-2" />
                   <p className="font-semibold text-xs text-slate-600">No Snoozed Students</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">You can snooze a student from the Generate Placement Request modal.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {snoozedSearchQuery ? 'No snoozed students match your search.' : 'You can snooze a student from the Generate Placement Request modal.'}
+                  </p>
                 </div>
               )}
             </div>
