@@ -15,8 +15,10 @@ import {
   bulkUpdateStatusController,
   bulkDeleteStudentsController,
   reconcileStudentStatusesController,
+  uploadDocumentController,
 } from './student.controller.js';
 import multer from 'multer';
+import upload from '../../core/middlewares/upload.middleware.js';
 import { requireRoles } from '../../core/guards/roles.guard.js';
 import { authenticate } from '../../core/guards/auth.guard.js';
 import { validateBody } from '../../core/middlewares/validate.middleware.js';
@@ -48,6 +50,19 @@ router.post('/bulk/delete', canManage, bulkDeleteStudentsController);
 
 // ===== Status reconciliation (Admin only) =====
 router.post('/reconcile-statuses', requireRoles('Administrator', 'Admin'), reconcileStudentStatusesController);
+
+// ===== Single student document upload =====
+router.post('/upload-document', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({
+        success: false,
+        message: err.message || 'File upload failed',
+      });
+    }
+    return uploadDocumentController(req, res, next);
+  });
+});
 
 const canCreateStudent = requireRoles('Administrator', 'Admin', 'Coordinator', 'Placement Coordinator', 'Staff', 'RTO Manager', 'RTO');
 

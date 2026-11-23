@@ -58,6 +58,28 @@ export const bulkUploadDocumentsController = async (req, res, next) => {
   }
 };
 
+export const uploadDocumentController = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file was provided for upload',
+      });
+    }
+    const fileUrl = `/uploads/students/${req.file.filename}`;
+    return res.status(200).json({
+      success: true,
+      url: fileUrl,
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createStudentController = async (req, res, next) => {
   try {
     const student = await StudentService.createStudent(req.body, { actingUser: req.user });

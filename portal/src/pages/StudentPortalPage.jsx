@@ -7,7 +7,7 @@ import {
   Mail, Video, FileText, ShieldCheck, Award, Globe,
   Car, FileCheck, CheckCircle2, AlertCircle, ExternalLink,
   Briefcase, Sparkles, Send, Eye, RefreshCw, LayoutDashboard,
-  ArrowRight
+  ArrowRight, Upload
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
@@ -27,12 +27,14 @@ import {
   fetchStudents,
   createStudent,
   updateStudent,
+  uploadStudentDocument,
   openStudentDocument,
   isStoredDocument
 } from '../api/studentsApi';
 import { fetchWorkflows } from '../api/workflowApi';
 import { fetchMyReviews } from '../api/reviewApi';
 import { fetchAttendanceRecords } from '../api/attendanceApi';
+import { PLACEMENT_STATUS_CONFIG } from '../constants/placementStatus.constants';
 
 const initialFormData = {
   // Personal Information
@@ -270,6 +272,7 @@ export default function StudentPortalPage() {
   const [studentProfile, setStudentProfile] = useState(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [uploadingDocField, setUploadingDocField] = useState(null);
 
   // Workflow & Attendance tracking states
   const [studentRequests, setStudentRequests] = useState([]);
@@ -320,11 +323,12 @@ export default function StudentPortalPage() {
       if (Array.isArray(list) && list.length > 0) {
         student = list[0];
         setStudentProfile(student);
-        setFormData(prev => {
-          // If already initialized, update fields from backend
-          return mapStudentToFormData(student);
-        });
-      } else if (authUser?.email) {
+        // Only set form data on initial page load (!silent) or explicit refresh
+        // NEVER overwrite in-progress student form inputs during background polling or window focus
+        if (!silent) {
+          setFormData(mapStudentToFormData(student));
+        }
+      } else if (authUser?.email && !silent) {
         setFormData(prev => ({
           ...prev,
           emailAddress: authUser.email,
@@ -342,6 +346,44 @@ export default function StudentPortalPage() {
     } finally {
       if (!silent) setLoading(false);
       setIsRefreshing(false);
+    }
+  };
+
+  const handleDirectComplianceUpload = async (field, file, docLabel) => {
+    if (!file) return;
+    const studentIdToUpdate = studentProfile?._id || studentProfile?.id;
+    if (!studentIdToUpdate) {
+      toast.error('Student profile not found. Please complete your registration first.');
+      return;
+    }
+
+    setUploadingDocField(field);
+    try {
+      // 1. Upload file to server
+      const uploadRes = await uploadStudentDocument(file);
+      if (!uploadRes?.url) {
+        throw new Error('Upload did not return a valid file URL');
+      }
+
+      // 2. Persist to student profile in database
+      const updatePayload = { [field]: uploadRes.url };
+      if (field === 'resumeDoc') {
+        updatePayload.resumeFile = uploadRes.url;
+      }
+      await updateStudent(studentIdToUpdate, updatePayload);
+
+      // 3. Update local states
+      setFormData(prev => ({ ...prev, [field]: uploadRes.url }));
+      setStudentProfile(prev => (prev ? { ...prev, ...updatePayload } : prev));
+
+      toast.success(`${docLabel || 'Document'} uploaded and saved successfully!`);
+      // Reload workflow data silently
+      loadMyProfile(true);
+    } catch (err) {
+      console.error('Direct document upload error:', err);
+      toast.error(err?.response?.data?.message || err.message || 'Failed to upload document. Please try again.');
+    } finally {
+      setUploadingDocField(null);
     }
   };
 
@@ -547,21 +589,61 @@ export default function StudentPortalPage() {
         if (payload[key] === '') payload[key] = undefined;
       });
 
-      if (payload.documents instanceof File) payload.documents = payload.documents.name;
-      if (payload.resumeFile instanceof File) payload.resumeFile = payload.resumeFile.name;
-      if (payload.policeCheckDoc instanceof File) payload.policeCheckDoc = payload.policeCheckDoc.name;
-      if (payload.covidCheckDoc instanceof File) payload.covidCheckDoc = payload.covidCheckDoc.name;
+      // Upload any document fields containing File objects
+      const docFields = [
+        'documents',
+        'resumeFile',
+        'policeCheckDoc',
+        'covidCheckDoc',
+        'ndisDoc',
+        'resumeDoc',
+        'wwccDoc',
+        'passportDoc',
+        'drivingLicenceDoc',
+        'infectionControlDoc',
+        'handHygieneDoc',
+        'cbrDoc',
+      ];
 
-      const docFields = ['ndisDoc', 'resumeDoc', 'wwccDoc', 'passportDoc', 'drivingLicenceDoc', 'infectionControlDoc', 'handHygieneDoc', 'cbrDoc'];
-      docFields.forEach(field => {
-        if (payload[field] instanceof File) payload[field] = payload[field].name;
-      });
+      for (const field of docFields) {
+        if (payload[field] instanceof File) {
+          try {
+            const uploadRes = await uploadStudentDocument(payload[field]);
+            if (uploadRes?.url) {
+              payload[field] = uploadRes.url;
+            } else {
+              payload[field] = payload[field].name;
+            }
+          } catch (uploadErr) {
+            console.error(`Failed to upload ${field}:`, uploadErr);
+            toast.error(`Failed to upload ${field}. Please try again.`);
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
 
       if (Array.isArray(payload.additionalDocuments)) {
-        payload.additionalDocuments = payload.additionalDocuments.map(item => ({
-          title: item.title || '',
-          file: item.file instanceof File ? item.file.name : item.file || ''
-        }));
+        const processedAdditional = [];
+        for (const item of payload.additionalDocuments) {
+          let fileVal = item.file;
+          if (item.file instanceof File) {
+            try {
+              const uploadRes = await uploadStudentDocument(item.file);
+              fileVal = uploadRes?.url || item.file.name;
+            } catch (uploadErr) {
+              console.error('Failed to upload custom document:', uploadErr);
+              toast.error(`Failed to upload ${item.title || 'custom document'}. Please try again.`);
+              setSubmitting(false);
+              return;
+            }
+          }
+          processedAdditional.push({
+            title: item.title || '',
+            file: fileVal || '',
+          });
+        }
+        payload.additionalDocuments = processedAdditional;
       }
 
       if (payload.dateOfBirth) payload.dateOfBirth = new Date(payload.dateOfBirth);
@@ -580,7 +662,7 @@ export default function StudentPortalPage() {
         toast.success('Your profile was created successfully!');
       }
 
-      await loadMyProfile();
+      await loadMyProfile(false);
     } catch (err) {
       console.error('Could not save student:', err);
       const backendErrors = err?.response?.data?.errors;
@@ -596,25 +678,30 @@ export default function StudentPortalPage() {
   };
 
   const getStatusColor = (status) => {
+    if (PLACEMENT_STATUS_CONFIG[status]) {
+      const c = PLACEMENT_STATUS_CONFIG[status];
+      return `${c.bg} ${c.text} ${c.border}`;
+    }
     const s = String(status || '').trim().toLowerCase();
-    if (s === 'n/a') return 'bg-slate-100 text-slate-600 border-slate-300';
     if (s.includes('completed')) return 'bg-emerald-50 text-emerald-700 border-emerald-300';
-    if (s.includes('placement started') || s === 'active') return 'bg-emerald-50 text-emerald-700 border-emerald-300';
-    if (s.includes('appointment successful') || s.includes('successful')) return 'bg-teal-50 text-teal-700 border-teal-300';
-    if (s.includes('appointment') || s.includes('interview')) return 'bg-blue-50 text-blue-700 border-blue-300';
-    if (s.includes('contacted') || s.includes('progress') || s.includes('request')) return 'bg-indigo-50 text-indigo-700 border-indigo-300';
-    return 'bg-amber-50 text-amber-700 border-amber-300';
+    if (s.includes('placement started') || s.includes('training') || s === 'active') return 'bg-teal-50 text-teal-700 border-teal-200';
+    if (s.includes('appointment successful') || s.includes('successful')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (s.includes('appointment') || s.includes('interview')) return 'bg-purple-50 text-purple-700 border-purple-200';
+    if (s.includes('contacted') || s.includes('progress') || s.includes('request')) return 'bg-blue-50 text-blue-700 border-blue-200';
+    return 'bg-slate-100 text-slate-700 border-slate-200';
   };
 
   const calculateWorkflowProgress = (status) => {
     const s = String(status || '').trim().toLowerCase();
-    if (s === 'n/a') return 0;
+    if (!s || s === 'n/a' || s === 'snoozed' || s === 'inactive') return 1;
     if (s.includes('completed')) return 5;
-    if (s.includes('placement started') || s === 'active') return 4;
-    if (s.includes('appointment successful') || s.includes('successful')) return 3.5;
+    if (s.includes('placement started') || s.includes('training') || s === 'placement' || s === 'active') return 4;
+    if (s.includes('appointment successful') || s.includes('interview successful') || s.includes('successful')) return 3.5;
     if (s.includes('appointment') || s.includes('interview')) return 3;
-    if (s.includes('contacted')) return 2.5;
-    if (s.includes('progress') || s.includes('request')) return 2;
+    if (s.includes('industry contacted') || s.includes('contacted')) return 2.5;
+    if (s.includes('in progress') || s.includes('progress') || s.includes('request')) return 2;
+    if (s.includes('awaiting') || s.includes('registered') || s.includes('enrolled')) return 1;
+    // Exceptional statuses (withdrawn, rejected, snoozed): keep at base step 1
     return 1;
   };
 
@@ -627,30 +714,72 @@ export default function StudentPortalPage() {
       studentProfile?.status === 'Inactive' ||
       studentRequests.some(r => r.priority === 'Snooze' || r.priority === 'Inactive');
 
-    if (isSnoozedOrInactive) return 'N/A';
+    if (isSnoozedOrInactive) return 'Snoozed';
 
-    const activeInts = studentInternships.filter(i => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(i.status));
-    const activeAppts = studentAppointments.filter(a => !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) && a.appointmentOutcome !== 'student_withdrawal' && a.appointmentOutcome !== 'industry_rejected' && a.appointmentOutcome !== 'student_missed' && a.appointmentOutcome !== 'not_suitable_site');
+    // Canonical status from backend is the single source of truth when available
+    const canonical = studentProfile?.canonicalPlacementStatus || studentProfile?.placementStatus || studentProfile?.canonicalStatus;
 
-    if (activeInts.length > 0) {
-      const anyDone = activeInts.some(i => ['Completed', 'Placement Completed'].includes(i.status));
-      if (anyDone) return 'Placement Completed';
-      return activeInts[0].status || 'Placement Started';
+    // Filter active internships (Stage 4 / 5)
+    const activeInts = studentInternships.filter(i =>
+      !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(i.status)
+    );
+
+    // Filter active appointments (Stage 3)
+    const activeAppts = studentAppointments.filter(a =>
+      !['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Cancelled', 'Declined', 'Industry Rejected', 'No Show', 'Not Suitable Site', 'Student Missed Appointment'].includes(a.status) &&
+      a.appointmentOutcome !== 'student_withdrawal' &&
+      a.appointmentOutcome !== 'industry_rejected' &&
+      a.appointmentOutcome !== 'student_missed' &&
+      a.appointmentOutcome !== 'not_suitable_site'
+    );
+
+    // If canonical or any internship / appointment indicates completion -> Placement Completed (Stage 5)
+    if (
+      canonical === 'Placement Completed' ||
+      activeInts.some(i => ['Completed', 'Placement Completed'].includes(i.status)) ||
+      studentAppointments.some(a => ['Completed', 'Placement Completed'].includes(a.status))
+    ) {
+      return 'Placement Completed';
     }
+
+    // If canonical status is an exceptional status, preserve it accurately
+    if (['Student Withdraw', 'Industry Rejected', 'Student Missed Appointment', 'Not Suitable Site', 'Inactive', 'Snoozed'].includes(canonical)) {
+      return canonical;
+    }
+
+    // If student has an active internship, they are in Stage 4: Placement Started (NEVER fall back to Stage 2 'In Progress')
+    if (activeInts.length > 0) {
+      return 'Placement Started';
+    }
+
+    // If canonical status is Placement Started
+    if (canonical === 'Placement Started') {
+      return 'Placement Started';
+    }
+
+    // If student has an active appointment (Stage 3)
     if (activeAppts.length > 0) {
-      const anySuccess = activeAppts.some(a => a.appointmentOutcome === 'successful' || a.status === 'Confirmed');
+      const anySuccess = activeAppts.some(a => a.appointmentOutcome === 'successful');
       return anySuccess ? 'Appointment Successful' : 'Appointment Scheduled';
     }
 
-    const direct = studentProfile?.placementStatus;
-    if (direct && direct !== 'Awaiting') return direct;
-    if (studentInternships.length > 0) {
-      return studentInternships[0].status || 'Student Withdraw';
+    // If canonical status is Appointment Successful or Scheduled
+    if (canonical === 'Appointment Successful' || canonical === 'Appointment Scheduled') {
+      return canonical;
     }
+
+    // If student has requests in workflow (Stage 2)
     if (studentRequests.length > 0) {
-      return studentRequests[0].status || 'In Progress';
+      const reqStatus = studentRequests[0].status;
+      if (reqStatus === 'Industry Contacted') return 'Industry Contacted';
+      return 'In Progress';
     }
-    return direct || 'Awaiting';
+
+    if (canonical && canonical !== 'Awaiting') {
+      return canonical;
+    }
+
+    return 'Awaiting';
   })();
 
   const currentWorkflowStep = calculateWorkflowProgress(effectiveStatus);
@@ -795,7 +924,7 @@ export default function StudentPortalPage() {
                                 Placement Project Pipeline Progress
                               </h3>
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                                Stage {Math.floor(currentWorkflowStep)} of 5
+                                Stage {Math.min(5, Math.max(1, Math.floor(currentWorkflowStep)))} of 5
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-500 font-medium">
@@ -1542,41 +1671,70 @@ export default function StudentPortalPage() {
                       const Icon = doc.icon;
                       const hasFile = Boolean(formData[doc.field]);
                       const isStored = isStoredDocument(formData[doc.field]);
+                      const isUploading = uploadingDocField === doc.field;
 
                       return (
-                        <div key={doc.field} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs text-xs flex items-center justify-between gap-3">
-                          <div className="flex items-center space-x-3 min-w-0">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                              hasFile ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
-                            }`}>
-                              <Icon className="w-4 h-4" />
+                        <div key={doc.field} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs text-xs flex flex-col justify-between gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                hasFile ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                              }`}>
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-900 truncate">{doc.label}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{doc.hint}</p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-900 truncate">{doc.label}</p>
-                              <p className="text-[10px] text-slate-400 truncate">{doc.hint}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2 shrink-0">
-                            {hasFile ? (
-                              <>
+                            <div className="shrink-0">
+                              {hasFile ? (
                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                   Verified
                                 </span>
-                                {isStored && (
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  Action Needed
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                            {isUploading ? (
+                              <div className="flex items-center space-x-1.5 text-xs text-purple-600 font-semibold py-1">
+                                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                                <span>Uploading file...</span>
+                              </div>
+                            ) : (
+                              <>
+                                <label className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 transition cursor-pointer">
+                                  <Upload className="w-3.5 h-3.5" />
+                                  <span>{hasFile ? 'Replace File' : 'Upload Document'}</span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                    onChange={(e) => {
+                                      if (e.target.files?.[0]) {
+                                        handleDirectComplianceUpload(doc.field, e.target.files[0], doc.label);
+                                      }
+                                    }}
+                                  />
+                                </label>
+
+                                {hasFile && isStored && (
                                   <button
                                     type="button"
                                     onClick={() => openStudentDocument(formData[doc.field])}
-                                    className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                    className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-xl transition cursor-pointer text-xs font-medium"
                                     title="View document"
                                   >
-                                    <Eye className="w-4 h-4" />
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>View</span>
                                   </button>
                                 )}
                               </>
-                            ) : (
-                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                                Action Needed
-                              </span>
                             )}
                           </div>
                         </div>

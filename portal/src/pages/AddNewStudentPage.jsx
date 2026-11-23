@@ -13,7 +13,7 @@ import RtoSourceForm from '../components/student/RtoSourceForm';
 import ReviewSubmitForm from '../components/student/ReviewSubmitForm';
 
 // Backend API
-import { createStudent } from '../api/studentsApi';
+import { createStudent, uploadStudentDocument } from '../api/studentsApi';
 
 const initialFormData = {
   // Personal Information
@@ -223,21 +223,43 @@ export default function AddNewStudentPage() {
         if (payload[key] === '') payload[key] = undefined;
       });
 
-      // File objects cannot be sent as JSON - convert to filename string or null
-      if (payload.documents instanceof File) payload.documents = payload.documents.name;
-      if (payload.resumeFile instanceof File) payload.resumeFile = payload.resumeFile.name;
-      if (payload.policeCheckDoc instanceof File) payload.policeCheckDoc = payload.policeCheckDoc.name;
-      if (payload.covidCheckDoc instanceof File) payload.covidCheckDoc = payload.covidCheckDoc.name;
-      // Serialize the 8 structured document fields
-      const docFields = ['ndisDoc', 'resumeDoc', 'wwccDoc', 'passportDoc', 'drivingLicenceDoc', 'infectionControlDoc', 'handHygieneDoc', 'cbrDoc'];
-      docFields.forEach(field => {
-        if (payload[field] instanceof File) payload[field] = payload[field].name;
-      });
+      // Upload any document fields containing File objects
+      const docFields = ['documents', 'resumeFile', 'policeCheckDoc', 'covidCheckDoc', 'ndisDoc', 'resumeDoc', 'wwccDoc', 'passportDoc', 'drivingLicenceDoc', 'infectionControlDoc', 'handHygieneDoc', 'cbrDoc'];
+      for (const field of docFields) {
+        if (payload[field] instanceof File) {
+          try {
+            const uploadRes = await uploadStudentDocument(payload[field]);
+            payload[field] = uploadRes?.url || payload[field].name;
+          } catch (uploadErr) {
+            console.error(`Failed to upload ${field}:`, uploadErr);
+            toast.error(`Failed to upload ${field}. Please try again.`);
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
+
       if (Array.isArray(payload.additionalDocuments)) {
-        payload.additionalDocuments = payload.additionalDocuments.map(item => ({
-          title: item.title || '',
-          file: item.file instanceof File ? item.file.name : item.file || ''
-        }));
+        const processedAdditional = [];
+        for (const item of payload.additionalDocuments) {
+          let fileVal = item.file;
+          if (item.file instanceof File) {
+            try {
+              const uploadRes = await uploadStudentDocument(item.file);
+              fileVal = uploadRes?.url || item.file.name;
+            } catch (uploadErr) {
+              console.error('Failed to upload custom document:', uploadErr);
+              toast.error(`Failed to upload ${item.title || 'custom document'}. Please try again.`);
+              setSubmitting(false);
+              return;
+            }
+          }
+          processedAdditional.push({
+            title: item.title || '',
+            file: fileVal || '',
+          });
+        }
+        payload.additionalDocuments = processedAdditional;
       }
 
       // Date fields need to be in a valid format

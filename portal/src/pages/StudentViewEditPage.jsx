@@ -9,7 +9,7 @@ import {
 import { toast } from 'react-toastify';
 import Sidebar from '../components/common/Sidebar';
 import Header from '../components/common/Header';
-import { fetchStudentById, updateStudent, openStudentDocument, isStoredDocument } from '../api/studentsApi';
+import { fetchStudentById, updateStudent, uploadStudentDocument, openStudentDocument, isStoredDocument } from '../api/studentsApi';
 import { notifyPlacementDataChanged } from '../api/placementEvents';
 import { fetchWorkflows, fetchWorkflowById } from '../api/workflowApi';
 import { calculatePlacementEndDate } from '../utils/dateCalculation';
@@ -287,12 +287,40 @@ export default function StudentViewEditPage() {
       Object.keys(payload).forEach(key => { if (payload[key] === '') payload[key] = undefined; });
       const dbId = student?.id || student?._id || id;
       const docFields = ['policeCheckDoc','covidCheckDoc','ndisDoc','resumeDoc','wwccDoc','passportDoc','drivingLicenceDoc','infectionControlDoc','handHygieneDoc','cbrDoc'];
-      docFields.forEach(f => { if (payload[f] instanceof File) payload[f] = payload[f].name; });
+      for (const f of docFields) {
+        if (payload[f] instanceof File) {
+          try {
+            const uploadRes = await uploadStudentDocument(payload[f]);
+            payload[f] = uploadRes?.url || payload[f].name;
+          } catch (uploadErr) {
+            console.error(`Failed to upload ${f}:`, uploadErr);
+            toast.error(`Failed to upload ${f}. Please try again.`);
+            setSaving(false);
+            return;
+          }
+        }
+      }
       if (Array.isArray(payload.additionalDocuments)) {
-        payload.additionalDocuments = payload.additionalDocuments.map(item => ({
-          title: item.title || '',
-          file: item.file instanceof File ? item.file.name : item.file || '',
-        }));
+        const processedAdditional = [];
+        for (const item of payload.additionalDocuments) {
+          let fileVal = item.file;
+          if (item.file instanceof File) {
+            try {
+              const uploadRes = await uploadStudentDocument(item.file);
+              fileVal = uploadRes?.url || item.file.name;
+            } catch (uploadErr) {
+              console.error('Failed to upload custom document:', uploadErr);
+              toast.error(`Failed to upload ${item.title || 'custom document'}. Please try again.`);
+              setSaving(false);
+              return;
+            }
+          }
+          processedAdditional.push({
+            title: item.title || '',
+            file: fileVal || '',
+          });
+        }
+        payload.additionalDocuments = processedAdditional;
       }
       // If RTO Student but no RTO assigned, mark as Awaiting RTO Assignment
       if (isRtoManager) {

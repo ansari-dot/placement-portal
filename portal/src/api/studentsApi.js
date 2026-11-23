@@ -104,6 +104,16 @@ export const bulkUploadStudentDocuments = async (files, onProgress) => {
   return response.data;
 };
 
+// Upload a single student document file to /uploads/students/
+export const uploadStudentDocument = async (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  const response = await api.post("/students/upload-document", fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+};
+
 // Open a stored document (/uploads/...) using the logged-in session
 export const openStudentDocument = async (url) => {
   const response = await api.get(url, { responseType: "blob" });
