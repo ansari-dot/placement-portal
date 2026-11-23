@@ -551,27 +551,39 @@ export default function WorkflowStep1Students({
     }).length
   ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap, filters.rto]);
 
-  const snoozedCount = React.useMemo(() => (
-    studentList.filter((s) => {
-      if (filters.rto && (s.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
-      return isStudentSnoozed(s);
-    }).length
-  ), [studentList, snoozedStudentIds, localRequestMap, internshipRequestMap, filters.rto]);
-
-  // Deduplicated snoozed students list (guarantees each student appears exactly once)
+  // Deduplicated snoozed students list (guarantees each student appears exactly once by name, studentId, or id)
   const uniqueSnoozedStudents = React.useMemo(() => {
-    const seen = new Set();
+    const seenNames = new Set();
+    const seenIds = new Set();
     const result = [];
-    Object.values(snoozedStudentIds).forEach((item) => {
+    Object.values(snoozedStudentIds || {}).forEach((item) => {
       if (!item) return;
-      const key = String(item.id || item.studentId || item.name || '').trim().toLowerCase();
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        result.push(item);
-      }
+      const normName = String(item.name || '').trim().toLowerCase();
+      const normStudentId = String(item.studentId || '').trim().toLowerCase();
+      const normDbId = String(item.id || item._id || '').trim().toLowerCase();
+
+      // If we've already included this student under ANY overlapping identifier, skip as duplicate!
+      const isDuplicate =
+        (normName && seenNames.has(normName)) ||
+        (normStudentId && seenIds.has(normStudentId)) ||
+        (normDbId && seenIds.has(normDbId));
+
+      if (isDuplicate) return;
+
+      if (normName) seenNames.add(normName);
+      if (normStudentId) seenIds.add(normStudentId);
+      if (normDbId) seenIds.add(normDbId);
+      result.push(item);
     });
     return result;
   }, [snoozedStudentIds]);
+
+  const snoozedCount = React.useMemo(() => (
+    uniqueSnoozedStudents.filter((item) => {
+      if (filters.rto && (item.rto || '').toLowerCase() !== filters.rto.toLowerCase()) return false;
+      return true;
+    }).length
+  ), [uniqueSnoozedStudents, filters.rto]);
 
   const filteredSnoozedStudents = React.useMemo(() => {
     return uniqueSnoozedStudents.filter((item) => {
@@ -1030,6 +1042,9 @@ export default function WorkflowStep1Students({
     // Find matching student to resolve all potential keys
     const matchedStu = (studentList || []).find(s => s.id === stuId || s.studentId === stuId || s.name === stuName);
     const norm = (v) => String(v || '').trim().toLowerCase();
+    const targetNormName = norm(stuName || matchedStu?.name);
+    const targetNormId = norm(stuId || matchedStu?.studentId || matchedStu?.id);
+    const targetBizId = norm(matchedStu?.studentId);
     const keysToDelete = [
       stuId,
       stuName,
@@ -1040,12 +1055,50 @@ export default function WorkflowStep1Students({
       matchedStu?.studentId ? norm(matchedStu.studentId) : '',
     ].filter(Boolean);
 
-    // Optimistic UI update
+    // Optimistic UI update — purge every matching key / entry
     setSnoozedStudentIds((prev) => {
       const updated = { ...prev };
-      keysToDelete.forEach(k => delete updated[k]);
+      Object.keys(updated).forEach((k) => {
+        const item = updated[k];
+        if (!item) {
+          delete updated[k];
+          return;
+        }
+        const itemNormName = norm(item.name);
+        const itemNormId = norm(item.studentId || item.id);
+        const matchesName = targetNormName && itemNormName === targetNormName;
+        const matchesId = (targetNormId && itemNormId === targetNormId) || (targetBizId && itemNormId === targetBizId);
+        if (matchesName || matchesId || keysToDelete.includes(k)) {
+          delete updated[k];
+        }
+      });
       return updated;
     });
+
+    // Also clear from legacy localStorage if present
+    try {
+      const existing = JSON.parse(localStorage.getItem('portal_snoozed_students') || '{}');
+      let changed = false;
+      Object.keys(existing).forEach((k) => {
+        const item = existing[k];
+        if (!item) {
+          delete existing[k];
+          changed = true;
+          return;
+        }
+        const itemNormName = norm(item.name);
+        const itemNormId = norm(item.studentId || item.id);
+        const matchesName = targetNormName && itemNormName === targetNormName;
+        const matchesId = (targetNormId && itemNormId === targetNormId) || (targetBizId && itemNormId === targetBizId);
+        if (matchesName || matchesId || keysToDelete.includes(k)) {
+          delete existing[k];
+          changed = true;
+        }
+      });
+      if (changed) {
+        localStorage.setItem('portal_snoozed_students', JSON.stringify(existing));
+      }
+    } catch (_) {}
 
     setLocalRequestMap((prev) => {
       const updated = { ...prev };

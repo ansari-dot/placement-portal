@@ -318,6 +318,7 @@ export default function WorkflowPage() {
   const visibleWorkflowStudents = useMemo(() => {
     if (!workflowStudents || workflowStudents.length === 0) return [];
 
+    let filtered = workflowStudents;
     if (!isAdmin) {
       // Coordinator: must be authenticated to see any students
       if (!authUser) return [];
@@ -326,7 +327,7 @@ export default function WorkflowPage() {
       const currentUserId = String(authUser._id || authUser.id || '').trim();
       const currentUserName = String(authUser.name || '').trim().toLowerCase();
 
-      return workflowStudents.filter((stu) => {
+      filtered = workflowStudents.filter((stu) => {
         const assignedId = String(stu.assignedCoordinator || '').trim();
         const assignedName = String(stu.assignedCoordinatorName || '').trim().toLowerCase();
 
@@ -336,30 +337,49 @@ export default function WorkflowPage() {
           (currentUserName && assignedName && assignedName === currentUserName)
         );
       });
+    } else {
+      // ── Admin path ──
+      if (selectedCoordinator === 'unassigned') {
+        filtered = workflowStudents.filter(
+          (stu) => !stu.assignedCoordinator && !stu.assignedCoordinatorName
+        );
+      } else if (selectedCoordinator !== 'All') {
+        const selectedCoord = coordinators.find(
+          (c) => String(c._id || c.id) === String(selectedCoordinator)
+        );
+        const coordId = String(selectedCoord?._id || selectedCoord?.id || selectedCoordinator).trim();
+        const coordName = String(selectedCoord?.name || '').trim().toLowerCase();
+
+        filtered = workflowStudents.filter((stu) => {
+          const assignedId = String(stu.assignedCoordinator || '').trim();
+          const assignedName = String(stu.assignedCoordinatorName || '').trim().toLowerCase();
+          return (
+            (assignedId && assignedId === coordId) ||
+            (coordName && assignedName && assignedName === coordName)
+          );
+        });
+      }
     }
 
-    // ── Admin path ──
-    if (selectedCoordinator === 'All') return workflowStudents;
+    // Deduplicate students so each individual student appears strictly once across all workflow steps
+    const seenNames = new Set();
+    const seenIds = new Set();
+    return filtered.filter((stu) => {
+      const bizId = norm(stu.studentId);
+      const dbId = norm(stu.id || stu._id);
+      const name = norm(stu.name || `${stu.firstName || ''} ${stu.lastName || ''}`.trim());
 
-    if (selectedCoordinator === 'unassigned') {
-      return workflowStudents.filter(
-        (stu) => !stu.assignedCoordinator && !stu.assignedCoordinatorName
-      );
-    }
+      const isDup =
+        (bizId && seenIds.has(bizId)) ||
+        (dbId && seenIds.has(dbId)) ||
+        (name && seenNames.has(name));
 
-    const selectedCoord = coordinators.find(
-      (c) => String(c._id || c.id) === String(selectedCoordinator)
-    );
-    const coordId = String(selectedCoord?._id || selectedCoord?.id || selectedCoordinator).trim();
-    const coordName = String(selectedCoord?.name || '').trim().toLowerCase();
+      if (isDup) return false;
 
-    return workflowStudents.filter((stu) => {
-      const assignedId = String(stu.assignedCoordinator || '').trim();
-      const assignedName = String(stu.assignedCoordinatorName || '').trim().toLowerCase();
-      return (
-        (assignedId && assignedId === coordId) ||
-        (coordName && assignedName && assignedName === coordName)
-      );
+      if (bizId) seenIds.add(bizId);
+      if (dbId) seenIds.add(dbId);
+      if (name) seenNames.add(name);
+      return true;
     });
   }, [workflowStudents, isAdmin, authUser, selectedCoordinator, coordinators]);
 
