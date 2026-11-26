@@ -606,7 +606,7 @@ export default function StudentViewEditPage() {
                 <div className="grid grid-cols-4 gap-5">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Email Address <span className="text-rose-500">*</span></label>
-                    <input type="email" value={formData.emailAddress || ''} onChange={e => updateField('emailAddress', e.target.value)} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="Enter email address" />
+                    <input type="text" inputMode="email" value={formData.emailAddress || ''} onChange={e => updateField('emailAddress', e.target.value.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFF0D]/g, '-').replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, ''))} disabled={!isEdit} className={fieldClass(isEdit)} placeholder="Enter email address" />
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Phone Number <span className="text-rose-500">*</span></label>

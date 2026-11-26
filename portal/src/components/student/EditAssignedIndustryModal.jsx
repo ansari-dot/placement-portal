@@ -447,10 +447,16 @@ export default function EditAssignedIndustryModal({
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">Contact Email</label>
               <input
-                type="email"
+                type="text"
+                inputMode="email"
                 placeholder="manager@facility.com.au"
                 value={formData.contactEmail}
-                onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value
+                    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFF0D]/g, '-')
+                    .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, '');
+                  setFormData({ ...formData, contactEmail: val });
+                }}
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 text-xs"
               />
             </div>

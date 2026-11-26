@@ -368,11 +368,17 @@ export class IndustryService {
       documents,
     } = body;
 
+    const cleanEmail = String(contactEmail || '')
+      .trim()
+      .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFF0D]/g, '-')
+      .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, '')
+      .toLowerCase();
+
     const missing = [];
     if (!industryName) missing.push('Industry Name');
     if (!industryType) missing.push('Industry Type');
     if (!contactPersonName) missing.push('Contact Person Name');
-    if (!contactEmail) missing.push('Email Address');
+    if (!cleanEmail) missing.push('Email Address');
     if (!contactPhone) missing.push('Phone Number');
     if (!address) missing.push('Address');
     if (industryCategory === 'Partner' && !onboardedByName?.trim() && !onboardedBy) missing.push('Onboarded By');
@@ -422,7 +428,7 @@ export class IndustryService {
       placementSite: placementSite || '',
       industryType: industryType || '',
       contactPersonName,
-      contactEmail,
+      contactEmail: cleanEmail,
       contactPhone,
       contactJobTitle,
       address,
@@ -478,6 +484,14 @@ export class IndustryService {
     }
     if (Object.prototype.hasOwnProperty.call(updateData, 'onboardedByName')) {
       updateData.onboardedByName = String(updateData.onboardedByName || '').trim();
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updateData, 'contactEmail')) {
+      updateData.contactEmail = String(updateData.contactEmail || '')
+        .trim()
+        .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFF0D]/g, '-')
+        .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, '')
+        .toLowerCase();
     }
 
     if (updateData.industryName) {

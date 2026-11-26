@@ -91,8 +91,16 @@ export default function UnifiedIndustryModal({
     setIndustryType(availableTypes[0] || '');
   };
 
+  const normalizeEmail = (val) => {
+    if (!val) return '';
+    return val
+      .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFF0D]/g, '-')
+      .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, '');
+  };
+
   const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    const cleanValue = field === 'contactEmail' ? normalizeEmail(value) : value;
+    setFormData((prev) => ({ ...prev, [field]: cleanValue }));
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }));
     }
@@ -143,9 +151,10 @@ export default function UnifiedIndustryModal({
     if (!placementSite) errs.placementSite = 'Placement Site is required';
     if (!industryType) errs.industryType = 'Industry Type is required';
     if (!formData.contactPersonName.trim()) errs.contactPersonName = 'Contact Person Name is required';
-    if (!formData.contactEmail.trim()) {
+    const cleanEmail = normalizeEmail(formData.contactEmail).trim();
+    if (!cleanEmail) {
       errs.contactEmail = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.contactEmail.trim())) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       errs.contactEmail = 'Valid email is required';
     }
     if (!formData.contactPhone.trim()) errs.contactPhone = 'Phone Number is required';
@@ -170,6 +179,7 @@ export default function UnifiedIndustryModal({
       return;
     }
 
+    const cleanEmail = normalizeEmail(formData.contactEmail).trim();
     setLoading(true);
     try {
       const payload = {
@@ -178,7 +188,7 @@ export default function UnifiedIndustryModal({
         industryType,
         sector: placementSite,
         contactPersonName: formData.contactPersonName.trim(),
-        contactEmail: formData.contactEmail.trim(),
+        contactEmail: cleanEmail,
         contactPhone: formData.contactPhone.trim(),
         contactJobTitle: formData.contactJobTitle.trim(),
         address: formData.address.trim(),
@@ -201,7 +211,7 @@ export default function UnifiedIndustryModal({
         await onAddContactRecord({
           organizationName: formData.industryName.trim(),
           contactPerson: formData.contactPersonName.trim(),
-          email: formData.contactEmail.trim(),
+          email: cleanEmail,
           phone: formData.contactPhone.trim(),
           industryType,
           address: formData.address.trim(),
@@ -379,7 +389,8 @@ export default function UnifiedIndustryModal({
                 Contact Email <span className="text-rose-500">*</span>
               </label>
               <input
-                type="email"
+                type="text"
+                inputMode="email"
                 placeholder="contact@organisation.com.au"
                 value={formData.contactEmail}
                 onChange={(e) => handleInputChange('contactEmail', e.target.value)}

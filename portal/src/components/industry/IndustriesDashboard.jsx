@@ -989,9 +989,15 @@ export default function IndustriesDashboard({
                   <div className="space-y-1">
                     <label className="font-bold text-slate-700">Contact Email</label>
                     <input
-                      type="email"
+                      type="text"
+                      inputMode="email"
                       value={editFormData.contactEmail}
-                      onChange={(e) => setEditFormData({ ...editFormData, contactEmail: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value
+                          .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFF0D]/g, '-')
+                          .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, '');
+                        setEditFormData({ ...editFormData, contactEmail: val });
+                      }}
                       placeholder="e.g. info@company.com"
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
                     />

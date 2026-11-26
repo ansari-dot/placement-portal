@@ -9,8 +9,16 @@ import IndustryProgressPanel from './IndustryProgressPanel';
 export default function AddNewIndustryStep2({ onNext, onPrev, formData, updateFormData }) {
   const [errors, setErrors] = useState({});
 
+  const normalizeEmail = (val) => {
+    if (!val) return '';
+    return val
+      .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFF0D]/g, '-')
+      .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, '');
+  };
+
   const handleChange = (field, value) => {
-    updateFormData({ [field]: value });
+    const cleanValue = (field === 'contactEmail' || field === 'contactAltEmail') ? normalizeEmail(value) : value;
+    updateFormData({ [field]: cleanValue });
     // Clear error on change
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -98,7 +106,8 @@ export default function AddNewIndustryStep2({ onNext, onPrev, formData, updateFo
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
-                  type="email"
+                  type="text"
+                  inputMode="email"
                   placeholder="e.g. james@company.com.au"
                   value={formData.contactEmail || ''}
                   onChange={(e) => handleChange('contactEmail', e.target.value)}
