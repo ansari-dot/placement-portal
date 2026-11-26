@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import UnifiedIndustryModal from '../industry/UnifiedIndustryModal';
 import { updateStudent, fetchStudentById } from '../../api/studentsApi';
+import { fetchWorkflows, fetchWorkflowById } from '../../api/workflowApi';
 import { toast } from 'react-toastify';
 
 export default function StudentContactedIndustriesModal({
@@ -18,22 +19,74 @@ export default function StudentContactedIndustriesModal({
 
   React.useEffect(() => {
     setCurrentStudent(student);
-    if (isOpen && student) {
-      const studentDbId = student.dbId || student.id || student._id;
-      if (studentDbId) {
-        fetchStudentById(studentDbId)
-          .then((res) => {
-            if (res?.data) {
-              setCurrentStudent(prev => ({
-                ...prev,
-                ...res.data,
-                contactedIndustries: Array.isArray(res.data.contactedIndustries) ? res.data.contactedIndustries : (prev?.contactedIndustries || []),
-              }));
-            }
-          })
-          .catch(() => {});
-      }
-    }
+    if (!isOpen || !student) return;
+
+    let isMounted = true;
+    const studentDbId = student.dbId || student.id || student._id;
+
+    const loadAllContacts = async () => {
+      let combined = Array.isArray(student.contactedIndustries) ? [...student.contactedIndustries] : [];
+
+      // 1. Fetch fresh student document
+      try {
+        if (studentDbId) {
+          const res = await fetchStudentById(studentDbId);
+          if (res?.data && isMounted) {
+            const apiContacts = Array.isArray(res.data.contactedIndustries) ? res.data.contactedIndustries : [];
+            combined = [...combined, ...apiContacts];
+          }
+        }
+      } catch (_) {}
+
+      // 2. Also check active workflow requests to guarantee 100% sync
+      try {
+        const wfListRes = await fetchWorkflows();
+        const wfList = wfListRes?.data ?? wfListRes ?? [];
+        if (Array.isArray(wfList) && wfList.length > 0) {
+          const wfId = wfList[0]?.id || wfList[0]?._id;
+          if (wfId) {
+            const wfRes = await fetchWorkflowById(wfId);
+            const wf = wfRes?.data ?? wfRes;
+            const norm = v => String(v || '').trim().toLowerCase();
+            const studentKeys = [student.id, student.studentId, student.dbId, norm(student.name)].filter(Boolean).map(norm);
+
+            const matchingReqs = (wf?.requests || []).filter(r => {
+              const rKeys = [r.id, r.reqId, r._id, r.studentId, norm(r.name), norm(r.student)].filter(Boolean).map(norm);
+              return rKeys.some(k => studentKeys.includes(k));
+            });
+            const wfContacts = matchingReqs.flatMap(r => r.contactedIndustries || []);
+            combined = [...combined, ...wfContacts];
+          }
+        }
+      } catch (_) {}
+
+      if (!isMounted) return;
+
+      // Deduplicate all collected contacts by organization name
+      const seenOrgs = new Set();
+      const deduped = [];
+      combined.forEach(c => {
+        if (!c) return;
+        const org = (c.organizationName || c.name || '').trim().toLowerCase();
+        if (org && !seenOrgs.has(org)) {
+          seenOrgs.add(org);
+          deduped.push(c);
+        } else if (!org) {
+          deduped.push(c);
+        }
+      });
+
+      setCurrentStudent(prev => ({
+        ...prev,
+        contactedIndustries: deduped,
+      }));
+    };
+
+    loadAllContacts();
+
+    return () => {
+      isMounted = false;
+    };
   }, [student, isOpen]);
 
   if (!isOpen || !currentStudent) return null;
@@ -46,7 +99,7 @@ export default function StudentContactedIndustriesModal({
     try {
       const studentDbId = currentStudent.dbId || currentStudent.id || currentStudent._id;
       const updatedList = [
-        ...contactList,
+        ...contactedList,
         {
           ...contactRecord,
           contactedDate: new Date(),
@@ -61,6 +114,9 @@ export default function StudentContactedIndustriesModal({
           if (onStudentUpdated) onStudentUpdated(refreshed.data);
         }
       }
+      try {
+        window.dispatchEvent(new CustomEvent('placement_data_changed'));
+      } catch (_) {}
       toast.success(`Contact record saved for ${contactRecord.organizationName}`);
     } catch (err) {
       console.error('Failed to link contacted industry:', err);

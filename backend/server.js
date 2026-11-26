@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import connectDB from './src/core/config/db_config.js';
 import app from './src/app.js';
 import { checkAndSendPlacementAlerts } from './src/modules/email/email.service.js';
+import { StudentService } from './src/modules/student/student.service.js';
 
 dotenv.config();
 
@@ -39,7 +40,15 @@ const startPlacementAlertScheduler = () => {
 
 // Connect to DB then start server
 connectDB()
-    .then(() => {
+    .then(async () => {
+        try {
+            const synced = await StudentService.syncAllWorkflowContactsToStudents();
+            if (synced > 0) {
+                console.log(`[WorkflowSync] Synced contacted industries to ${synced} student(s)`);
+            }
+        } catch (syncErr) {
+            console.error('[WorkflowSync] Initial sync error:', syncErr.message);
+        }
         app.listen(PORT, () => {
             console.log(`Server is running on port http://localhost:${PORT}`);
             startPlacementAlertScheduler();

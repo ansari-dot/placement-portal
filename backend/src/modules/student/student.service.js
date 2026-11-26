@@ -340,6 +340,25 @@ export class StudentService {
           }
         }
 
+        // Merge contactedIndustries from matching workflow requests
+        const studentRequests = keys.flatMap((k) => requestsByStudent.get(k) || []);
+        const rawStudentContacts = Array.isArray(s.contactedIndustries) ? [...s.contactedIndustries] : [];
+        const seenStudentOrgs = new Set(
+          rawStudentContacts.map((c) => (c.organizationName || c.name || '').trim().toLowerCase()).filter(Boolean)
+        );
+        studentRequests.forEach((r) => {
+          (r.contactedIndustries || []).forEach((c) => {
+            const org = (c.organizationName || c.name || '').trim().toLowerCase();
+            if (org && !seenStudentOrgs.has(org)) {
+              seenStudentOrgs.add(org);
+              rawStudentContacts.push(c);
+            } else if (!org && c) {
+              rawStudentContacts.push(c);
+            }
+          });
+        });
+        s.contactedIndustries = rawStudentContacts;
+
         // Calculate lifecycle status from workflow data
         try {
           s.lifecycleStatus = calculateLifecycleStatus(s, {
@@ -373,6 +392,60 @@ export class StudentService {
 
     if (!student) {
       throw new NotFoundError('Student not found');
+    }
+
+    // Merge contacted industries from Workflow requests
+    try {
+      const studentKeys = [
+        student._id ? String(student._id) : '',
+        student.studentId,
+        student.name,
+        `${student.firstName || ''} ${student.lastName || ''}`.trim()
+      ].filter(Boolean).map(k => k.toLowerCase());
+
+      const workflows = await WorkflowModel.find({
+        $or: [
+          { 'requests.studentId': { $in: [student._id ? String(student._id) : '', student.studentId].filter(Boolean) } },
+          { 'requests.name': { $regex: new RegExp(`^${(student.name || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+          { 'requests.student': { $regex: new RegExp(`^${(student.name || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        ]
+      }).lean();
+
+      const existingContacts = Array.isArray(student.contactedIndustries) ? [...student.contactedIndustries] : [];
+      const seenOrgNames = new Set(
+        existingContacts.map(c => (c.organizationName || c.name || '').trim().toLowerCase()).filter(Boolean)
+      );
+
+      let hasNewContacts = false;
+      workflows.forEach(wf => {
+        (wf.requests || []).forEach(r => {
+          const rKeys = [r.studentId, r.name, r.student].filter(Boolean).map(k => String(k).trim().toLowerCase());
+          const matches = rKeys.some(k => studentKeys.includes(k));
+          if (matches && Array.isArray(r.contactedIndustries)) {
+            r.contactedIndustries.forEach(c => {
+              const orgName = (c.organizationName || c.name || '').trim().toLowerCase();
+              if (orgName && !seenOrgNames.has(orgName)) {
+                seenOrgNames.add(orgName);
+                existingContacts.push(c);
+                hasNewContacts = true;
+              } else if (!orgName && c) {
+                existingContacts.push(c);
+                hasNewContacts = true;
+              }
+            });
+          }
+        });
+      });
+
+      student.contactedIndustries = existingContacts;
+
+      if (hasNewContacts) {
+        await StudentModel.findByIdAndUpdate(student._id, {
+          $set: { contactedIndustries: existingContacts }
+        });
+      }
+    } catch (wfErr) {
+      console.error('[StudentService] Failed to merge workflow contacts in getStudentById:', wfErr.message);
     }
 
     const sObj = student.toObject ? student.toObject() : student;
@@ -1027,5 +1100,71 @@ export class StudentService {
       : 'Coordinator unassigned successfully';
 
     return { student, message };
+  }
+
+  static async syncAllWorkflowContactsToStudents() {
+    try {
+      const workflows = await WorkflowModel.find({}, { requests: 1 }).lean();
+      const allRequests = workflows.flatMap((w) => w.requests || []);
+      const requestsWithContacts = allRequests.filter(
+        (r) => Array.isArray(r.contactedIndustries) && r.contactedIndustries.length > 0
+      );
+      if (requestsWithContacts.length === 0) return 0;
+
+      let syncedCount = 0;
+      for (const req of requestsWithContacts) {
+        const studentKeys = [req.studentId, req.student, req.name].filter(Boolean);
+        if (studentKeys.length === 0) continue;
+
+        const orConditions = [];
+        if (req.studentId) {
+          orConditions.push({ studentId: req.studentId });
+          if (mongoose.Types.ObjectId.isValid(req.studentId)) {
+            orConditions.push({ _id: req.studentId });
+          }
+        }
+        if (req.name) {
+          orConditions.push({ name: req.name });
+          orConditions.push({ name: { $regex: new RegExp(`^${req.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+        }
+        if (req.student && req.student !== req.name) {
+          orConditions.push({ name: req.student });
+          orConditions.push({ name: { $regex: new RegExp(`^${req.student.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+        }
+
+        const matchedStudents = await StudentModel.find({ $or: orConditions });
+        for (const stu of matchedStudents) {
+          const currentContacts = Array.isArray(stu.contactedIndustries) ? [...stu.contactedIndustries] : [];
+          const seenOrgs = new Set(
+            currentContacts.map((c) => (c.organizationName || c.name || '').trim().toLowerCase()).filter(Boolean)
+          );
+          let modified = false;
+          for (const c of req.contactedIndustries) {
+            const org = (c.organizationName || c.name || '').trim().toLowerCase();
+            if (org && !seenOrgs.has(org)) {
+              seenOrgs.add(org);
+              currentContacts.push(c);
+              modified = true;
+            } else if (!org && c) {
+              currentContacts.push(c);
+              modified = true;
+            }
+          }
+          if (modified) {
+            await StudentModel.findByIdAndUpdate(stu._id, {
+              $set: {
+                contactedIndustries: currentContacts,
+                placementStatus: stu.placementStatus === 'Awaiting' ? 'Industry Contacted' : stu.placementStatus,
+              },
+            });
+            syncedCount++;
+          }
+        }
+      }
+      return syncedCount;
+    } catch (err) {
+      console.error('[StudentService] syncAllWorkflowContactsToStudents error:', err.message);
+      return 0;
+    }
   }
 }

@@ -62,6 +62,7 @@ const mapBackendStudent = (s) => ({
   placementStatus: s.canonicalStatus || s.canonicalPlacementStatus || s.placementStatus || 'Awaiting',
   canonicalStatus: s.canonicalStatus || s.canonicalPlacementStatus || s.placementStatus || 'Awaiting',
   placementHours: s.placementHours ?? null,
+  contactedIndustries: Array.isArray(s.contactedIndustries) ? s.contactedIndustries : [],
   source: s.source || s.studentSource || '',
   created: s.created || (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : ''),
   createdAt: s.createdAt || null,
@@ -1175,7 +1176,32 @@ export default function MyStudentsTable() {
     } else if (action === 'editIndustry') {
       setEditIndustryStudent(student);
     } else if (action === 'viewContactedIndustries') {
-      setContactedIndustriesStudent(student);
+      const studentKeys = [student.id, student.studentId, student.dbId, norm(student.name)].filter(Boolean).map(k => String(k).trim().toLowerCase());
+      const matchingReqs = (activeWorkflowRequests || []).filter(r => {
+        const rKeys = [r.id, r.reqId, r._id, r.studentId, norm(r.name), norm(r.student)].filter(Boolean).map(k => String(k).trim().toLowerCase());
+        return rKeys.some(k => studentKeys.includes(k));
+      });
+      const reqContacts = matchingReqs.flatMap(r => r.contactedIndustries || []);
+      const combined = [
+        ...(Array.isArray(student.contactedIndustries) ? student.contactedIndustries : []),
+        ...reqContacts,
+      ];
+      const seenOrgs = new Set();
+      const deduped = [];
+      combined.forEach(c => {
+        if (!c) return;
+        const org = (c.organizationName || c.name || '').trim().toLowerCase();
+        if (org && !seenOrgs.has(org)) {
+          seenOrgs.add(org);
+          deduped.push(c);
+        } else if (!org) {
+          deduped.push(c);
+        }
+      });
+      setContactedIndustriesStudent({
+        ...student,
+        contactedIndustries: deduped,
+      });
     }
   };
 
