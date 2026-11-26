@@ -1174,7 +1174,32 @@ export default function MyStudentsTable() {
         toast.success(`${student.name} deleted`);
       }
     } else if (action === 'editIndustry') {
-      setEditIndustryStudent(student);
+      const studentKeys = [student.id, student.studentId, student.dbId, norm(student.name)].filter(Boolean).map(k => String(k).trim().toLowerCase());
+      const matchingReqs = (activeWorkflowRequests || []).filter(r => {
+        const rKeys = [r.id, r.reqId, r._id, r.studentId, norm(r.name), norm(r.student)].filter(Boolean).map(k => String(k).trim().toLowerCase());
+        return rKeys.some(k => studentKeys.includes(k));
+      });
+      const reqContacts = matchingReqs.flatMap(r => r.contactedIndustries || []);
+      const combined = [
+        ...(Array.isArray(student.contactedIndustries) ? student.contactedIndustries : []),
+        ...reqContacts,
+      ];
+      const seenOrgs = new Set();
+      const deduped = [];
+      combined.forEach(c => {
+        if (!c) return;
+        const org = (c.organizationName || c.name || '').trim().toLowerCase();
+        if (org && !seenOrgs.has(org)) {
+          seenOrgs.add(org);
+          deduped.push(c);
+        } else if (!org) {
+          deduped.push(c);
+        }
+      });
+      setEditIndustryStudent({
+        ...student,
+        contactedIndustries: deduped,
+      });
     } else if (action === 'viewContactedIndustries') {
       const studentKeys = [student.id, student.studentId, student.dbId, norm(student.name)].filter(Boolean).map(k => String(k).trim().toLowerCase());
       const matchingReqs = (activeWorkflowRequests || []).filter(r => {

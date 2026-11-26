@@ -262,7 +262,7 @@ export default function UnifiedIndustryModal({
         </div>
 
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
+        <form noValidate onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
           
           {/* 1. Category Switcher (Random vs Partner) */}
           <div className="space-y-1.5">

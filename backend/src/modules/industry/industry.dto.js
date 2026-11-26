@@ -44,7 +44,7 @@ export const createIndustrySchema = z.object({
   placementSite: z.string().trim().optional(),
   industryType: z.string().trim().min(1, 'Industry Type is required'),
   contactPersonName: z.string().trim().min(1, 'Contact Person Name is required'),
-  contactEmail: z.string().trim().email('Valid Email Address is required'),
+  contactEmail: z.string().trim().min(1, 'Email Address is required').regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Valid Email Address is required'),
   contactPhone: z.string().trim().min(1, 'Phone Number is required'),
   contactJobTitle: z.string().trim().optional().default(''),
   address: z.string().trim().min(1, 'Address is required'),

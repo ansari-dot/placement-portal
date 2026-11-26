@@ -21,7 +21,7 @@ export default function AddNewIndustryStep2({ onNext, onPrev, formData, updateFo
     const newErrors = {};
     if (!formData.contactPersonName?.trim()) newErrors.contactPersonName = 'Contact person name is required';
     if (!formData.contactEmail?.trim()) newErrors.contactEmail = 'Email address is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail)) newErrors.contactEmail = 'Enter a valid email address';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail.trim())) newErrors.contactEmail = 'Enter a valid email address';
     if (!formData.contactPhone?.trim()) newErrors.contactPhone = 'Phone number is required';
     return newErrors;
   };
