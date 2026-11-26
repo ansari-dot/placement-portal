@@ -18,7 +18,23 @@ export default function StudentContactedIndustriesModal({
 
   React.useEffect(() => {
     setCurrentStudent(student);
-  }, [student]);
+    if (isOpen && student) {
+      const studentDbId = student.dbId || student.id || student._id;
+      if (studentDbId) {
+        fetchStudentById(studentDbId)
+          .then((res) => {
+            if (res?.data) {
+              setCurrentStudent(prev => ({
+                ...prev,
+                ...res.data,
+                contactedIndustries: Array.isArray(res.data.contactedIndustries) ? res.data.contactedIndustries : (prev?.contactedIndustries || []),
+              }));
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [student, isOpen]);
 
   if (!isOpen || !currentStudent) return null;
 

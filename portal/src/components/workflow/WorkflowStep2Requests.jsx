@@ -197,9 +197,12 @@ export default function WorkflowStep2Requests({
     if (requests && requests.length > 0) {
       const newMap = {};
       requests.forEach(req => {
-        const key = req.id || req.reqId;
-        newMap[key] = req.contactedIndustries || [];
-        if (req.reqId) newMap[req.reqId] = req.contactedIndustries || [];
+        const contacts = req.contactedIndustries || [];
+        if (req.id) newMap[req.id] = contacts;
+        if (req.reqId) newMap[req.reqId] = contacts;
+        if (req._id) newMap[req._id] = contacts;
+        if (req.dbId) newMap[req.dbId] = contacts;
+        if (req.studentId) newMap[req.studentId] = contacts;
       });
       setContactRecordsMap(newMap);
     }
@@ -805,7 +808,32 @@ export default function WorkflowStep2Requests({
     }
   };
 
-  const currentContacts = (contactRecordsMap[selectedRequest?.dbId || selectedRequest?.id] || []);
+  const currentContacts = useMemo(() => {
+    if (!selectedRequest) return [];
+    const fromMap =
+      contactRecordsMap[selectedRequest.dbId] ||
+      contactRecordsMap[selectedRequest.id] ||
+      contactRecordsMap[selectedRequest.reqId] ||
+      contactRecordsMap[selectedRequest.studentId] ||
+      contactRecordsMap[selectedRequest._id] ||
+      [];
+    const fromSelected = Array.isArray(selectedRequest.contactedIndustries) ? selectedRequest.contactedIndustries : [];
+
+    const combined = [...fromMap, ...fromSelected];
+    const seen = new Set();
+    const result = [];
+    for (const c of combined) {
+      if (!c) continue;
+      const key = (c.organizationName || c.name || c.id || c._id || '').trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        result.push(c);
+      } else if (!key) {
+        result.push(c);
+      }
+    }
+    return result;
+  }, [contactRecordsMap, selectedRequest]);
   const currentRequestPriority = changePriorityTarget?.priority || 'Normal';
   const allowedPriorityChanges = currentRequestPriority === 'Urgent'
     ? ['Normal', 'Snooze', 'Inactive']
@@ -1651,7 +1679,7 @@ export default function WorkflowStep2Requests({
             course: selectedRequest.title,
           } : null}
           onAddContactRecord={async (contactData) => {
-            const targetKey = selectedRequest?.reqId || selectedRequest?.id || selectedRequest?.studentId;
+            const targetKey = selectedRequest?.dbId || selectedRequest?.id || selectedRequest?.reqId || selectedRequest?.studentId;
             const newRecord = {
               id: Date.now().toString(),
               organizationName: contactData.organizationName,
@@ -1669,6 +1697,32 @@ export default function WorkflowStep2Requests({
               addedByName: authUser?.name || 'Coordinator',
               addedByUserId: authUser?._id || null,
             };
+
+            // 1. Optimistically update local contactRecordsMap for all identifiers of this request
+            setContactRecordsMap((prev) => {
+              const updated = { ...prev };
+              const keys = [
+                selectedRequest?.dbId,
+                selectedRequest?.id,
+                selectedRequest?.reqId,
+                selectedRequest?.studentId,
+                selectedRequest?._id,
+              ].filter(Boolean);
+              keys.forEach((k) => {
+                updated[k] = [...(updated[k] || []), newRecord];
+              });
+              return updated;
+            });
+
+            // 2. Optimistically update selectedRequest so the drawer immediately shows the new contact
+            setSelectedRequest((prev) => prev ? ({
+              ...prev,
+              company: contactData.organizationName || prev.company,
+              status: 'Industry Contacted',
+              contactedIndustries: [...(prev.contactedIndustries || []), newRecord],
+            }) : prev);
+
+            // 3. Persist to backend workflow request
             if (targetKey && onAddContact) {
               await onAddContact(targetKey, newRecord);
             }

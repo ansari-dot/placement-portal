@@ -413,8 +413,17 @@ export function resolveCanonicalStudentStatus(student, context = {}, referenceDa
   }
 
   // 7. RULE 6: Exceptional Appointment Outcomes (Terminal / Withdrawal)
+  // Only applies if there is NO new active industry outreach in progress!
+  const hasActiveOutreach = studentRequests.some((r) => {
+    if (r.returnedToStep1 && ['Inactive', 'Snooze'].includes(r.priority)) return false;
+    if (r.status === 'Industry Contacted') return true;
+    return (r.contactedIndustries || []).some(
+      (ci) => !['Student Withdraw', 'Withdrawn', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment', 'No Show'].includes(ci.response)
+    );
+  });
+
   const latestAppt = sortedAppts[0];
-  if (latestAppt) {
+  if (latestAppt && !hasActiveOutreach) {
     if (latestAppt.status === 'Student Withdraw' || latestAppt.appointmentOutcome === 'student_withdrawal') {
       return {
         canonicalStatus: CANONICAL_STATUSES.STUDENT_WITHDRAW,

@@ -300,7 +300,20 @@ export default function WorkflowPage() {
   const handleAddContactToRequest = useCallback(async (requestId, contactData) => {
     if (!workflowId) return;
     try {
-      await updateInternshipRequest(workflowId, requestId, {
+      // Find the request in workflow.requests to get its exact _id if possible
+      const reqIdNorm = String(requestId || '').trim().toLowerCase();
+      const matchedReq = (workflow?.requests || []).find((r) => {
+        return (
+          String(r._id) === reqIdNorm ||
+          (r.reqId && String(r.reqId).toLowerCase() === reqIdNorm) ||
+          (r.id && String(r.id) === reqIdNorm) ||
+          (r.studentId && String(r.studentId).toLowerCase() === reqIdNorm) ||
+          (contactData.studentId && String(r.studentId).toLowerCase() === String(contactData.studentId).toLowerCase())
+        );
+      });
+      const resolvedRequestId = matchedReq?._id || matchedReq?.reqId || requestId;
+
+      await updateInternshipRequest(workflowId, resolvedRequestId, {
         contactedIndustries: [contactData],
         returnedToStep1: false,
         status: 'Industry Contacted',
@@ -312,7 +325,7 @@ export default function WorkflowPage() {
       console.error('Failed to add contact', err);
       throw err;
     }
-  }, [workflowId, refreshWorkflowData]);
+  }, [workflowId, workflow, refreshWorkflowData]);
 
   // ─── Filter students based on coordinator role / selected coordinator ────
   const visibleWorkflowStudents = useMemo(() => {
@@ -593,7 +606,22 @@ export default function WorkflowPage() {
       const matchingRequests = findRequestsForStudent(stu);
       const matchingAppointments = findAppointmentsForStudent(stu);
       const activeRequests = matchingRequests.filter((request) => !['Inactive', 'Snooze'].includes(request.priority));
-      const contactedIndustries = matchingRequests.flatMap((r) => r.contactedIndustries || []);
+      const rawContacted = [
+        ...(matchingRequests.flatMap((r) => r.contactedIndustries || [])),
+        ...(Array.isArray(stu.contactedIndustries) ? stu.contactedIndustries : []),
+      ];
+      const seenOrgs = new Set();
+      const contactedIndustries = [];
+      for (const ci of rawContacted) {
+        if (!ci) continue;
+        const orgKey = (ci.organizationName || ci.name || '').trim().toLowerCase();
+        if (orgKey && !seenOrgs.has(orgKey)) {
+          seenOrgs.add(orgKey);
+          contactedIndustries.push(ci);
+        } else if (!orgKey) {
+          contactedIndustries.push(ci);
+        }
+      }
 
       const hasRequest = activeRequests.length > 0;
       const hasContacted = contactedIndustries.length > 0;
@@ -1003,11 +1031,33 @@ export default function WorkflowPage() {
           status: req.status || 'New',
           studentCanonicalStatus: student?.canonicalStatus || student?.canonicalPlacementStatus || req.studentCanonicalStatus || student?.placementStatus || 'Awaiting',
           notes: req.notes || '',
-          contactedIndustries: (req.contactedIndustries || []).map(ind => ({
-            ...ind,
-            appointmentDate: ind.appointmentDate || '',
-            appointmentTime: ind.appointmentTime || '',
-          })),
+          contactedIndustries: (() => {
+            const combinedReqContacts = [
+              ...(req.contactedIndustries || []),
+              ...(Array.isArray(student?.contactedIndustries) ? student.contactedIndustries : []),
+            ];
+            const seenReqOrgs = new Set();
+            const reqContactedIndustries = [];
+            for (const ind of combinedReqContacts) {
+              if (!ind) continue;
+              const orgKey = (ind.organizationName || ind.name || ind.id || ind._id || '').trim().toLowerCase();
+              if (orgKey && !seenReqOrgs.has(orgKey)) {
+                seenReqOrgs.add(orgKey);
+                reqContactedIndustries.push({
+                  ...ind,
+                  appointmentDate: ind.appointmentDate || '',
+                  appointmentTime: ind.appointmentTime || '',
+                });
+              } else if (!orgKey) {
+                reqContactedIndustries.push({
+                  ...ind,
+                  appointmentDate: ind.appointmentDate || '',
+                  appointmentTime: ind.appointmentTime || '',
+                });
+              }
+            }
+            return reqContactedIndustries;
+          })(),
           date:
             req.date ||
             (req.createdAt

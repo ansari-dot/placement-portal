@@ -824,6 +824,22 @@ export class StudentService {
               (studentDbId && String(r.studentId || '').trim().toLowerCase() === studentDbId.toLowerCase()) ||
               (studentName && String(r.student || '').trim().toLowerCase() === studentName.toLowerCase());
             if (matches) {
+              if (Array.isArray(studentData.contactedIndustries) && studentData.contactedIndustries.length > 0) {
+                if (!r.contactedIndustries) r.contactedIndustries = [];
+                const existingOrgNames = new Set(r.contactedIndustries.map(c => (c.organizationName || c.name || '').trim().toLowerCase()));
+                studentData.contactedIndustries.forEach(c => {
+                  const cOrg = (c.organizationName || c.name || '').trim().toLowerCase();
+                  if (cOrg && !existingOrgNames.has(cOrg)) {
+                    existingOrgNames.add(cOrg);
+                    r.contactedIndustries.push(c);
+                    wfModified = true;
+                  }
+                });
+                if (r.status === 'New' || r.status === 'On Hold') {
+                  r.status = 'Industry Contacted';
+                  wfModified = true;
+                }
+              }
               if (['Withdrawn', 'Student Withdraw', 'Student Withdrawn', 'Industry Rejected', 'Declined', 'Not Suitable Site', 'Student Missed Appointment'].includes(studentData.placementStatus)) {
                 r.status = studentData.placementStatus;
                 r.returnedToStep1 = true;

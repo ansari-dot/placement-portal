@@ -802,9 +802,28 @@ export default function WorkflowStep3Appointments({
       );
     });
 
-    return matchingRequests.flatMap(r =>
+    const fromReqs = matchingRequests.flatMap(r =>
       (r.contactedIndustries || []).map(ind => ({ ...ind, __reqId: r.id || r.reqId }))
     );
+    const fromStu = (Array.isArray(stu.contactedIndustries) ? stu.contactedIndustries : []).map(ind => ({
+      ...ind,
+      __reqId: matchingRequests[0]?.id || matchingRequests[0]?.reqId || '',
+    }));
+
+    const combined = [...fromReqs, ...fromStu];
+    const seen = new Set();
+    const result = [];
+    for (const ind of combined) {
+      if (!ind) continue;
+      const key = (ind.organizationName || ind.name || ind.id || ind._id || '').trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        result.push(ind);
+      } else if (!key) {
+        result.push(ind);
+      }
+    }
+    return result;
   }, [newApptStudentId, students, requests]);
 
   // Select student handler for Modal

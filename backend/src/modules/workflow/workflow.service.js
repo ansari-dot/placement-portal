@@ -345,13 +345,24 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
     }
     if (!workflow) return null;
 
-    const requestIndex = workflow.requests.findIndex((r) => {
+    let requestIndex = workflow.requests.findIndex((r) => {
         return (
             String(r._id) === normalizedId ||
             (r.reqId && r.reqId === normalizedId) ||
-            (r.id && String(r.id) === normalizedId)
+            (r.id && String(r.id) === normalizedId) ||
+            (r.studentId && String(r.studentId) === normalizedId)
         );
     });
+    if (requestIndex === -1) {
+        const lowerId = normalizedId.toLowerCase();
+        requestIndex = workflow.requests.findIndex((r) => {
+            return (
+                (r.reqId && r.reqId.toLowerCase() === lowerId) ||
+                (r.studentId && String(r.studentId).toLowerCase() === lowerId) ||
+                (r.student && r.student.toLowerCase() === lowerId)
+            );
+        });
+    }
     if (requestIndex === -1) {
         throw new Error(`Placement request ${normalizedId} was not found in the workflow`);
     }
@@ -412,15 +423,24 @@ export const updateInternshipRequest = async (workflowId, requestId, requestData
                 studentQuery.push({ name: matchedRequest.student });
             }
             
+            // Sync contacted industries to StudentModel so student profile and contacted modals immediately reflect them
+            await StudentModel.updateMany(
+                { $or: studentQuery },
+                {
+                    $push: { contactedIndustries: { $each: newContacts } },
+                },
+                { runValidators: false }
+            );
+
             // Reactivate student if in Student Withdraw, Awaiting, or On Hold
             await StudentModel.updateMany(
                 {
                     $and: [
                         { $or: studentQuery },
-                        { placementStatus: { $in: ["Student Withdraw", "Student Withdrawn", "Withdrawn", "Awaiting", "N/A", "", null] } },
+                        { placementStatus: { $in: ["Student Withdraw", "Student Withdrawn", "Withdrawn", "Awaiting", "N/A", "", null, "In Progress"] } },
                     ],
                 },
-                { $set: { placementStatus: "In Progress", status: "Active" } },
+                { $set: { placementStatus: "Industry Contacted", status: "Active" } },
                 { runValidators: false }
             );
 

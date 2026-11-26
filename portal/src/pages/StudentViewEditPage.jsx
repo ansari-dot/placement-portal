@@ -157,7 +157,7 @@ export default function StudentViewEditPage() {
       try {
         const wfResult = await fetchWorkflows();
         const workflows = wfResult.data || [];
-        const studentContacts = [];
+        const studentContacts = Array.isArray(data.contactedIndustries) ? [...data.contactedIndustries] : [];
         const studentName = `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.name;
         const dbId = data.id || data._id;
         const bizId = data.studentId;
@@ -181,7 +181,21 @@ export default function StudentViewEditPage() {
             }
           });
         });
-        setContactedIndustries(studentContacts);
+
+        // Deduplicate contacts
+        const seenOrgs = new Set();
+        const dedupedContacts = [];
+        for (const c of studentContacts) {
+          if (!c) continue;
+          const orgKey = (c.organizationName || c.name || '').trim().toLowerCase();
+          if (orgKey && !seenOrgs.has(orgKey)) {
+            seenOrgs.add(orgKey);
+            dedupedContacts.push(c);
+          } else if (!orgKey) {
+            dedupedContacts.push(c);
+          }
+        }
+        setContactedIndustries(dedupedContacts);
 
         const norm = v => String(v || '').trim().toLowerCase();
         const studentAppts = fullAppointments.filter(appt =>
